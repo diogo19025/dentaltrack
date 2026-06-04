@@ -62,6 +62,8 @@
 
 ## 5. Funcionalidades (os 4 pilares)
 
+> **Design de referência (hi-fi):** todas as telas do MVP têm protótipo pixel-perfect em [`design_handoff_dentaltrack/`](design_handoff_dentaltrack/) — é a **fonte de verdade visual** do front-end (implementação em `plan.md §6`).
+
 ### 5.1 Pilar 1 — Chatbot inteligente
 Agente de IA com linguagem natural, *streaming* de respostas e **uso de ferramentas** (function calling). Capacidades:
 
@@ -114,7 +116,7 @@ Classificação automática de **interesse/perfil** por conversa.
 | **Privacidade** | Dados de leads são PII — LGPD: base legal, retenção e consentimento previstos no roadmap. |
 | **Observabilidade** | Logs de conversa, custo de tokens por conversa, erros do agente rastreáveis. |
 | **Resiliência** | Falha do provedor de IA não derruba o app; mensagem de fallback ao usuário. |
-| **Acessibilidade & UX** | Responsivo, dark mode, AA de contraste, estados de loading/erro/vazio. |
+| **Acessibilidade & UX** | Responsivo, **tema light-only** (teal clínico), AA de contraste, foco visível, estados de loading/erro/vazio, `prefers-reduced-motion`. |
 | **Custo** | IA **gratuita no MVP** (Gemini/Groq via AI SDK); modelo **trocável** por env para equilibrar custo/qualidade na produção. |
 
 ---
@@ -124,7 +126,7 @@ Classificação automática de **interesse/perfil** por conversa.
 > Detalhamento, versões e justificativas em [`plan.md`](./plan.md) §1.
 > **Monorepo** (pnpm + Turborepo): `apps/api` (backend) · `apps/web` (frontend) · `packages/shared` (contrato Zod/tipos).
 
-- **Frontend (`apps/web`):** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Recharts · React Hook Form + Zod · TanStack Query.
+- **Frontend (`apps/web`):** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Recharts · lucide-react · React Hook Form + Zod · TanStack Query · fontes **Geist** · **tema light-only** (réplica 1:1 do design — ver `plan.md §6`).
 - **Backend (`apps/api`):** **NestJS** + TypeScript · **Vercel AI SDK v6** (motor do agente) · **Prisma** (ORM) · `@nestjs/schedule` (cron).
 - **IA (MVP):** **API gratuita** — **Google Gemini** (free tier) como provider primário, **Groq** como alternativa; abstraídos pelo AI SDK e **trocáveis** por Claude/OpenAI na produção sem reescrita.
 - **Dados & Auth:** **Supabase** — Postgres gerenciado + **Supabase Auth** (multi-tenant por `clinic_id`).

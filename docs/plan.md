@@ -3,7 +3,7 @@
 
 > **O quê/porquê** → [`context.md`](./context.md). Este documento é **o como**: stack, fases, tarefas e critérios de aceitação.
 > Escopo: **MVP com chatbot em WEB**. O WhatsApp é o canal-alvo de produção, mas **não é ativado neste MVP** — a arquitetura é *channel-agnostic* e o adaptador WhatsApp entra no Pós-MVP (§11).
-> Estimativa indicativa: **~5 semanas** para squad de 2 devs (1 Backend, 1 Frontend) trabalhando em paralelo.
+> Estimativa indicativa: **~5–6 semanas** para squad de 2 devs (1 Backend, 1 Frontend) em paralelo — o front-end reproduz **1:1** o design hi-fi de [`docs/design_handoff_dentaltrack/`](design_handoff_dentaltrack/).
 
 ---
 
@@ -17,12 +17,14 @@
 | Framework | **Next.js 16 (App Router)** + **React 19** | SSR/streaming + DX; deploy Vercel. |
 | Linguagem | **TypeScript 5** (strict) | Tipos de ponta a ponta. |
 | Estilo/UI | **Tailwind v4** + **shadcn/ui** (Radix) | Rápido, acessível, dono do código. |
-| Gráficos | **Recharts** (via shadcn Charts) | Funil, linha, barras, donut. |
+| **Design** | **Réplica 1:1** de [`docs/design_handoff_dentaltrack/`](design_handoff_dentaltrack/) | Tokens + specs por tela são **fonte de verdade** (ver §6). |
+| Fontes | **Geist** + **Geist Mono** (`next/font`) | Tipografia do design; números/telefones em `tabular-nums`. |
+| Gráficos | **Recharts** (via shadcn Charts) | Sparkline, linha, donut, funil, barras (`--chart-1..5`). |
 | Dados | **TanStack Query** | Cliente da API NestJS (cache, refetch, estados). |
 | Chat | **AI SDK UI (`useChat`)** + **Zustand** | Consome o stream do NestJS; estado leve da UI. |
 | Forms | **React Hook Form + Zod** (`packages/shared`) | Configurações e CRUDs. |
 | Auth | **Supabase Auth** (`@supabase/supabase-js`) | Login/sessão; envia JWT (Bearer) à API. |
-| Tema/Ícones | **next-themes** · **lucide-react** | Dark mode e ícones. |
+| Tema/Ícones | **Light-only** (tokens via Tailwind `@theme`) · **lucide-react** | Tema teal clínico fixo (sem dark mode); ícones do design. |
 
 ### 1.2 Backend (`apps/api`)
 | Camada | Escolha | Porquê |
@@ -57,9 +59,16 @@ dentaltrack/
 │  │     ├─ prisma/                # schema.prisma, PrismaService, migrations
 │  │     ├─ jobs/                  # @nestjs/schedule (aggregate, abandon)
 │  │     └─ main.ts
-│  └─ web/                         # Next.js (frontend)
-│     ├─ app/(app)/                # chat · dashboard · settings
-│     └─ lib/                      # api-client.ts (TanStack) · supabase.ts (auth)
+│  └─ web/                         # Next.js (frontend) — réplica 1:1 do design
+│     ├─ app/
+│     │  ├─ globals.css            # tokens do design (@theme) — fonte: theme.css
+│     │  ├─ (auth)/login           # tela de login/signup
+│     │  └─ (app)/                 # dashboard · chat · leads · settings (+ shell)
+│     ├─ components/
+│     │  ├─ ui/                    # shadcn (Button, Card, Tabs, Switch, Table…)
+│     │  ├─ brand/                 # Logo, ToothMark, GoogleLogo (SVG)
+│     │  └─ charts/                # wrappers Recharts (Line, Donut, Funnel, HBars, Sparkline)
+│     └─ lib/                      # api-client.ts · supabase.ts · fonts.ts · tags.ts
 ├─ packages/
 │  └─ shared/                      # schemas Zod + tipos (contrato BE↔FE)
 ├─ turbo.json · pnpm-workspace.yaml
@@ -74,13 +83,15 @@ dentaltrack/
 
 | Fase | Tema | Saída | Sem. |
 |---|---|---|---|
-| **F0** | Fundação | Monorepo: web + API NestJS rodam, autenticam (Supabase), migram (Prisma), deploy. | 1 |
-| **F1** | Motor do Chatbot (BE) ‖ UI de Chat (FE) | Conversa web funcional ponta a ponta. | 1–2 |
+| **F0** | Fundação + **Design System** | Monorepo roda; tokens/shadcn/shell prontos; autentica (Supabase), migra (Prisma). | 1 |
+| **F1** | Motor do Chatbot (BE) ‖ Login + Chat (FE) | Conversa web funcional ponta a ponta. | 1–2 |
 | **F2** | Configurações & Catálogo (BE+FE) | Dono configura bot, procedimentos e tags. | 3 |
-| **F3** | Tags automáticas (BE) ‖ Dashboard (FE) | Tagging em produção + painel com dados reais. | 3–4 |
+| **F3** | Tags automáticas (BE) ‖ Dashboard + **Leads** (FE) | Tagging em produção + painel/leads com dados reais. | 3–4 |
 | **F4** | QA, polish & deploy | MVP estável, testado, com seed/demo. | 5 |
 
 `‖` = trabalho paralelo BE/FE. Detalhe por tarefa abaixo (IDs `BE-x.y` / `FE-x.y`).
+
+> **Front-end:** todas as telas reproduzem **1:1** o design hi-fi em [`docs/design_handoff_dentaltrack/`](design_handoff_dentaltrack/) — ver §6.
 
 ---
 
@@ -148,54 +159,68 @@ dentaltrack/
 
 ---
 
-## 6. Plano de **Frontend** (`apps/web` · Next.js)
+## 6. Plano de **Frontend** (`apps/web` · Next.js) — réplica 1:1 do design
 
-> Consome a API NestJS via **TanStack Query** + `api-client` tipado (schemas de `packages/shared`). Auth por **Supabase**: o JWT da sessão vai como `Bearer` em toda chamada.
+> **Fonte de verdade visual:** [`docs/design_handoff_dentaltrack/`](design_handoff_dentaltrack/) — protótipo hi-fi + design system. `styles/theme.css` (tokens), `README.md` e `QUICK_HANDOFF.md` (specs por tela) são **canônicos**.
+> **Objetivo: reproduzir o design PIXEL-PERFECT mantendo a stack** — sem trocar de framework, sem inventar cores/fontes/espaçamentos, **sem dark mode** (tema light-only), sem emojis/neon. Dados de exemplo do protótipo viram **dados reais da API (TanStack Query → NestJS) sem alterar o layout**.
 
-### F0 — Base
-| ID | Tarefa | Done quando |
-|---|---|---|
-| FE-0.1 | Next.js + Tailwind v4 + shadcn/ui + next-themes | Shell renderiza. |
-| FE-0.2 | **Supabase Auth**: login/signup, sessão, logout, guard de rota | Rotas do painel exigem login. |
-| FE-0.3 | `api-client` + provider TanStack Query (injeta Bearer) | Chamadas autenticadas à API. |
-| FE-0.4 | App shell: sidebar (Chat · Dashboard · Configurações) | Navegação pronta. |
-
-### F1 — UI do Chatbot (Web)
+### F0 — Base & Design System
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
-| FE-1.1 | Layout do chat | header (nome/logo da clínica), lista de mensagens, input | Visual limpo e responsivo. |
-| FE-1.2 | Integração `useChat` → **`/chat` do NestJS** | streaming (SSE), estados *typing*/erro, auto-scroll | Resposta aparece token a token. |
-| FE-1.3 | Bolhas user/assistant + markdown | render de listas, negrito, links | Mensagens legíveis. |
-| FE-1.4 | *Quick replies* | sugestões ("Quero agendar", "Ver procedimentos") | Clique injeta mensagem. |
-| FE-1.5 | Estados | vazio (saudação), loading, erro com retry | Sem telas quebradas. |
-| FE-1.6 | Painel de tags (admin/debug) | mostra tags detectadas na conversa | Tags aparecem ao vivo. |
+| FE-0.1 | **Tokens → `app/globals.css`** | Portar todo o `theme.css` para `@theme`/CSS vars: cores shadcn, `--chart-1..5`, `--tag-*`, status, `--radius` (0.7rem) e sombras `xs..xl`. Light-only. | `globals.css` reproduz os tokens 1:1. |
+| FE-0.2 | **Fontes** Geist + Geist Mono (`next/font`) | `--font-sans`/`--font-mono`; classe `tabular` (`tabular-nums`) p/ números/telefones/métricas; escala display 30 / title 22 / section 16 / corpo 14–14.5. | Tipografia idêntica. |
+| FE-0.3 | **shadcn/ui** + mapa de componentes | Button, Card, Input, Textarea, Select, Label, **Tabs/ToggleGroup** (segmented), Switch, Badge, Table, Tooltip, Avatar, Dialog, Sidebar — tematizados pelos tokens (ver "Mapa de componentes" no README). | Primitivas equivalem às de `ui.jsx`. |
+| FE-0.4 | **Marca & ícones** | `Logo` + `ToothMark` (SVG, ver `icons.jsx`), wordmark "Dental**Track**"; logo Google (SVG); ícones **lucide-react** equivalentes. | Marca/ícones idênticos. |
+| FE-0.5 | **Motion** (CSS) | `fadeUp` (rota), `lift` (hover card −2px), `blink` (cursor), `shimmer` (skeleton) + `@media (prefers-reduced-motion)`. Só transform na entrada. | Animações conforme protótipo. |
+| FE-0.6 | **App shell** (`app.jsx`) | **Sidebar 264px** (logo, "MENU", nav Dashboard/Chat/Leads[badge]/Configurações com ativo=primary-tint+600, card "Assistente ativo", rodapé usuário+sair) + **Topbar 64px** (breadcrumb, busca 260px, sino c/ ponto, botão "+"; blur sticky). Troca de rota anima `fadeUp`; conteúdo `max-width 1240px`. | Shell idêntico. |
+| FE-0.7 | **Auth + dados** | Supabase Auth (sessão/guard) + `api-client` + provider TanStack Query (injeta Bearer). | Painel exige login; dados via API. |
+| FE-0.8 | **`lib/tags.ts`** (mapa tag→cor) | implante→teal · clareamento→amber · ortodontia→blue · faceta→violet · urgência→rose · limpeza→sage (ver `ui.jsx`). | Pílulas com a cor fixa correta. |
 
-### F2 — Configurações & Catálogo
+### F-Login — **`/login`** (`screen_login.jsx`)
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
-| FE-2.1 | Form de **identidade/persona** | RHF+Zod: nome, especialidade, tom, saudação, logo | Salva e reflete no chat. |
-| FE-2.2 | **Ofertas & instruções** | textareas com vigência | Persistem e entram no prompt. |
-| FE-2.3 | Tabela CRUD **procedimentos** | criar/editar/excluir com dialog | CRUD completo na UI. |
-| FE-2.4 | Tabela CRUD **tags** | cor, categoria, keywords | CRUD completo na UI. |
-| FE-2.5 | **Preview do bot** | mini-chat com a config aplicada | Dono testa antes de publicar. |
+| FE-L.1 | Split 2 colunas (`1.05fr / 1fr`, 100vh) | Esq.: painel `--primary` (48/56px) c/ decoração SVG sutil (glows + grid + círculos, opacidade ~0.10), logo, selo, H1 "Um atendimento que nunca dorme…", 3 destaques c/ ícone. | Layout idêntico. |
+| FE-L.2 | Form (`max-width 388px`) + toggle | Campos c/ ícone (Mail/Lock + toggle olho), "Manter conectado", botão primary full + chevron, divisor "ou", "Continuar com Google"; toggle Login↔Signup (re-anima `fadeUp`; signup add "Nome da clínica"). | Interações idênticas. |
+| FE-L.3 | **Supabase Auth** (real) | submit → autentica e entra no app; erros tratados. | Login/signup funcionam. |
 
-### F3 — Dashboard
+### F1 — **`/chat`** (`screen_chat.jsx`)
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
-| FE-3.1 | **6 cards de KPI** | leads, msgs bot (50d), taxa de resposta, conversão, em andamento, não completadas | Números reais do BE-3.3. |
-| FE-3.2 | **Linha**: mensagens/dia (bot×paciente, 50d) | Recharts | Tendência visível. |
-| FE-3.3 | **Funil** de conversão | iniciadas → engajadas → agendadas | Renderiza proporções. |
-| FE-3.4 | **Top tags** (barras) + **status** (donut) | interesses e distribuição | Gráficos populados. |
-| FE-3.5 | **Tabela** de conversas recentes | status + tags + link p/ detalhe | Navegável. |
-| FE-3.6 | **Filtro de período** (7/30/50/90) | refetch por range | Atualiza todos os widgets. |
+| FE-1.1 | Grid `1fr 296px` (chat + rail), altura total | Header do bot: avatar quadrado primary-tint + ponto verde, "Assistente · Clínica", "Online · responde em segundos", badge "Em andamento". | Bate com o protótipo. |
+| FE-1.2 | Mensagens + bolhas | Usuário à direita (`--primary`, raio `16 16 4 16`); bot à esquerda (card+borda, raio `16 16 16 4`, mini-avatar); markdown; auto-scroll suave. | Bolhas idênticas. |
+| FE-1.3 | **Streaming real** `useChat` → SSE do **NestJS** | typing 3 pontos (~650ms) + token-a-token + cursor piscando — **mesmo visual** do mock; estados loading/erro com retry. | Resposta real preserva o efeito. |
+| FE-1.4 | Quick replies + input | pílulas primary-tint (só no estado inicial: "Quero agendar", "Ver procedimentos", "Saber sobre implante", "Estou com dor"); textarea (Enter envia, Shift+Enter quebra), botão enviar circular primary (desabilita vazio/streaming); rodapé "Respostas geradas por IA · canal Web". | Interações idênticas. |
+| FE-1.5 | Rail 296px | "Tags detectadas" (pílula + % confiança + barra `--primary`, **ao vivo**); "Resumo" (status/mensagens/início/canal "Web"); card "Sugestão do agente" (primary-tint). | Rail idêntico. |
 
-### F4 — QA & Polish (BE+FE)
+### F2 — **`/settings`** (`screen_settings.jsx`)
+| ID | Tarefa | Detalhe | Done quando |
+|---|---|---|---|
+| FE-2.1 | Header + Tabs segmented + grid `1fr 320px` | Header (título + "Cancelar" + "Salvar alterações"); abas "Identidade & Persona" e "Ofertas & Instruções"; form à esq. + **Preview do bot** sticky à dir. | Layout bate. |
+| FE-2.2 | Aba **Identidade** (RHF+Zod) | card identidade (upload logo tracejado + nome + especialidade `Select`); card persona (tom `segmented` Formal/Amigável/Acolhedor + nome do assistente + saudação `Textarea`). | Campos idênticos; valida. |
+| FE-2.3 | Aba **Ofertas** (RHF+Zod) | oferta c/ `Switch` + vigência (datas, ícone calendário); instruções `Textarea` + aviso primary-tint; disponibilidade (linhas dia/horário + `Switch`). | Idem. |
+| FE-2.4 | **Preview do bot** reativo (sticky) | mini-chat reflete tom + oferta em tempo real ("Atualiza conforme você edita"). | Preview reage à edição. |
+| FE-2.5 | Persistir via API (`/settings`) | salvar alimenta o system prompt (BE-2.1/BE-1.3). | Persiste e reflete no chat. |
+
+### F3 — **`/` Dashboard** & **`/leads`** (`screen_dashboard.jsx` · `screen_leads.jsx`)
+| ID | Tarefa | Detalhe | Done quando |
+|---|---|---|---|
+| FE-3.1 | **Charts Recharts** (`components/charts`) | mapear os 5 do `charts.jsx`: `Sparkline` (Area), `LineChart` (2 séries, grid pontilhado), `Donut` (`Pie` innerRadius + total central), `Funnel` (barras + %), `HBars` (barras h. + pílula tag) — cores `--chart-1..5`. | Gráficos = layout do protótipo. |
+| FE-3.2 | Dashboard: header + período | segmented **7/30/50/90** (default **50**) + botão "Exportar"; refaz fetch por `range` (TanStack). | Filtro funciona. |
+| FE-3.3 | **6 KPI cards** | ícone quadrado primary-tint + badge delta (▲/▼) + label + número (30px `tabular`) + hint + **sparkline** (4 primeiros). Métricas do `context.md §10` (BE-3.3). | Cards idênticos, dados reais. |
+| FE-3.4 | Linha + Donut + Funil + Top tags | LineChart "Bot × paciente · 50d"; Donut de status (total central + legenda %); Funil (Iniciadas→Engajadas→Agendadas); HBars top tags. | Seções idênticas. |
+| FE-3.5 | Tabela "Conversas recentes" | Paciente·Procedimento·Tags·Status·Atualizada; hover `--accent`, avatar, `StatusBadge`, pílulas; "Ver todas". | Tabela idêntica. |
+| FE-3.6 | **Leads** (`/leads`) | 4 cards-resumo (Total · Agendados · Em andamento · Não compl.) + tabela (Lead·Contato·Interesse·Tags·Status·Origem·Capturado·⋯) com busca, filtro de status (Tabs) e paginação. | Tela Leads 1:1; dados reais. |
+
+> **Fora do handoff (sem mockup):** o CRUD de **procedimentos** e de **tags** (necessário ao MVP — §5 BE-2.2/BE-2.3) **não tem tela no design**. Implementar com o **mesmo design system** (Card + Table + Dialog do mapa de componentes), provavelmente como abas extras em Configurações — alinhar o visual com o design antes de finalizar.
+
+### F4 — QA, fidelidade & polish (BE+FE)
 | ID | Tarefa | Done quando |
 |---|---|---|
 | QA-4.1 | Testes unit: **Jest** (services, tools, métricas — API) · **Vitest** (web) | cobertura dos caminhos críticos. |
-| QA-4.2 | E2E (Playwright): conversar→agendar, editar config, ver dashboard | fluxos verdes. |
-| QA-4.3 | Responsividade, dark mode, A11y AA, estados vazios | revisão passa. |
-| QA-4.4 | Seed/demo + README + deploy produção | MVP demonstrável com 1 clique. |
+| QA-4.2 | E2E (Playwright): login, conversar→agendar, editar config, dashboard, leads | fluxos verdes. |
+| QA-4.3 | **Conferência de fidelidade 1:1** com o protótipo (tokens, layout das 5 telas, estados, motion) | bate lado a lado com `DentalTrack.html`. |
+| QA-4.4 | A11y AA (foco/ring, contraste), responsividade, `prefers-reduced-motion`, estados vazio/loading/erro | revisão passa. |
+| QA-4.5 | Seed/demo + README + deploy produção (web→Vercel · api→Railway/Render) | MVP demonstrável com 1 clique. |
 
 ---
 
@@ -222,7 +247,8 @@ bookAppointment(lead, proc, preferencia) → cria appointment ⇒ status='agenda
 - [ ] Cada conversa é **persistida** e recebe **tags automáticas** de interesse.
 - [ ] O **dashboard** exibe, com dados reais: leads totais · msgs do bot (50d) · taxa de resposta · taxa de conversão · em andamento · não completadas · gráficos (linha, funil, top tags, status).
 - [ ] O dono faz **CRUD** de procedimentos e tags e edita **configurações** sem código.
-- [ ] App **multi-tenant**, autenticado, responsivo, com deploy em produção (web na **Vercel** · API NestJS no **Railway/Render/Fly**).
+- [ ] **Front-end é réplica 1:1** do protótipo em `docs/design_handoff_dentaltrack/`: tokens (cores/tipografia/raios/sombras), layout das 5 telas (login, dashboard, chat, configurações, leads), estados e motion — com dados reais **sem alterar o layout**.
+- [ ] App **multi-tenant**, autenticado, responsivo (tema **light-only**), com deploy em produção (web na **Vercel** · API NestJS no **Railway/Render/Fly**).
 - [ ] Arquitetura **channel-agnostic** comprovada: o motor não conhece o canal (pronto para o adaptador WhatsApp).
 
 ---
