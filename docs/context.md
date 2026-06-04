@@ -115,20 +115,21 @@ Classificação automática de **interesse/perfil** por conversa.
 | **Observabilidade** | Logs de conversa, custo de tokens por conversa, erros do agente rastreáveis. |
 | **Resiliência** | Falha do provedor de IA não derruba o app; mensagem de fallback ao usuário. |
 | **Acessibilidade & UX** | Responsivo, dark mode, AA de contraste, estados de loading/erro/vazio. |
-| **Custo** | Modelo de IA roteável (Gateway) para equilibrar custo/qualidade por tarefa. |
+| **Custo** | IA **gratuita no MVP** (Gemini/Groq via AI SDK); modelo **trocável** por env para equilibrar custo/qualidade na produção. |
 
 ---
 
 ## 7. Stack tecnológica (resumo)
 
 > Detalhamento, versões e justificativas em [`plan.md`](./plan.md) §1.
+> **Monorepo** (pnpm + Turborepo): `apps/api` (backend) · `apps/web` (frontend) · `packages/shared` (contrato Zod/tipos).
 
-- **Frontend:** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Recharts (gráficos) · React Hook Form + Zod.
-- **Backend:** Next.js Route Handlers + Server Actions (Node.js / Fluid Compute) · **Vercel AI SDK v6** via **Vercel AI Gateway** (modelos **Claude**) · Drizzle ORM.
-- **Dados:** PostgreSQL (**Neon**, via Vercel Marketplace).
-- **Auth & multi-tenant:** Clerk (Organizations = clínicas).
-- **Infra:** Vercel (deploy, Cron para agregação de métricas).
-- **Qualidade:** Vitest · Playwright · ESLint · Prettier.
+- **Frontend (`apps/web`):** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Recharts · React Hook Form + Zod · TanStack Query.
+- **Backend (`apps/api`):** **NestJS** + TypeScript · **Vercel AI SDK v6** (motor do agente) · **Prisma** (ORM) · `@nestjs/schedule` (cron).
+- **IA (MVP):** **API gratuita** — **Google Gemini** (free tier) como provider primário, **Groq** como alternativa; abstraídos pelo AI SDK e **trocáveis** por Claude/OpenAI na produção sem reescrita.
+- **Dados & Auth:** **Supabase** — Postgres gerenciado + **Supabase Auth** (multi-tenant por `clinic_id`).
+- **Infra:** Frontend na **Vercel**; Backend NestJS em **Railway/Render/Fly.io** (Node long-running); Supabase gerenciado.
+- **Qualidade:** Jest + Supertest (API) · Vitest + Playwright (web) · ESLint · Prettier.
 
 ---
 
@@ -140,28 +141,33 @@ flowchart LR
     Web["💻 Web Chat — MVP"]
     WA["🟢 WhatsApp — pós-MVP"]
   end
-  Web -->|HTTP stream| API
-  WA -. webhook (futuro) .-> API
 
-  subgraph App["Next.js (App Router) @ Vercel"]
-    API["/api/chat — Route Handler"]
-    Engine["Chat Engine (AI SDK + tools)"]
-    Actions["Server Actions (settings, CRUD)"]
-    RSC["Dashboard (RSC)"]
-    Cron["Vercel Cron"]
+  subgraph FE["apps/web · Next.js @ Vercel"]
+    UI["Chat · Dashboard · Configurações"]
+    AuthFE["Supabase Auth (login/sessão)"]
   end
 
-  API --> Engine
+  subgraph BE["apps/api · NestJS @ Railway/Render/Fly"]
+    Ctrl["Controllers (/chat SSE · REST)"]
+    Guard["Guard: valida JWT Supabase + clinicId"]
+    Engine["Chat Engine (AI SDK + tools)"]
+    Jobs["@nestjs/schedule (cron)"]
+  end
+
+  Web --> UI
+  WA -. webhook (futuro) .-> Ctrl
+  UI -->|Bearer JWT| Ctrl
+  Ctrl --> Guard
+  Ctrl --> Engine
   Engine -->|tools| Tools["searchProcedures · suggest · captureLead · bookAppointment · tagConversation"]
-  Engine -->|LLM| Gateway["Vercel AI Gateway → Claude"]
-  Engine --> DB[("PostgreSQL / Neon")]
-  Actions --> DB
-  RSC --> DB
-  Cron -->|agrega métricas diárias| DB
-  Auth["Clerk (orgs = clínicas)"] --- App
+  Engine -->|LLM grátis| LLM["AI SDK → Gemini (free) / Groq · swappable p/ Claude/OpenAI"]
+  Engine --> DB[("Supabase Postgres")]
+  Jobs -->|agrega métricas diárias| DB
+  AuthFE --- Supa["Supabase Auth"]
+  Guard --- Supa
 ```
 
-O **Chat Engine** é o coração *channel-agnostic*: recebe uma mensagem + `conversationId`, monta o prompt a partir das **configurações da clínica** e do **catálogo**, executa **ferramentas**, persiste tudo e dispara o **auto-tagging**. Web e (futuramente) WhatsApp são apenas adaptadores de entrada/saída.
+O **Chat Engine** (no NestJS) é o coração *channel-agnostic*: recebe uma mensagem + `conversationId`, monta o prompt a partir das **configurações da clínica** e do **catálogo**, executa **ferramentas**, persiste tudo e dispara o **auto-tagging**. Web e (futuramente) WhatsApp são apenas adaptadores de entrada/saída — o motor não muda.
 
 ---
 
@@ -188,7 +194,7 @@ erDiagram
 | Entidade | Papel |
 |---|---|
 | `clinic` / `clinic_settings` | Tenant e sua configuração de persona/ofertas/instruções. |
-| `user` | Usuário do painel (dono/recepção), vinculado à clínica via Clerk. |
+| `user` | Usuário do painel (dono/recepção). Autenticado via **Supabase Auth**; vinculado à clínica por `clinic_id`. |
 | `procedure` | Item do catálogo (descrição, faixa de preço, duração). |
 | `tag` + `conversation_tag` | Catálogo de tags e a aplicação (com confiança) por conversa. |
 | `conversation` | Sessão de atendimento; carrega `channel`, `status`, timestamps. |
@@ -196,6 +202,8 @@ erDiagram
 | `lead` | Pessoa capturada (nome, contato, origem). |
 | `appointment` | Pedido de agendamento — **o evento de conversão**. |
 | `daily_metric` | Pré-agregação diária por clínica (alimenta o dashboard rápido). |
+
+> **Auth & tenant:** usuários são gerenciados pelo **Supabase Auth** (schema `auth.users`); as tabelas de domínio (schema `public`) referenciam `user_id` (UUID). O isolamento multi-tenant é garantido na **camada de serviço (NestJS)** por `clinic_id`, com **RLS** do Supabase como defesa adicional.
 
 ---
 
@@ -241,8 +249,9 @@ erDiagram
 | **Provedor WhatsApp** | Cloud API oficial (Meta) × Evolution/Z-API (popular no BR). | Decidir na Fase Pós-MVP 1; motor já isola o canal. |
 | **Agendamento "real"** | MVP registra *pedido*, não slot sincronizado. | Validar com clínicas se basta no MVP. |
 | **Qualidade do auto-tagging** | Falsos positivos em tags. | Pré-filtro por keyword + confiança mínima + revisão manual no painel. |
-| **Custo de IA** | Tokens por conversa. | Gateway com modelo roteável; medir custo/conversa desde o início. |
-| **LGPD** | PII de leads. | Fora do escopo do MVP, mas previsto; minimizar coleta já agora. |
+| **IA gratuita (MVP)** | Free tiers (Gemini/Groq) têm **rate-limit** e alguns **usam dados para treino**. | OK para testar com dados fictícios; provider abstraído pelo AI SDK; **migrar p/ tier pago (sem treino)** antes de PII real. |
+| **Custo / swap de modelo** | Qualidade × custo ao sair do free tier. | Factory `getModel()` troca Gemini→Claude/OpenAI por env, sem reescrever tools. |
+| **LGPD** | PII de leads + uso de dados por free tiers de IA. | Minimizar coleta; consentimento/retenção no roadmap; modelo pago **sem-treino** antes de produção real. |
 
 ---
 
