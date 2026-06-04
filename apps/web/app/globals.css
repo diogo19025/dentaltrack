@@ -1,0 +1,262 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* Light-only: neutraliza utilitários dark: (nunca há ancestral .dark). */
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================================
+   DentalTrack — Design System (Teal Clínico · Light-only)
+   Tokens 1:1 com docs/design_handoff_dentaltrack/styles/theme.css
+   ============================================================================ */
+:root {
+  /* Base / surfaces */
+  --background: #f5f8f7;
+  --foreground: #1a2b2c;
+  --card: #ffffff;
+  --card-foreground: #1a2b2c;
+  --popover: #ffffff;
+  --popover-foreground: #1a2b2c;
+
+  /* Brand / primary (teal clínico, sem neon) */
+  --primary: #0e7c70;
+  --primary-hover: #0c6a60;
+  --primary-active: #0a5a52;
+  --primary-foreground: #ffffff;
+  --primary-tint: #e6f1ef;
+  --primary-tint-strong: #cfe6e2;
+
+  /* Neutrals */
+  --secondary: #eef3f2;
+  --secondary-foreground: #2a3b3c;
+  --muted: #eef3f2;
+  --muted-foreground: #5f7174;
+  --accent: #e9f1ef;
+  --accent-foreground: #143432;
+  --border: #e1e9e8;
+  --border-strong: #cfdad8;
+  --input: #dde6e5;
+  --ring: #0e7c70;
+
+  /* Feedback */
+  --destructive: #b6443c;
+  --destructive-foreground: #ffffff;
+  --destructive-tint: #f6e7e5;
+  --success: #2e8b6f;
+  --success-tint: #e2efe9;
+  --warning: #b9842f;
+  --warning-tint: #f6eddc;
+
+  /* Status das conversas */
+  --status-andamento: #b9842f;
+  --status-andamento-tint: #f6eddc;
+  --status-agendada: #2e8b6f;
+  --status-agendada-tint: #e2efe9;
+  --status-abandonada: #8a7a7e;
+  --status-abandonada-tint: #efeaeb;
+
+  /* Chart palette (Recharts) */
+  --chart-1: #0e7c70;
+  --chart-2: #c79a4f;
+  --chart-3: #557892;
+  --chart-4: #b06b7c;
+  --chart-5: #7c9a6c;
+
+  /* Tag tints (pílulas) */
+  --tag-teal-bg: #e2efed;
+  --tag-teal-fg: #0c6056;
+  --tag-violet-bg: #ece8f3;
+  --tag-violet-fg: #5b4b86;
+  --tag-amber-bg: #f6eddc;
+  --tag-amber-fg: #8a6320;
+  --tag-blue-bg: #e6edf3;
+  --tag-blue-fg: #3f5d75;
+  --tag-rose-bg: #f3e7ea;
+  --tag-rose-fg: #9a4a5c;
+  --tag-sage-bg: #e9f0e4;
+  --tag-sage-fg: #506b41;
+
+  /* Radius */
+  --radius: 0.7rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  /* Shadows (suaves, clínicas) */
+  --shadow-xs: 0 1px 2px 0 rgba(20, 40, 38, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(20, 40, 38, 0.05), 0 1px 3px 0 rgba(20, 40, 38, 0.05);
+  --shadow-md: 0 2px 4px -1px rgba(20, 40, 38, 0.06), 0 4px 10px -2px rgba(20, 40, 38, 0.07);
+  --shadow-lg: 0 8px 24px -6px rgba(20, 40, 38, 0.1), 0 4px 10px -3px rgba(20, 40, 38, 0.06);
+  --shadow-xl: 0 18px 48px -12px rgba(16, 42, 40, 0.18);
+
+  --sidebar-w: 264px;
+
+  /* shadcn sidebar tokens (mapeados ao tema) */
+  --sidebar: var(--card);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+}
+
+/* Mapeia os tokens para utilitários Tailwind v4 (convenção shadcn). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-tint: var(--primary-tint);
+  --color-primary-tint-strong: var(--primary-tint-strong);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv01", "cv03", "ss01";
+  }
+  ::selection {
+    background: var(--primary-tint-strong);
+    color: var(--primary-active);
+  }
+}
+
+/* ===== Scrollbar sóbria ===== */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #cdd9d7;
+  border-radius: 99px;
+  border: 2px solid var(--background);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #b6c5c3;
+}
+
+/* ===== Utilitários do design ===== */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Tag pills (1:1 com theme.css) */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.tag .tag-d {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.85;
+}
+.tag-teal { background: var(--tag-teal-bg); color: var(--tag-teal-fg); }
+.tag-violet { background: var(--tag-violet-bg); color: var(--tag-violet-fg); }
+.tag-amber { background: var(--tag-amber-bg); color: var(--tag-amber-fg); }
+.tag-blue { background: var(--tag-blue-bg); color: var(--tag-blue-fg); }
+.tag-rose { background: var(--tag-rose-bg); color: var(--tag-rose-fg); }
+.tag-sage { background: var(--tag-sage-bg); color: var(--tag-sage-fg); }
+
+/* Status das conversas */
+.status-em_andamento { background: var(--status-andamento-tint); color: var(--status-andamento); }
+.status-agendada { background: var(--status-agendada-tint); color: var(--status-agendada); }
+.status-abandonada { background: var(--status-abandonada-tint); color: var(--status-abandonada); }
+
+/* ===== Motion (médio) ===== */
+@keyframes fadeUp {
+  from { transform: translateY(10px); }
+  to { transform: none; }
+}
+@keyframes blink {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+@keyframes shimmer {
+  100% { background-position: -200% 0; }
+}
+.anim-fade-up {
+  animation: fadeUp 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.lift {
+  transition:
+    transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1),
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+out/
+build/
+.turbo/
+
+# Test / coverage
+coverage/
+
+# Env (never commit secrets) — keep the *.example files
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Prisma
+apps/api/prisma/*.db
+apps/api/generated/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Deploy
+.vercel
