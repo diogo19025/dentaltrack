@@ -1,0 +1,24 @@
+# Render Blueprint — API NestJS (apps/api). Deploy: New → Blueprint → este repo.
+# O frontend (apps/web) vai na Vercel (ver apps/web/vercel.json e docs/DEPLOY.md).
+services:
+  - type: web
+    name: dentaltrack-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

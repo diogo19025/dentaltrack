@@ -7,9 +7,14 @@
 **DentalTrack** — CRM conversacional com **agente de IA** para **clínicas odontológicas** de pequeno e médio porte. O bot atende pacientes (tira dúvidas, **sugere procedimentos**, **agenda consultas**), captura **leads**, classifica conversas por **tags** de interesse e alimenta um **dashboard** para o dono da clínica. Cada clínica configura o comportamento do bot (identidade, ofertas, instruções, catálogo).
 
 ## Status atual
-- **Fase: PLANEJAMENTO.** Só existe documentação — **nenhum código de aplicação foi escrito ainda**.
-- Entregue: [`docs/context.md`](docs/context.md) (especificação), [`docs/plan.md`](docs/plan.md) (plano de execução BE + FE) e **design hi-fi** em [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) (protótipo de todas as telas).
-- **Próximo passo natural:** Fase 0 do `plan.md` (scaffold do monorepo + design system). **Ainda não iniciado.**
+- **Fase 0 (Fundação) — IMPLEMENTADA e rodando.** Monorepo pnpm + Turborepo com `apps/web` (Next 16), `apps/api` (NestJS 11) e `packages/shared` (Zod). `pnpm build` (turbo) passa nos 3 · web e API verificados.
+  - **Web:** tokens do design 1:1 (`theme.css`, light-only) + shadcn/ui (16 componentes) + app shell (sidebar 264 + topbar 64) + marca (Logo/dente). **Supabase Auth** real: login/signup + `proxy.ts` (Next 16, ex-middleware) + gate em `app/(app)/layout.tsx`. TanStack Query + `api-client`. Telas internas = **placeholders** (as 1:1 vêm em F1–F3; login pixel-perfect = F-Login).
+  - **API:** Prisma 7 (Supabase Postgres via adapter pg; migration `init` aplicada → `clinic` + `membership`), `SupabaseJwtGuard` (jose, HS256/JWKS) + `TenantGuard` + decorators, `ConfigModule` (validação Zod de env), `ZodValidationPipe`, CORS, `GET /health`.
+  - **Verificado E2E:** login Supabase → dashboard; `/health` → `db: up`.
+- Docs: [`docs/context.md`](docs/context.md) · [`docs/plan.md`](docs/plan.md) · design em [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) · deploy em [`docs/DEPLOY.md`](docs/DEPLOY.md).
+- **Rodar local:** preencher `apps/api/.env` e `apps/web/.env.local` (ver `.env.example`) → `pnpm dev`.
+- **Falta na F0:** CI (GitHub Actions) — deferido. Deploy ao vivo (config pronta: `apps/web/vercel.json`, `apps/api/Dockerfile`, `render.yaml`).
+- **Próximo passo natural:** **Fase 1** — motor do chatbot (BE: engine/tools/SSE) ‖ UI de Chat 1:1 (FE). Alternativas: telas pixel-perfect (F-Login/F2/F3) ou fechar CI/commit/deploy.
 
 ## Comece por aqui (leitura obrigatória)
 1. [`docs/context.md`](docs/context.md) — **o quê / porquê**: produto, personas, escopo do MVP, métricas do dashboard, modelo de dados.

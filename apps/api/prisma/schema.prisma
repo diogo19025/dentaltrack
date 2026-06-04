@@ -1,0 +1,50 @@
+// DentalTrack — schema Prisma (Postgres/Supabase).
+// F0: base multi-tenant (Clinic + Membership). Domínio completo → BE-1.1 (F1).
+// Docs: docs/plan.md §5, docs/context.md §9.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+  // A URL vem de prisma.config.ts / DATABASE_URL (Prisma 7).
+}
+
+/// Tenant raiz — uma clínica odontológica.
+model Clinic {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships Membership[]
+
+  @@map("clinic")
+}
+
+/// Vínculo entre um usuário do Supabase Auth (auth.users.id) e uma clínica.
+/// Base do multi-tenant: o TenantGuard resolve o `clinicId` por aqui.
+model Membership {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  clinicId  String   @map("clinic_id") @db.Uuid
+  role      Role     @default(owner)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clinicId])
+  @@index([userId])
+  @@map("membership")
+}
+
+enum Role {
+  owner
+  staff
+
+  @@map("role")
+}
