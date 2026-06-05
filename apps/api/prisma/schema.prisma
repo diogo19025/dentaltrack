@@ -1,5 +1,8 @@
 // DentalTrack — schema Prisma (Postgres/Supabase).
-// F0: base multi-tenant (Clinic + Membership). Domínio completo → BE-1.1 (F1).
+// F0: base multi-tenant (Clinic + Membership).
+// F1 (BE-1.1 — base mínima): Procedure, Conversation, Message, Lead, Appointment.
+//   (clinic_settings, tag/conversation_tag e daily_metric chegam em F2/F3.)
+// Princípio: toda query é escopada por `clinic_id` (multi-tenant).
 // Docs: docs/plan.md §5, docs/context.md §9.
 
 generator client {
@@ -21,9 +24,34 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  memberships Membership[]
+  settings      ClinicSettings?
+  memberships   Membership[]
+  procedures    Procedure[]
+  conversations Conversation[]
+  messages      Message[]
+  leads         Lead[]
+  appointments  Appointment[]
 
   @@map("clinic")
+}
+
+/// Configuração do bot por clínica (1:1) — alimenta o system prompt (BE-1.3).
+/// Todos os campos são opcionais: o prompt builder funciona sem settings.
+model ClinicSettings {
+  id            String   @id @default(uuid()) @db.Uuid
+  clinicId      String   @unique @map("clinic_id") @db.Uuid
+  specialty     String?
+  description   String?
+  assistantName String?  @map("assistant_name")
+  tone          String?
+  greeting      String?
+  instructions  String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@map("clinic_settings")
 }
 
 /// Vínculo entre um usuário do Supabase Auth (auth.users.id) e uma clínica.
@@ -42,9 +70,141 @@ model Membership {
   @@map("membership")
 }
 
+/// Item do catálogo da clínica (descrição, faixa de preço, duração).
+/// Faixa de preço em centavos para evitar floats; opcional ("a partir de…").
+model Procedure {
+  id              String   @id @default(uuid()) @db.Uuid
+  clinicId        String   @map("clinic_id") @db.Uuid
+  name            String
+  description     String?
+  priceMinCents   Int?     @map("price_min_cents")
+  priceMaxCents   Int?     @map("price_max_cents")
+  durationMinutes Int?     @map("duration_minutes")
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@index([clinicId])
+  @@map("procedure")
+}
+
+/// Sessão de atendimento. Channel-agnostic (web no MVP; whatsapp pós-MVP).
+/// status: em_andamento → agendada (conversão) | abandonada (inatividade).
+model Conversation {
+  id            String             @id @default(uuid()) @db.Uuid
+  clinicId      String             @map("clinic_id") @db.Uuid
+  leadId        String?            @map("lead_id") @db.Uuid
+  channel       Channel            @default(web)
+  status        ConversationStatus @default(em_andamento)
+  lastMessageAt DateTime?          @map("last_message_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages     Message[]
+  appointments Appointment[]
+
+  @@index([clinicId])
+  @@index([clinicId, status])
+  @@index([leadId])
+  @@map("conversation")
+}
+
+/// Cada turno persistido (paciente, bot ou system). `clinicId` é denormalizado
+/// a partir da conversa para permitir queries escopadas por tenant diretamente.
+model Message {
+  id             String      @id @default(uuid()) @db.Uuid
+  clinicId       String      @map("clinic_id") @db.Uuid
+  conversationId String      @map("conversation_id") @db.Uuid
+  role           MessageRole
+  content        String
+  tokens         Int?
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  clinic       Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([clinicId])
+  @@map("message")
+}
+
+/// Paciente em potencial capturado pela conversa (PII — ver LGPD no roadmap).
+model Lead {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @map("clinic_id") @db.Uuid
+  name      String?
+  phone     String?
+  email     String?
+  source    String   @default("web")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clinic        Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  appointments  Appointment[]
+
+  @@index([clinicId])
+  @@map("lead")
+}
+
+/// Pedido de agendamento — o evento de conversão. No MVP é um pedido
+/// (preferência em texto livre), não um slot real sincronizado.
+model Appointment {
+  id             String   @id @default(uuid()) @db.Uuid
+  clinicId       String   @map("clinic_id") @db.Uuid
+  conversationId String?  @map("conversation_id") @db.Uuid
+  leadId         String?  @map("lead_id") @db.Uuid
+  procedureId    String?  @map("procedure_id") @db.Uuid
+  preferredTime  String?  @map("preferred_time")
+  notes          String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  procedure    Procedure?    @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId])
+  @@index([conversationId])
+  @@index([leadId])
+  @@map("appointment")
+}
+
 enum Role {
   owner
   staff
 
   @@map("role")
+}
+
+/// Canal de atendimento (espelha CHANNELS em @dentaltrack/shared).
+enum Channel {
+  web
+  whatsapp
+
+  @@map("channel")
+}
+
+/// Status da conversa (espelha CONVERSATION_STATUSES em @dentaltrack/shared).
+enum ConversationStatus {
+  em_andamento
+  agendada
+  abandonada
+
+  @@map("conversation_status")
+}
+
+/// Papel de cada mensagem (espelha MESSAGE_ROLES em @dentaltrack/shared).
+enum MessageRole {
+  user
+  assistant
+  system
+
+  @@map("message_role")
 }

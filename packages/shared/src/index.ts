@@ -5,3 +5,4 @@
 export * from "./enums";
 export * from "./tags";
 export * from "./health";
+export * from "./chat";
