@@ -8,6 +8,7 @@
   "scripts": {
     "build": "prisma generate && nest build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev": "nest start --watch",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
