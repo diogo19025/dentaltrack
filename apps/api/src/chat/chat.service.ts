@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import type { ServerResponse } from "node:http";
 import type { ChatRequest } from "@dentaltrack/shared";
 import { type ReplyMessage, streamAssistantReply } from "../ai/generate-reply";
@@ -9,7 +9,8 @@ import { PrismaService } from "../prisma/prisma.service";
 
 /**
  * Orquestra um turno de conversa com **streaming** (BE-1.6). Channel-agnostic:
- * o motor não conhece o canal. Tudo escopado por `clinicId`.
+ * o motor não conhece o canal. Tudo escopado pelo `clinicId` do tenant
+ * autenticado (resolvido pelo TenantGuard a partir do JWT).
  */
 @Injectable()
 export class ChatService {
@@ -21,15 +22,15 @@ export class ChatService {
   ) {}
 
   /**
-   * Streama um turno (BE-1.6): abre/continua a conversa, persiste a mensagem do
-   * paciente, monta o system prompt + histórico + tools e pipa a resposta do AI
-   * SDK como UI message stream (consumível pelo `useChat`). A resposta do bot é
-   * persistida no `onFinish`; o `conversationId` volta no header
-   * `X-Conversation-Id`. As tools (lead/agendamento) rodam durante o stream e
-   * disparam a transição para `agendada`.
+   * Streama um turno (BE-1.6) na clínica do usuário autenticado (`clinicId`):
+   * abre/continua a conversa, persiste a mensagem do paciente, monta o system
+   * prompt + histórico + tools e pipa a resposta do AI SDK como UI message
+   * stream (consumível pelo `useChat`). A resposta do bot é persistida no
+   * `onFinish`; o `conversationId` volta no header `X-Conversation-Id`. As tools
+   * (lead/agendamento) rodam durante o stream e disparam a transição p/ `agendada`.
    */
-  async streamMessage(input: ChatRequest, res: ServerResponse): Promise<void> {
-    const { conversationId, clinicId } = await this.resolveConversation(input);
+  async streamMessage(input: ChatRequest, clinicId: string, res: ServerResponse): Promise<void> {
+    const conversationId = await this.resolveConversation(input, clinicId);
 
     // 1. Persiste a mensagem do paciente (antes do stream → retry mantém contexto).
     await this.conversations.appendMessage(conversationId, "user", input.message, {}, clinicId);
@@ -97,47 +98,23 @@ export class ChatService {
   }
 
   /**
-   * Garante uma conversa e seu `clinicId`:
-   * - com `conversationId`: deriva o clinicId da própria conversa;
-   * - sem ele: abre uma nova conversa na clínica resolvida (body ou 1ª/demo).
+   * Resolve a conversa do turno, sempre escopada na clínica do tenant:
+   * - com `conversationId`: valida que pertence à clínica (404 se não);
+   * - sem ele: abre uma nova conversa na clínica.
    */
-  private async resolveConversation(
-    input: ChatRequest,
-  ): Promise<{ conversationId: string; clinicId: string }> {
+  private async resolveConversation(input: ChatRequest, clinicId: string): Promise<string> {
     if (input.conversationId) {
-      const convo = await this.prisma.conversation.findUnique({
-        where: { id: input.conversationId },
-        select: { id: true, clinicId: true },
+      const convo = await this.prisma.conversation.findFirst({
+        where: { id: input.conversationId, clinicId },
+        select: { id: true },
       });
       if (!convo) {
         throw new NotFoundException(`Conversa ${input.conversationId} não encontrada.`);
       }
-      if (input.clinicId && input.clinicId !== convo.clinicId) {
-        throw new BadRequestException("conversationId não pertence à clínica informada.");
-      }
-      return { conversationId: convo.id, clinicId: convo.clinicId };
+      return convo.id;
     }
 
-    const clinicId = await this.resolveClinicId(input.clinicId);
     const convo = await this.conversations.createConversation(clinicId);
-    return { conversationId: convo.id, clinicId };
-  }
-
-  /** clinicId do body (validado) ou a 1ª clínica (a demo do seed). */
-  private async resolveClinicId(clinicId?: string): Promise<string> {
-    if (clinicId) {
-      const exists = await this.prisma.clinic.findUnique({
-        where: { id: clinicId },
-        select: { id: true },
-      });
-      if (!exists) throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
-      return clinicId;
-    }
-
-    const first = await this.prisma.clinic.findFirst({ orderBy: { createdAt: "asc" } });
-    if (!first) {
-      throw new BadRequestException("Nenhuma clínica cadastrada. Rode o seed (pnpm db:seed).");
-    }
-    return first.id;
+    return convo.id;
   }
 }

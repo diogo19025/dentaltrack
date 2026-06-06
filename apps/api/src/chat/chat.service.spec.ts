@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from "@nestjs/common";
+import { NotFoundException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import type { ServerResponse } from "node:http";
 
@@ -38,8 +38,8 @@ describe("ChatService.streamMessage", () => {
     getConversation: jest.fn(),
   };
   const prismaMock = {
-    conversation: { findUnique: jest.fn() },
-    clinic: { findUnique: jest.fn(), findFirst: jest.fn() },
+    conversation: { findFirst: jest.fn() },
+    clinic: { findUnique: jest.fn() },
     clinicSettings: { findUnique: jest.fn() },
     procedure: { findMany: jest.fn() },
   };
@@ -74,18 +74,17 @@ describe("ChatService.streamMessage", () => {
     service = moduleRef.get(ChatService);
   });
 
-  it("sem conversationId: abre conversa, persiste user, streama com prompt+tools e devolve o header", async () => {
-    prismaMock.clinic.findFirst.mockResolvedValueOnce({ id: CLINIC_ID });
+  it("sem conversationId: abre conversa na clínica, persiste user, streama e devolve o header", async () => {
     conversationsMock.createConversation.mockResolvedValueOnce({ id: CONVERSATION_ID });
     conversationsMock.getConversation.mockResolvedValueOnce({
       messages: [{ role: "user", content: "Olá" }],
     });
     const res = makeRes();
 
-    await service.streamMessage({ message: "Olá" }, res);
+    await service.streamMessage({ message: "Olá" }, CLINIC_ID, res);
 
     expect(conversationsMock.createConversation).toHaveBeenCalledWith(CLINIC_ID);
-    // user persistido ANTES do stream.
+    // user persistido ANTES do stream (escopado no clinicId do tenant).
     expect(conversationsMock.appendMessage).toHaveBeenNthCalledWith(
       1,
       CONVERSATION_ID,
@@ -109,13 +108,12 @@ describe("ChatService.streamMessage", () => {
   });
 
   it("onFinish persiste a resposta do assistant com os tokens", async () => {
-    prismaMock.clinic.findFirst.mockResolvedValueOnce({ id: CLINIC_ID });
     conversationsMock.createConversation.mockResolvedValueOnce({ id: CONVERSATION_ID });
     conversationsMock.getConversation.mockResolvedValueOnce({
       messages: [{ role: "user", content: "Olá" }],
     });
 
-    await service.streamMessage({ message: "Olá" }, makeRes());
+    await service.streamMessage({ message: "Olá" }, CLINIC_ID, makeRes());
     // Simula o fim do stream.
     await onFinish?.({ text: "Resposta da IA.", tokens: 42 });
 
@@ -130,36 +128,35 @@ describe("ChatService.streamMessage", () => {
   });
 
   it("onFinish com texto vazio não persiste assistant", async () => {
-    prismaMock.clinic.findFirst.mockResolvedValueOnce({ id: CLINIC_ID });
     conversationsMock.createConversation.mockResolvedValueOnce({ id: CONVERSATION_ID });
     conversationsMock.getConversation.mockResolvedValueOnce({
       messages: [{ role: "user", content: "Olá" }],
     });
 
-    await service.streamMessage({ message: "Olá" }, makeRes());
+    await service.streamMessage({ message: "Olá" }, CLINIC_ID, makeRes());
     await onFinish?.({ text: "", tokens: undefined });
 
     // só o append do user.
     expect(conversationsMock.appendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it("com conversationId: deriva clinicId e não cria nova conversa", async () => {
-    prismaMock.conversation.findUnique.mockResolvedValueOnce({
-      id: CONVERSATION_ID,
-      clinicId: CLINIC_ID,
-    });
+  it("com conversationId da clínica: valida o escopo e não cria nova conversa", async () => {
+    prismaMock.conversation.findFirst.mockResolvedValueOnce({ id: CONVERSATION_ID });
     conversationsMock.getConversation.mockResolvedValueOnce({
       messages: [{ role: "user", content: "Oi" }],
     });
 
-    await service.streamMessage({ conversationId: CONVERSATION_ID, message: "Oi" }, makeRes());
+    await service.streamMessage({ conversationId: CONVERSATION_ID, message: "Oi" }, CLINIC_ID, makeRes());
 
+    expect(prismaMock.conversation.findFirst).toHaveBeenCalledWith({
+      where: { id: CONVERSATION_ID, clinicId: CLINIC_ID },
+      select: { id: true },
+    });
     expect(conversationsMock.createConversation).not.toHaveBeenCalled();
     expect(pipeMock).toHaveBeenCalled();
   });
 
   it("filtra mensagens 'system' do histórico enviado à IA", async () => {
-    prismaMock.clinic.findFirst.mockResolvedValueOnce({ id: CLINIC_ID });
     conversationsMock.createConversation.mockResolvedValueOnce({ id: CONVERSATION_ID });
     conversationsMock.getConversation.mockResolvedValueOnce({
       messages: [
@@ -168,7 +165,7 @@ describe("ChatService.streamMessage", () => {
       ],
     });
 
-    await service.streamMessage({ message: "Olá" }, makeRes());
+    await service.streamMessage({ message: "Olá" }, CLINIC_ID, makeRes());
 
     expect(streamMock).toHaveBeenCalledWith(
       [{ role: "user", content: "Olá" }],
@@ -178,36 +175,12 @@ describe("ChatService.streamMessage", () => {
     );
   });
 
-  it("conversationId inexistente → 404 (antes de streamar)", async () => {
-    prismaMock.conversation.findUnique.mockResolvedValueOnce(null);
+  it("conversationId de outra clínica (ou inexistente) → 404, sem streamar nem persistir", async () => {
+    prismaMock.conversation.findFirst.mockResolvedValueOnce(null);
     await expect(
-      service.streamMessage({ conversationId: CONVERSATION_ID, message: "Oi" }, makeRes()),
+      service.streamMessage({ conversationId: CONVERSATION_ID, message: "Oi" }, CLINIC_ID, makeRes()),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(streamMock).not.toHaveBeenCalled();
     expect(conversationsMock.appendMessage).not.toHaveBeenCalled();
-  });
-
-  it("clinicId informado divergente da conversa → 400", async () => {
-    prismaMock.conversation.findUnique.mockResolvedValueOnce({
-      id: CONVERSATION_ID,
-      clinicId: CLINIC_ID,
-    });
-    await expect(
-      service.streamMessage(
-        {
-          conversationId: CONVERSATION_ID,
-          message: "Oi",
-          clinicId: "99999999-9999-9999-9999-999999999999",
-        },
-        makeRes(),
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
-
-  it("sem clínica cadastrada → 400 (orienta rodar o seed)", async () => {
-    prismaMock.clinic.findFirst.mockResolvedValueOnce(null);
-    await expect(service.streamMessage({ message: "Olá" }, makeRes())).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
   });
 });
