@@ -11,6 +11,21 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   // Origens permitidas no CORS (separadas por vírgula).
   CORS_ORIGIN: z.string().default("http://localhost:3000"),
+
+  // ─── IA (BE-1.5 / BE-1.8) ───
+  // Provider do LLM. MVP gratuito: google (Gemini) | groq.
+  LLM_PROVIDER: z.enum(["google", "groq"]).default("google"),
+  // Fallback opcional se o provider primário falhar (hardening).
+  LLM_FALLBACK_PROVIDER: z.enum(["google", "groq"]).optional(),
+  // Chave do Gemini (free tier) — provider padrão do MVP.
+  GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
+  GOOGLE_MODEL: z.string().optional(),
+  // Alternativa gratuita (Groq).
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_MODEL: z.string().optional(),
+  // Hardening do provider (timeout/retry).
+  AI_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
+  AI_MAX_RETRIES: z.coerce.number().int().min(0).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

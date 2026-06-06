@@ -1,0 +1,133 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import type { Channel, ConversationStatus, MessageRole } from "@dentaltrack/shared";
+import { PrismaService } from "../prisma/prisma.service";
+import { canTransition } from "./conversation-status";
+
+/** Opções ao abrir uma conversa (lead e canal são opcionais; canal default = web). */
+export interface CreateConversationInput {
+  leadId?: string;
+  channel?: Channel;
+}
+
+/** Opções ao anexar uma mensagem (ex.: contagem de tokens do provedor de IA). */
+export interface AppendMessageInput {
+  tokens?: number;
+}
+
+/**
+ * Serviço de conversas (BE-1.2). Channel-agnostic — não conhece o canal.
+ * Multi-tenant: toda operação é escopada por `clinicId` (derivado da conversa
+ * quando não é informado), conforme docs/plan.md §2 e docs/context.md §6.
+ */
+@Injectable()
+export class ConversationsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** Abre uma conversa para a clínica (status inicial = em_andamento). */
+  createConversation(clinicId: string, input: CreateConversationInput = {}) {
+    return this.prisma.conversation.create({
+      data: {
+        clinicId,
+        leadId: input.leadId,
+        channel: input.channel ?? "web",
+        status: "em_andamento",
+      },
+    });
+  }
+
+  /**
+   * Anexa uma mensagem à conversa e atualiza `lastMessageAt` atomicamente.
+   * O `clinicId` é derivado da conversa (denormalizado na mensagem) — se
+   * `clinicId` for informado, valida que a conversa pertence ao tenant.
+   */
+  async appendMessage(
+    conversationId: string,
+    role: MessageRole,
+    content: string,
+    input: AppendMessageInput = {},
+    clinicId?: string,
+  ) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, ...(clinicId ? { clinicId } : {}) },
+      select: { id: true, clinicId: true },
+    });
+    if (!conversation) {
+      throw new NotFoundException(`Conversa ${conversationId} não encontrada.`);
+    }
+
+    const [message] = await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          clinicId: conversation.clinicId,
+          role,
+          content,
+          tokens: input.tokens,
+        },
+      }),
+      this.prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: new Date() },
+      }),
+    ]);
+
+    return message;
+  }
+
+  /**
+   * Busca a conversa com suas mensagens (em ordem cronológica).
+   * Quando `clinicId` é informado, escopa por tenant. Lança 404 se não existir.
+   */
+  async getConversation(conversationId: string, clinicId?: string) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, ...(clinicId ? { clinicId } : {}) },
+      include: {
+        messages: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    if (!conversation) {
+      throw new NotFoundException(`Conversa ${conversationId} não encontrada.`);
+    }
+    return conversation;
+  }
+
+  /** Marca a conversa como `agendada` (conversão). Ver BE-1.7. */
+  markAsScheduled(conversationId: string, clinicId?: string) {
+    return this.transition(conversationId, "agendada", clinicId);
+  }
+
+  /** Marca a conversa como `abandonada` (inatividade). Sem cron ainda (BE-1.7). */
+  markAsAbandoned(conversationId: string, clinicId?: string) {
+    return this.transition(conversationId, "abandonada", clinicId);
+  }
+
+  /**
+   * Aplica uma transição de status validada (escopada por `clinicId`).
+   * Mesmo estado = no-op (retorna a conversa). Transição inválida → 400.
+   */
+  private async transition(
+    conversationId: string,
+    to: ConversationStatus,
+    clinicId?: string,
+  ) {
+    const conversation = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, ...(clinicId ? { clinicId } : {}) },
+      select: { id: true, status: true },
+    });
+    if (!conversation) {
+      throw new NotFoundException(`Conversa ${conversationId} não encontrada.`);
+    }
+    if (conversation.status === to) {
+      return this.prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+    }
+    if (!canTransition(conversation.status, to)) {
+      throw new BadRequestException(
+        `Transição de status inválida: ${conversation.status} → ${to}.`,
+      );
+    }
+    return this.prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { status: to },
+    });
+  }
+}

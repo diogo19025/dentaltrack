@@ -1,0 +1,142 @@
+# Update — Avanço da Fase 1 (Motor do Chatbot · Backend)
+
+> Registro do que foi implementado nesta leva de trabalho, **por quê** cada avanço foi feito e **o que ainda não deu para fazer**.
+> Escopo: `apps/api` (NestJS) + `packages/shared`. Sem frontend, sem WhatsApp.
+> Data base: 2026-06-05 · Idioma do projeto: PT-BR.
+
+---
+
+## Visão geral
+
+Avançamos o **motor backend do chatbot (F1)** em etapas incrementais e isoladas, sempre com escopo controlado e validação por testes unitários (sem depender de Supabase, JWT ou API key reais):
+
+1. **Base de dados mínima da F1** (BE-1.1) + módulo de conversas (BE-1.2).
+2. **`POST /chat` mockado** (sem IA) — valida fluxo e persistência.
+3. **IA real** com Vercel AI SDK + Gemini (BE-1.5/1.6), substituindo o mock.
+4. **Prompt builder** (BE-1.3) + **máquina de status** (BE-1.7) + **hardening do provider** (BE-1.8).
+5. **Tools / function calling** (BE-1.4) — o bot deixa de só conversar e passa a **agir** (buscar procedimentos, capturar lead, agendar).
+
+Estado final: `POST /chat` cria/continua conversa, persiste mensagens (com tokens), chama a IA real com um **system prompt montado a partir dos dados da clínica e do catálogo**, executa **tools** (busca/sugestão de procedimentos, captura de lead e agendamento → status `agendada`), trata falhas do provider de forma controlada (HTTP 503) e a conversa tem status estruturado. **42 testes unitários** passando; `typecheck` e `build` verdes.
+
+---
+
+## O que foi feito (e por quê)
+
+### Etapa 1 — Base de dados mínima da F1 (BE-1.1 + BE-1.2)
+
+**O quê.** Estendi o schema Prisma com as entidades do domínio do chat:
+`Procedure`, `Conversation`, `Message`, `Lead`, `Appointment` (+ enums `Channel`, `ConversationStatus`, `MessageRole` espelhando `@dentaltrack/shared`). Criei a migration `20260604200000_f1_chat_domain` e um seed idempotente (clínica demo + 5 procedimentos: implante, clareamento, ortodontia, limpeza, urgência/dor). Implementei o `ConversationsService` com `createConversation`, `appendMessage` e `getConversation`.
+
+**Por quê.** É o alicerce do motor: sem `Conversation`/`Message` não há o que persistir nem contexto para a IA. Mantive **mínimo** (deixei `tag`/`conversation_tag`/`daily_metric` para F2/F3) para não inflar a entrega.
+
+**Princípios aplicados.** Multi-tenant: toda entidade carrega `clinic_id` e índices por tenant; `Message` tem `clinic_id` denormalizado para queries escopadas diretas. `Appointment` é um **pedido** simples (preferência em texto livre), fiel ao MVP (sem slot real).
+
+### Etapa 2 — `POST /chat` mockado
+
+**O quê.** `ChatModule` + `ChatController` + `ChatService`. O endpoint recebe `{ message, conversationId?, clinicId? }`, abre a conversa se não houver `conversationId`, salva a mensagem do usuário, gera uma resposta **mockada** e salva como `assistant`, retornando `{ conversationId, assistantMessage }`. Contrato Zod em `packages/shared/src/chat.ts`.
+
+**Por quê.** Validar o **fluxo conversa↔persistência** isoladamente, antes de introduzir a complexidade da IA. Degrau intermediário rumo ao BE-1.6.
+
+**Decisão.** `@Public()` temporário no `/chat` + `clinicId` no body, para permitir teste via curl/Postman sem login. Documentado no código que isso será trocado por `SupabaseJwtGuard + TenantGuard` quando a auth real entrar.
+
+### Etapa 3 — IA real (BE-1.5 / BE-1.6)
+
+**O quê.** Provider isolado em `ai/model.ts` (`getModel()` lendo `LLM_PROVIDER`: Gemini padrão, Groq alternativa) e `ai/generate-reply.ts` (`generateAssistantReply(history, system?)` usando `generateText` do AI SDK v6). O `ChatService` passou a montar o histórico user/assistant e chamar a IA real; o campo `message.tokens` é gravado quando o provider reporta uso. Removi o mock.
+
+**Por quê.** É o coração do produto. Mantive o provider **trocável por env** (factory) para honrar a decisão de IA gratuita no MVP e swap para modelo pago na produção sem reescrever o resto.
+
+**Decisão.** Passo o **histórico** (não só a última mensagem) para a IA, então a conversa continua com contexto — simples e melhor. O `system` aqui ainda era genérico (a personalização veio na etapa 4).
+
+### Etapa 4 — Prompt builder + Status + Hardening
+
+**Parte 1 — Prompt builder (BE-1.3).**
+`ai/prompt.ts` → `buildSystemPrompt({ clinic, settings, procedures })`, função pura. Inclui nome/especialidade/descrição da clínica, persona/tom, saudação/instruções, catálogo resumido (com faixa de preço e duração) e diretrizes (responder como atendente odontológico, conduzir o paciente a deixar nome e telefone, não inventar preços/horários/procedimentos fora do catálogo, pedir dado faltante de forma simples). Conectado ao `ChatService`, que carrega `clinic` + `settings` + procedimentos ativos (escopado por `clinicId`).
+*Por quê:* o diferencial do produto é um bot **configurável pela clínica**; o prompt é onde isso se materializa.
+
+**Parte 2 — Máquina de status (BE-1.7).**
+`conversation-status.ts` (`ALLOWED_TRANSITIONS` + `canTransition`) e métodos `markAsScheduled`/`markAsAbandoned` no service, escopados por `clinicId`. Conversa nasce `em_andamento`; transições inválidas retornam 400; mesmo estado é no-op.
+*Por quê:* dá semântica de funil (em andamento → agendada/abandonada) que o dashboard vai consumir, sem permitir transições absurdas.
+
+**Parte 3 — Hardening do provider (BE-1.8).**
+`generate-reply.ts` ganhou **timeout** (`AbortSignal.timeout`), **retry** (`maxRetries` do SDK) e **fallback** enxuto (`LLM_FALLBACK_PROVIDER`, 1 tentativa). Falhas viram `AiUnavailableError` (erro padronizado), e o `ChatService` traduz para **HTTP 503** com mensagem amigável + log — nunca uma exception crua. A mensagem do usuário continua persistida, então o retry mantém o contexto.
+*Por quê:* free tiers têm rate limit; uma falha de IA não pode derrubar o backend.
+
+**Schema.** Adicionei o modelo `ClinicSettings` (1:1 com `Clinic`, todos os campos opcionais) na migration mínima `20260605120000_clinic_settings`. Justificativa: o plano já previa `clinic_settings` (BE-1.1/BE-2.1); ter o modelo dá tipo real ao prompt builder e caminho de persistência para o módulo de settings (F2).
+
+### Etapa 5 — Tools / function calling (BE-1.4)
+
+**O quê.** `ai/tools.ts` com 4 tools construídas por requisição (capturam o contexto clínica+conversa, escopadas por `clinicId`):
+- `searchProcedures(query)` — busca no catálogo (descrição, preço, duração).
+- `suggestProcedures(interesse)` — recomenda com base no sintoma/desejo relatado.
+- `captureLead(nome, telefone?, email?)` — cria/atualiza o `Lead` e o vincula à conversa.
+- `bookAppointment(...)` — cria o `Appointment` (a conversão) e move a conversa para `status=agendada`.
+
+Ligadas ao motor (`generate-reply.ts`, multi-step com `stepCountIs`) e ao `ChatService`.
+
+**Por quê.** É o coração do produto: o bot deixa de só conversar e passa a **registrar dados reais** (lead + agendamento), ativando a conversão e a transição de status. Validado ao vivo: a conversa cria `lead` (João Silva / telefone), `appointment` (preferência) e move a conversa para `agendada`.
+
+**Pegadinha 2 (prompt).** Passar as tools não basta — o Gemini só *dizia* que agendou, sem chamar nada. Foi preciso **instruir explicitamente no system prompt** (`prompt.ts`) que ele DEVE chamar `searchProcedures`/`captureLead`/`bookAppointment` de verdade e só confirmar após a ferramenta retornar sucesso. Sem isso, o banco fica vazio mesmo com a resposta parecendo correta.
+
+**Pegadinha resolvida (importante).** Definir as tools com `tool()` + `zodSchema()` (zod) faz o TypeScript instanciar tipos "excessively deep" (`TS2589`) e **estoura a memória do `tsc`** (`nest build`/`typecheck` morrem com `exit 134`) — nem 8GB de heap resolve. Os testes passam mesmo assim (`ts-jest` é leniente), o que mascara o problema. **Correção:** usar `dynamicTool` + `jsonSchema` (JSON Schema puro, sem zod) e cortar a inferência genérica na chamada `generateText`. Compila com memória padrão; a validação de entrada das tools continua sendo feita pelo SDK. (Registrado na memória do projeto.)
+
+---
+
+## Arquivos relevantes
+
+| Área | Arquivos |
+|---|---|
+| Schema & migrations | `apps/api/prisma/schema.prisma`, `migrations/20260604200000_f1_chat_domain`, `migrations/20260605120000_clinic_settings` |
+| Seed & scripts | `prisma/seed.ts`, `prisma/smoke.ts`, `scripts/ai-smoke.ts` |
+| Conversas | `src/conversations/conversations.service.ts`, `conversation-status.ts` (+ specs) |
+| Chat | `src/chat/{chat.controller,chat.service,chat.module,dto}.ts` (+ spec) |
+| IA | `src/ai/{model,generate-reply,prompt,tools}.ts` (+ specs) |
+| Contrato | `packages/shared/src/chat.ts` |
+| Config | `src/config/env.validation.ts`, `.env.example` |
+
+**Scripts úteis (`apps/api`):** `db:deploy`, `db:seed`, `db:smoke` (fluxo conversa end-to-end no banco), `ai:smoke` (valida a IA isolada, só precisa da API key).
+
+---
+
+## Qualidade / validação
+
+- **42 testes unitários** passando (7 suites): conversas (CRUD + status), prompt builder, generate-reply (sucesso/tokens/fallback/erro), chat service (criação/continuação/erro 503), tools (busca/lead/agendamento), health.
+- `pnpm typecheck` e `pnpm build` (api/shared/web) verdes.
+- Migrations geradas **offline** (`prisma migrate diff`) e depois **aplicadas com sucesso no Supabase real**.
+
+### Validação ao vivo (realizada) ✅
+
+Validado de ponta a ponta contra Supabase + Gemini reais (não só mock):
+
+- **`prisma migrate deploy`** aplicou as 2 migrations novas no Postgres do Supabase sem erro — confirma que as migrations offline funcionam.
+- **`db:seed`**: clínica demo + 5 procedimentos + persona (`ClinicSettings`).
+- **`db:smoke`**: conversa criada com `status=em_andamento`, 3 mensagens salvas e recuperadas em ordem.
+- **`POST /chat` no servidor real**: a IA (Gemini) respondeu como a assistente configurada ("Sofia"), citando a clínica (prompt builder lendo `ClinicSettings` + catálogo), **manteve o contexto entre turnos** e capturou nome+telefone do paciente.
+- **Persistência conferida no banco**: 4 mensagens (`user`/`assistant` ×2), `tokens` gravados nas respostas do assistant.
+
+**Bug pego pelo teste ao vivo (que os unitários não pegariam, pois mockam o SDK):** o modelo padrão `gemini-2.0-flash` veio com **quota 0** no free tier do projeto Google (HTTP 429 `RESOURCE_EXHAUSTED`). Corrigido o default para **`gemini-2.5-flash`** (`src/ai/model.ts`), que funciona no free tier. Sobrescrevível por `GOOGLE_MODEL`.
+
+---
+
+## O que NÃO deu para fazer (e por quê)
+
+> Nota: o aceite ao vivo **foi realizado** (ver "Validação ao vivo (realizada)" acima). Os itens abaixo são apenas escopo deferido por decisão.
+
+### Deferido por decisão de escopo (combinado)
+- ~~Tools / function calling (BE-1.4)~~ — **CONCLUÍDO** (ver Etapa 5). A transição para `agendada` agora é disparada pela tool `bookAppointment`.
+- **Streaming / SSE** — BE-1.6 (parte streaming). Hoje a resposta vem completa (não token-a-token).
+- **Auth real no `/chat`** — `SupabaseJwtGuard` + `TenantGuard` e remoção do `clinicId` do body. Mantido `@Public()` temporário para testes.
+- **Auto-tagging** (BE-3.1) e **cron de `abandonada`** (BE-3.4) — fora desta leva; a máquina de status já deixa `abandonada` preparada, mas sem job.
+- **WhatsApp, dashboard, frontend** — fora do escopo deste bloco.
+
+### Limitações conhecidas do que foi entregue
+- O **fallback de provider** é mínimo (1 tentativa no provider alternativo) — não é uma camada elaborada de resiliência, por decisão de manter simples.
+- O `clinicId` default (quando não vem `conversationId` nem `clinicId`) resolve para a **1ª clínica** do banco (a demo do seed) — adequado só para o modo de teste atual; sai quando o `TenantGuard` entrar.
+
+---
+
+## Próximo checkpoint
+
+Validação ao vivo concluída e commit na `main` (fast-forward, local — sem `push`). Próxima etapa a decidir:
+**(a) tools / function calling** (lead + agendamento, que ativam a conversão e a transição de status) ou **(b) streaming/SSE** para a experiência de chat. Depois disso, proteger o `/chat` com auth real e seguir para configurações/dashboard.
+
+Pendências menores em aberto: `git push origin main`; copiar os `.env` (gitignored) para a pasta principal se for rodar de lá; limpar conversas de teste no banco; alinhar a config do prettier (aspas).
