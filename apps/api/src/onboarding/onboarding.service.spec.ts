@@ -4,6 +4,23 @@ import { PrismaService } from "../prisma/prisma.service";
 
 const USER_ID = "11111111-1111-1111-1111-111111111111";
 
+/** Cria um mock do client de transação (tx) usado dentro do $transaction. */
+function makeTx(over: {
+  innerFindFirst?: unknown;
+  clinic?: { id: string; name: string };
+}) {
+  return {
+    $executeRaw: jest.fn().mockResolvedValue(1),
+    membership: {
+      findFirst: jest.fn().mockResolvedValueOnce(over.innerFindFirst ?? null),
+      create: jest.fn().mockResolvedValue({}),
+    },
+    clinic: {
+      create: jest.fn().mockResolvedValue(over.clinic ?? { id: "clinic-novo", name: "Minha clínica" }),
+    },
+  };
+}
+
 describe("OnboardingService.ensureClinic", () => {
   let service: OnboardingService;
   const prismaMock = {
@@ -19,7 +36,7 @@ describe("OnboardingService.ensureClinic", () => {
     service = moduleRef.get(OnboardingService);
   });
 
-  it("idempotente: já tem membership → devolve a clínica existente, sem criar nada", async () => {
+  it("idempotente: já tem membership → devolve a clínica existente, sem abrir transação", async () => {
     prismaMock.membership.findFirst.mockResolvedValueOnce({ clinicId: "clinic-existente" });
 
     const res = await service.ensureClinic({ userId: USER_ID });
@@ -28,16 +45,14 @@ describe("OnboardingService.ensureClinic", () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it("sem membership → cria clínica + membership (owner) em transação", async () => {
-    prismaMock.membership.findFirst.mockResolvedValueOnce(null);
-    const tx = {
-      clinic: { create: jest.fn().mockResolvedValueOnce({ id: "clinic-novo", name: "Clínica Teste" }) },
-      membership: { create: jest.fn().mockResolvedValueOnce({}) },
-    };
+  it("sem membership → adquire o lock, cria clínica + membership (owner)", async () => {
+    prismaMock.membership.findFirst.mockResolvedValueOnce(null); // caminho rápido
+    const tx = makeTx({ clinic: { id: "clinic-novo", name: "Clínica Teste" } });
     prismaMock.$transaction.mockImplementationOnce((cb: (t: typeof tx) => unknown) => cb(tx));
 
     const res = await service.ensureClinic({ userId: USER_ID, clinicName: "Clínica Teste" });
 
+    expect(tx.$executeRaw).toHaveBeenCalled(); // advisory lock
     expect(tx.clinic.create).toHaveBeenCalledWith({ data: { name: "Clínica Teste" } });
     expect(tx.membership.create).toHaveBeenCalledWith({
       data: { userId: USER_ID, clinicId: "clinic-novo" },
@@ -45,12 +60,20 @@ describe("OnboardingService.ensureClinic", () => {
     expect(res).toEqual({ clinicId: "clinic-novo", created: true });
   });
 
+  it("concorrência: outra chamada provisionou durante o lock → devolve sem duplicar", async () => {
+    prismaMock.membership.findFirst.mockResolvedValueOnce(null); // caminho rápido: nada
+    const tx = makeTx({ innerFindFirst: { clinicId: "clinic-concorrente" } });
+    prismaMock.$transaction.mockImplementationOnce((cb: (t: typeof tx) => unknown) => cb(tx));
+
+    const res = await service.ensureClinic({ userId: USER_ID });
+
+    expect(res).toEqual({ clinicId: "clinic-concorrente", created: false });
+    expect(tx.clinic.create).not.toHaveBeenCalled();
+  });
+
   it("usa nome padrão quando não vem clinicName", async () => {
     prismaMock.membership.findFirst.mockResolvedValueOnce(null);
-    const tx = {
-      clinic: { create: jest.fn().mockResolvedValueOnce({ id: "c2", name: "Minha clínica" }) },
-      membership: { create: jest.fn().mockResolvedValueOnce({}) },
-    };
+    const tx = makeTx({ clinic: { id: "c2", name: "Minha clínica" } });
     prismaMock.$transaction.mockImplementationOnce((cb: (t: typeof tx) => unknown) => cb(tx));
 
     await service.ensureClinic({ userId: USER_ID });

@@ -83,8 +83,8 @@ dentaltrack/
 
 | Fase | Tema | Saída | Sem. |
 |---|---|---|---|
-| **F0** | Fundação + **Design System** | Monorepo roda; tokens/shadcn/shell prontos; autentica (Supabase), migra (Prisma). | 1 |
-| **F1** | Motor do Chatbot (BE) ‖ Login + Chat (FE) | Conversa web funcional ponta a ponta. | 1–2 |
+| ✅ **F0** | Fundação + **Design System** | Monorepo roda; tokens/shadcn/shell prontos; autentica (Supabase), migra (Prisma). | 1 |
+| ✅ **F1** | Motor do Chatbot (BE) ‖ Login + Chat (FE) | Conversa web funcional ponta a ponta. **Validada E2E ao vivo (2026-06-06).** | 1–2 |
 | **F2** | Configurações & Catálogo (BE+FE) | Dono configura bot, procedimentos e tags. | 3 |
 | **F3** | Tags automáticas (BE) ‖ Dashboard + **Leads** (FE) | Tagging em produção + painel/leads com dados reais. | 3–4 |
 | **F4** | QA, polish & deploy | MVP estável, testado, com seed/demo. | 5 |
@@ -96,6 +96,8 @@ dentaltrack/
 ---
 
 ## 4. Fase 0 — Fundação (compartilhada)
+
+> ✅ **CONCLUÍDA** — `F0.1`…`F0.7` feitos. **`F0.8` (CI + deploy) deferido** (config pronta; sem pipeline ativo).
 
 | ID | Tarefa | Done quando |
 |---|---|---|
@@ -120,6 +122,9 @@ dentaltrack/
 | BE-0.3 | `ZodValidationPipe` (`nestjs-zod`) + CORS p/ o front | DTOs validados; web consome a API. |
 
 ### F1 — Motor do Chatbot (channel-agnostic)
+
+> ✅ **CONCLUÍDA (2026-06-06)** — `BE-1.1`…`BE-1.8` implementados e validados ao vivo (ver [`update.md`](./update.md)). O `/chat` é **SSE/streaming** + **auth/tenant** (`clinicId` do JWT via `TenantGuard`). Do `BE-1.1`, `tag`/`conversation_tag`/`daily_metric` ficaram para F2/F3 por decisão. **Extra concluído (fora da lista original):** onboarding automático — `OnboardingModule` + `POST /onboarding/bootstrap` (clínica + membership no 1º acesso, idempotente e race-safe).
+
 | ID | Tarefa | Detalhe técnico | Done quando |
 |---|---|---|---|
 | BE-1.1 | **Prisma schema** do domínio | `clinic, clinic_settings, procedure, tag, conversation_tag, conversation, message, lead, appointment, daily_metric` (+ `user_id` UUID de `auth.users`) | `prisma migrate` aplica no Supabase. |
@@ -177,6 +182,9 @@ dentaltrack/
 | FE-0.8 | **`lib/tags.ts`** (mapa tag→cor) | implante→teal · clareamento→amber · ortodontia→blue · faceta→violet · urgência→rose · limpeza→sage (ver `ui.jsx`). | Pílulas com a cor fixa correta. |
 
 ### F-Login — **`/login`** (`screen_login.jsx`)
+
+> ✅ **CONCLUÍDA (2026-06-06)** — `FE-L.1`…`FE-L.3` (split 2 colunas + painel de marca + form fiel com ícones/olho/toggle + Supabase Auth real).
+
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
 | FE-L.1 | Split 2 colunas (`1.05fr / 1fr`, 100vh) | Esq.: painel `--primary` (48/56px) c/ decoração SVG sutil (glows + grid + círculos, opacidade ~0.10), logo, selo, H1 "Um atendimento que nunca dorme…", 3 destaques c/ ícone. | Layout idêntico. |
@@ -184,6 +192,9 @@ dentaltrack/
 | FE-L.3 | **Supabase Auth** (real) | submit → autentica e entra no app; erros tratados. | Login/signup funcionam. |
 
 ### F1 — **`/chat`** (`screen_chat.jsx`)
+
+> ✅ **CONCLUÍDA (2026-06-06)** — `FE-1.1`/`1.2`/`1.4`/`1.5` (layout 1:1: grid+rail, bolhas, quick replies, input) + `FE-1.3` (`useChat` ↔ SSE do NestJS, streaming token-a-token + cursor). Rail "Tags detectadas" = placeholder até o auto-tagging (F3).
+
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
 | FE-1.1 | Grid `1fr 296px` (chat + rail), altura total | Header do bot: avatar quadrado primary-tint + ponto verde, "Assistente · Clínica", "Online · responde em segundos", badge "Em andamento". | Bate com o protótipo. |

@@ -140,3 +140,60 @@ Validação ao vivo concluída e commit na `main` (fast-forward, local — sem `
 **(a) tools / function calling** (lead + agendamento, que ativam a conversão e a transição de status) ou **(b) streaming/SSE** para a experiência de chat. Depois disso, proteger o `/chat` com auth real e seguir para configurações/dashboard.
 
 Pendências menores em aberto: `git push origin main`; copiar os `.env` (gitignored) para a pasta principal se for rodar de lá; limpar conversas de teste no banco; alinhar a config do prettier (aspas).
+
+---
+
+## Conclusão da Fase 1 — Streaming, Auth, Frontend, Integração e Onboarding (2026-06-06)
+
+> 2ª leva (FE + integração + fechamento). Conclui o que faltava da F1: **streaming SSE**,
+> **auth real** no `/chat`, **login e chat 1:1** no frontend, **integração `useChat` ↔ NestJS**
+> e **onboarding automático** de clínica. **Fase 1 validada ponta a ponta ao vivo** (Gemini real).
+
+### BE — Etapa 1: Streaming/SSE no `/chat` (fecha o BE-1.6)
+`generateText` → `streamText`: o `/chat` devolve um **UI message stream** do AI SDK
+(`pipeUIMessageStreamToResponse`), consumível pelo `useChat`. O `conversationId` volta no
+header `X-Conversation-Id`; a resposta do bot é persistida no `onFinish` (texto + tokens); as
+tools seguem rodando durante o stream. `handleMessage` → `streamMessage(input, res)`.
+
+### BE — Etapa 2: Auth + tenant no `/chat` (fecha o BE-1.6 / liga F0.4)
+Removido o `@Public`: o `SupabaseJwtGuard` (global) exige o JWT e o `TenantGuard` resolve o
+`clinicId` do usuário (via `Membership`). O `clinicId` saiu do body (não é mais aceito do
+cliente) e o fallback "1ª clínica" foi removido. `chatRequestSchema` perdeu o `clinicId`.
+
+### FE — Login 1:1 (F-Login) e Chat 1:1 (FE-1.1/1.2/1.4/1.5)
+Réplicas pixel-perfect de `screen_login.jsx` e `screen_chat.jsx` (shadcn/ui + tokens + lucide).
+O shell ganhou `AppMain` (client, `usePathname`) replicando o condicional `isChat` do `app.jsx`
+(chat full-height/overflow-hidden); `template.tsx` removido (motion via `key={pathname}`).
+Fidelidade: `Card` shadcn `rounded-xl`→`rounded-lg`; `+fadeIn`/`.anim-fade` no `globals.css`.
+
+### FE — Etapa 5: streaming real (FE-1.3)
+`useChat` (`@ai-sdk/react`) + `DefaultChatTransport` → `${NEXT_PUBLIC_API_URL}/chat`, com
+**Bearer** do Supabase (headers Resolvable async), contrato **server-authoritative**
+`{ message, conversationId }` (`prepareSendMessagesRequest`) e captura do `conversationId`
+pelo header (`fetch` custom). Transport + conversationId em **escopo de módulo** (compat. React
+Compiler). Tags ao vivo do rail = placeholder (auto-tagging é F3).
+
+### Onboarding automático (clínica + membership no 1º acesso)
+Fecha o gap de "usuário novo sem clínica" (antes exigia inserir a membership na mão).
+`OnboardingModule` + `POST /onboarding/bootstrap` **idempotente e race-safe** (advisory lock
+`pg_advisory_xact_lock` por usuário, evita clínica duplicada em renders simultâneos do layout).
+O `(app)/layout.tsx` chama o bootstrap server-side antes de renderizar (cobre signup/login/OAuth,
+sem corrida). O nome da clínica vem do `clinic_name` do metadata do JWT.
+
+### DX — `pnpm dev` robusto
+A task `dev` do `turbo` agora `dependsOn ^build` e a API ganhou script `dev` → `pnpm dev`
+builda o `shared` e sobe **web + api** juntos (acabou a corrida "Cannot find module
+@dentaltrack/shared" quando o `nest --watch` subia antes do `shared/dist`).
+
+### Qualidade / validação
+- **48 testes** (8 suites): +onboarding (4, com teste de concorrência) e os specs de chat
+  (`chat.service`, `generate-reply`) reescritos para o fluxo streaming. Web build + typecheck +
+  lint verdes; API build + typecheck verdes.
+- **Validação E2E ao vivo (realizada) ✅:** login → `/chat` → **streaming token-a-token** do
+  Gemini, com persona ("Sofia") + catálogo; conversa persistida; **onboarding** criando clínica +
+  membership no 1º acesso (race-safe após o fix). Auth (sem 401) e tenant (sem 403) confirmados.
+
+### Aceite da Fase 1
+Todos os itens de F1 — `BE-1.1..1.8`, `F-Login`, `FE-1.1..1.5` — **concluídos e validados**.
+Próximo: **Fase 2 (Configurações & Catálogo)** — a clínica nova nasce vazia (sem procedimentos/
+persona), então configurar catálogo/persona é o foco da F2 (e dá qualidade às respostas do bot).

@@ -1,20 +1,21 @@
 # DentalTrack — Guia do Projeto (para o Claude e outros agentes)
 
 > Ponto de partida para **qualquer sessão** neste diretório. Leia isto antes de agir.
-> Idioma do projeto e da documentação: **PT-BR**. Atualizado em: 2026-06-04.
+> Idioma do projeto e da documentação: **PT-BR**. Atualizado em: 2026-06-06.
 
 ## O que é
 **DentalTrack** — CRM conversacional com **agente de IA** para **clínicas odontológicas** de pequeno e médio porte. O bot atende pacientes (tira dúvidas, **sugere procedimentos**, **agenda consultas**), captura **leads**, classifica conversas por **tags** de interesse e alimenta um **dashboard** para o dono da clínica. Cada clínica configura o comportamento do bot (identidade, ofertas, instruções, catálogo).
 
 ## Status atual
-- **Fase 0 (Fundação) — IMPLEMENTADA e rodando.** Monorepo pnpm + Turborepo com `apps/web` (Next 16), `apps/api` (NestJS 11) e `packages/shared` (Zod). `pnpm build` (turbo) passa nos 3 · web e API verificados.
-  - **Web:** tokens do design 1:1 (`theme.css`, light-only) + shadcn/ui (16 componentes) + app shell (sidebar 264 + topbar 64) + marca (Logo/dente). **Supabase Auth** real: login/signup + `proxy.ts` (Next 16, ex-middleware) + gate em `app/(app)/layout.tsx`. TanStack Query + `api-client`. Telas internas = **placeholders** (as 1:1 vêm em F1–F3; login pixel-perfect = F-Login).
-  - **API:** Prisma 7 (Supabase Postgres via adapter pg; migration `init` aplicada → `clinic` + `membership`), `SupabaseJwtGuard` (jose, HS256/JWKS) + `TenantGuard` + decorators, `ConfigModule` (validação Zod de env), `ZodValidationPipe`, CORS, `GET /health`.
-  - **Verificado E2E:** login Supabase → dashboard; `/health` → `db: up`.
-- Docs: [`docs/context.md`](docs/context.md) · [`docs/plan.md`](docs/plan.md) · design em [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) · deploy em [`docs/DEPLOY.md`](docs/DEPLOY.md).
-- **Rodar local:** preencher `apps/api/.env` e `apps/web/.env.local` (ver `.env.example`) → `pnpm dev`.
-- **Falta na F0:** CI (GitHub Actions) — deferido. Deploy ao vivo (config pronta: `apps/web/vercel.json`, `apps/api/Dockerfile`, `render.yaml`).
-- **Próximo passo natural:** **Fase 1** — motor do chatbot (BE: engine/tools/SSE) ‖ UI de Chat 1:1 (FE). Alternativas: telas pixel-perfect (F-Login/F2/F3) ou fechar CI/commit/deploy.
+- **Fase 0 (Fundação) + Fase 1 (Chatbot web ponta a ponta) — IMPLEMENTADAS e validadas ao vivo.** Monorepo pnpm + Turborepo: `apps/web` (Next 16), `apps/api` (NestJS 11), `packages/shared` (Zod). `pnpm dev` builda o `shared` e sobe web (:3000) + api (:3001); build/typecheck/lint verdes nos 3 · **48 testes** (API).
+  - **Chatbot (F1) — funcional E2E:** login → `/chat` → **streaming real** do Gemini, com **persona + catálogo da clínica**, **tools** (busca/sugestão de procedimentos, captura de lead, agendamento → status `agendada`), persistência de conversa/mensagens (+ tokens), hardening (timeout/retry/fallback → 503 amigável) e **auth + multi-tenant** (`clinicId` do JWT via `TenantGuard`). **Onboarding automático:** usuário novo ganha clínica + membership no 1º acesso (idempotente, race-safe).
+  - **API:** Prisma 7 (Supabase Postgres; migrations `init` + `f1_chat_domain` + `clinic_settings`), `SupabaseJwtGuard` + `TenantGuard` + `@ClinicId`/`@CurrentUser`, `OnboardingModule` (`POST /onboarding/bootstrap`), motor de IA (`ai/{model,generate-reply,prompt,tools}`), `POST /chat` SSE (AI SDK `pipeUIMessageStreamToResponse`; `X-Conversation-Id` exposto no CORS), `GET /health`.
+  - **Web:** tokens 1:1 (`theme.css`, light-only) + shadcn/ui + app shell (`AppMain` trata o chat full-height). **Login 1:1** (F-Login) e **Chat 1:1** (`screen_chat.jsx`) com **`useChat`** consumindo o SSE do NestJS. Dashboard/Leads/Settings ainda = **placeholders** (F2/F3).
+  - **Verificado E2E ao vivo:** login Supabase → chat token-a-token; `lead` + `appointment` + status `agendada` no banco; onboarding cria a clínica no 1º acesso.
+- Docs: [`docs/context.md`](docs/context.md) · [`docs/plan.md`](docs/plan.md) · [`docs/update.md`](docs/update.md) · design em [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) · deploy em [`docs/DEPLOY.md`](docs/DEPLOY.md).
+- **Rodar local:** preencher `apps/api/.env` (inclui `GOOGLE_GENERATIVE_AI_API_KEY`) e `apps/web/.env.local` (ver `.env.example`) → `pnpm dev`.
+- **Deferido (não-F1):** CI (GitHub Actions) e deploy ao vivo (config pronta: `apps/web/vercel.json`, `apps/api/Dockerfile`, `render.yaml`); auto-tagging + dashboard/leads com dados reais (F3); testes FE/E2E automatizados (F4).
+- **Próximo passo natural:** **Fase 2** — Configurações & Catálogo (BE: `settings`/`procedures`/`tags` CRUD + seed; FE: tela `/settings` 1:1 + preview do bot). É o que dá **qualidade** às respostas (afinar persona/ofertas) e popula a clínica nova (que nasce vazia).
 
 ## Comece por aqui (leitura obrigatória)
 1. [`docs/context.md`](docs/context.md) — **o quê / porquê**: produto, personas, escopo do MVP, métricas do dashboard, modelo de dados.
