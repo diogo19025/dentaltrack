@@ -1,6 +1,8 @@
 "use client";
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   Bot,
   Circle,
@@ -8,6 +10,7 @@ import {
   type LucideIcon,
   MessageCircle,
   Paperclip,
+  RotateCw,
   Send,
   Sparkles,
   Tag as TagIcon,
@@ -15,41 +18,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
-import { tagClass } from "@/lib/tags";
+import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
 /**
- * /chat — réplica 1:1 de `screen_chat.jsx` (FE-1.1/1.2/1.4/1.5).
- * NOTA: o streaming aqui é um MOCK (typewriter local) só para a estrutura/visual.
- * Na Etapa 5 ele é trocado por `useChat` consumindo o SSE do NestJS, sem mexer
- * nos componentes de bolha/layout.
+ * /chat — réplica 1:1 de `screen_chat.jsx` (FE-1.1..1.5) com **streaming real**:
+ * `useChat` (AI SDK) consome o SSE do NestJS (`/chat`). O contrato é
+ * server-authoritative — o BE carrega o histórico do banco —, então só
+ * mandamos `{ message, conversationId }`; o `conversationId` volta no header
+ * `X-Conversation-Id`. Tags ao vivo do rail dependem do auto-tagging (F3).
  */
 
-const BOT_REPLIES = {
-  default:
-    "Claro! Posso te ajudar com isso. Para entender melhor, você está com algum incômodo específico ou busca um procedimento estético? Assim já consigo te orientar e, se quiser, agendar uma avaliação.",
-  agendar:
-    "Perfeito! Vou organizar seu agendamento. Para qual procedimento você gostaria de marcar? E qual a melhor faixa de horário pra você — manhã ou tarde?",
-  procedimentos:
-    "Nós oferecemos diversos tratamentos. Os mais procurados são implante dentário, clareamento, facetas de porcelana e ortodontia. Sobre qual deles você gostaria de saber a descrição, a duração e a faixa de investimento?",
-  implante:
-    "O implante dentário repõe o dente perdido com uma raiz de titânio e uma coroa sobre ela. A avaliação inicial é fundamental para verificar o osso. Que tal agendarmos uma avaliação para um plano personalizado?",
-} as const;
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-type ReplyKey = keyof typeof BOT_REPLIES;
-
-function pickReply(text: string): { key: ReplyKey; tags: string[] } {
-  const t = text.toLowerCase();
-  if (/agend|marc|consult|hor[aá]rio/.test(t)) return { key: "agendar", tags: ["agendamento"] };
-  if (/implante/.test(t)) return { key: "implante", tags: ["implante"] };
-  if (/procedi|tratam|servi|op[çc]/.test(t)) return { key: "procedimentos", tags: [] };
-  if (/clarea/.test(t)) return { key: "default", tags: ["clareamento"] };
-  if (/dor|urg/.test(t)) return { key: "default", tags: ["dor/urgência"] };
-  return { key: "default", tags: [] };
-}
-
-type ChatMessage = { role: "user" | "assistant"; text: string; streaming?: boolean };
-type DetectedTag = { name: string; conf: number };
+const GREETING: UIMessage = {
+  id: "greeting",
+  role: "assistant",
+  parts: [
+    {
+      type: "text",
+      text: "Olá! Sou a assistente virtual da clínica. Posso tirar dúvidas sobre procedimentos, recomendar o tratamento ideal e agendar sua avaliação. Como posso te ajudar hoje?",
+    },
+  ],
+};
 
 const QUICK = [
   "Quero agendar uma consulta",
@@ -58,56 +49,77 @@ const QUICK = [
   "Estou com dor",
 ];
 
+/** Concatena o texto das partes de uma mensagem (UIMessage). */
+function messageText(m: UIMessage): string {
+  return m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
+}
+
+/**
+ * conversationId atual (server-managed). Mutável em escopo de módulo — a tela
+ * de chat é única e o valor é resetado ao montar (useEffect). Fica fora do
+ * render para não violar as regras do React Compiler (refs/memoização).
+ */
+let currentConversationId: string | null = null;
+
+/**
+ * Transporte do useChat → NestJS (criado uma vez): Bearer fresco por request,
+ * contrato `{ message, conversationId }` (server-authoritative) e captura do
+ * conversationId pelo header `X-Conversation-Id` da resposta.
+ */
+const chatTransport = new DefaultChatTransport<UIMessage>({
+  api: `${API_URL}/chat`,
+  headers: async () => {
+    const {
+      data: { session },
+    } = await createClient().auth.getSession();
+    const h: Record<string, string> = {};
+    if (session?.access_token) h.Authorization = `Bearer ${session.access_token}`;
+    return h;
+  },
+  prepareSendMessagesRequest: ({ messages }) => {
+    const last = messages[messages.length - 1];
+    return {
+      body: {
+        message: last ? messageText(last) : "",
+        conversationId: currentConversationId ?? undefined,
+      },
+    };
+  },
+  fetch: async (url, init) => {
+    const res = await fetch(url, init);
+    const cid = res.headers.get("X-Conversation-Id");
+    if (cid) currentConversationId = cid;
+    return res;
+  },
+});
+
 export default function ChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      text: "Olá! Sou a Sofia, assistente virtual da Clínica Sorriso Pleno. Posso tirar dúvidas sobre procedimentos, recomendar o tratamento ideal e agendar sua avaliação. Como posso te ajudar hoje?",
-    },
-  ]);
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [detectedTags, setDetectedTags] = useState<DetectedTag[]>([{ name: "avaliação", conf: 0.74 }]);
   const scroller = useRef<HTMLDivElement>(null);
+
+  // Reseta a conversa ao (re)montar a tela (nova sessão de chat).
+  useEffect(() => {
+    currentConversationId = null;
+    return () => {
+      currentConversationId = null;
+    };
+  }, []);
+
+  const { messages, sendMessage, status, error, regenerate } = useChat({
+    transport: chatTransport,
+    messages: [GREETING],
+  });
+  const busy = status === "submitted" || status === "streaming";
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-  }, [messages, streaming]);
+  }, [messages, status]);
 
-  function send(textArg?: string) {
-    const text = (textArg ?? input).trim();
-    if (!text || streaming) return;
+  function submit(text: string) {
+    const t = text.trim();
+    if (!t || busy) return;
     setInput("");
-    setMessages((m) => [...m, { role: "user", text }]);
-    const { key, tags } = pickReply(text);
-    setStreaming(true);
-
-    setTimeout(() => {
-      const full = BOT_REPLIES[key];
-      setMessages((m) => [...m, { role: "assistant", text: "", streaming: true }]);
-      let i = 0;
-      const id = setInterval(() => {
-        i += 2;
-        setMessages((m) => {
-          const c = [...m];
-          c[c.length - 1] = { role: "assistant", text: full.slice(0, i), streaming: i < full.length };
-          return c;
-        });
-        if (i >= full.length) {
-          clearInterval(id);
-          setStreaming(false);
-          if (tags.length) {
-            setDetectedTags((d) => {
-              const names = new Set(d.map((x) => x.name));
-              const add = tags
-                .filter((t) => !names.has(t))
-                .map((t) => ({ name: t, conf: 0.8 + Math.random() * 0.18 }));
-              return [...d, ...add];
-            });
-          }
-        }
-      }, 18);
-    }, 650);
+    void sendMessage({ text: t });
   }
 
   return (
@@ -123,7 +135,7 @@ export default function ChatPage() {
             <span className="absolute -bottom-px -right-px size-3 rounded-full border-2 border-card bg-success" />
           </div>
           <div className="flex-1">
-            <div className="text-[15px] font-semibold">Assistente · Clínica Sorriso Pleno</div>
+            <div className="text-[15px] font-semibold">Assistente · sua clínica</div>
             <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
               <span className="size-1.5 rounded-full bg-success" /> Online · responde em segundos
             </div>
@@ -136,20 +148,32 @@ export default function ChatPage() {
           ref={scroller}
           className="flex flex-1 flex-col gap-4 overflow-y-auto bg-background px-5 py-6"
         >
-          {messages.map((m, i) => (
-            <Bubble key={i} m={m} />
+          {messages.map((m) => (
+            <Bubble key={m.id} m={m} />
           ))}
-          {streaming && messages[messages.length - 1]?.role === "user" && <TypingBubble />}
+          {status === "submitted" && <TypingBubble />}
+          {error && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-[var(--destructive-tint)] px-3.5 py-2.5 text-[13px] text-destructive">
+              <span>Não foi possível responder agora. Sua mensagem foi salva.</span>
+              <button
+                type="button"
+                onClick={() => void regenerate()}
+                className="inline-flex items-center gap-1 font-medium hover:underline"
+              >
+                <RotateCw className="size-3.5" /> Tentar novamente
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Quick replies (só no estado inicial) */}
-        {messages.length <= 2 && (
+        {messages.length <= 1 && (
           <div className="flex flex-wrap gap-2 px-5 pb-3">
             {QUICK.map((q) => (
               <button
                 key={q}
                 type="button"
-                onClick={() => send(q)}
+                onClick={() => submit(q)}
                 className="anim-fade-up rounded-full bg-primary-tint px-[13px] py-2 text-[13px] font-medium text-primary transition-colors hover:bg-primary-tint-strong"
               >
                 {q}
@@ -163,7 +187,7 @@ export default function ChatPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              send();
+              submit(input);
             }}
             className="flex items-end gap-2.5"
           >
@@ -182,7 +206,7 @@ export default function ChatPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  send();
+                  submit(input);
                 }
               }}
               placeholder="Escreva sua mensagem…"
@@ -192,7 +216,7 @@ export default function ChatPage() {
             <Button
               type="submit"
               size="icon"
-              disabled={!input.trim() || streaming}
+              disabled={!input.trim() || busy}
               className="size-[44px] shrink-0 rounded-full"
               aria-label="Enviar"
             >
@@ -207,7 +231,7 @@ export default function ChatPage() {
 
       {/* Rail lateral */}
       <div className="flex min-h-0 flex-col gap-[18px] overflow-y-auto">
-        {/* Tags detectadas */}
+        {/* Tags detectadas (auto-tagging real chega na F3) */}
         <Card className="gap-0 p-[22px_24px]">
           <div className="mb-1 flex items-center gap-2">
             <TagIcon className="size-4 text-primary" />
@@ -216,30 +240,7 @@ export default function ChatPage() {
           <p className="mb-4 text-[12.5px] text-muted-foreground">
             Interesses classificados pela IA nesta conversa.
           </p>
-          <div className="flex flex-col gap-3">
-            {detectedTags.map((t) => (
-              <div key={t.name} className="anim-fade-up">
-                <div className="mb-1.5 flex items-center justify-between">
-                  <span className={cn("tag", tagClass(t.name))}>
-                    <span className="tag-d" />
-                    {t.name}
-                  </span>
-                  <span className="tabular text-xs text-muted-foreground">
-                    {Math.round(t.conf * 100)}%
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                  <div
-                    className="h-full rounded-full bg-primary transition-[width] duration-500"
-                    style={{ width: `${t.conf * 100}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-            {detectedTags.length === 0 && (
-              <div className="text-[13px] text-muted-foreground">Nenhuma tag ainda.</div>
-            )}
-          </div>
+          <div className="text-[13px] text-muted-foreground">Nenhuma tag ainda.</div>
         </Card>
 
         {/* Resumo da conversa */}
@@ -282,7 +283,8 @@ export default function ChatPage() {
                 className="mt-1 text-[12.5px] leading-relaxed"
                 style={{ color: "var(--primary-active)", opacity: 0.85 }}
               >
-                Paciente com interesse inicial — conduza para a avaliação gratuita de junho.
+                Conduza o paciente para uma avaliação inicial sempre que houver interesse em um
+                procedimento.
               </div>
             </div>
           </div>
@@ -305,8 +307,11 @@ function StatusAndamento() {
 }
 
 /** Bolha de mensagem (usuário à direita = primary; bot à esquerda = card+borda). */
-function Bubble({ m }: { m: ChatMessage }) {
+function Bubble({ m }: { m: UIMessage }) {
   const isUser = m.role === "user";
+  const text = messageText(m);
+  const isStreaming = m.parts.some((p) => p.type === "text" && p.state === "streaming");
+
   return (
     <div className={cn("anim-fade-up flex items-end gap-2.5", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
@@ -316,14 +321,14 @@ function Bubble({ m }: { m: ChatMessage }) {
       )}
       <div
         className={cn(
-          "max-w-[76%] px-[14px] py-[11px] text-[14.5px] leading-[1.55] shadow-[var(--shadow-xs)]",
+          "max-w-[76%] whitespace-pre-wrap px-[14px] py-[11px] text-[14.5px] leading-[1.55] shadow-[var(--shadow-xs)]",
           isUser
             ? "rounded-[16px_16px_4px_16px] bg-primary text-white"
             : "rounded-[16px_16px_16px_4px] border border-border bg-card text-foreground",
         )}
       >
-        {m.text}
-        {m.streaming && (
+        {text}
+        {isStreaming && (
           <span
             className="ml-0.5 inline-block h-[15px] w-[7px] rounded-[2px] bg-primary align-[-2px]"
             style={{ animation: "blink 1s infinite" }}
@@ -334,7 +339,7 @@ function Bubble({ m }: { m: ChatMessage }) {
   );
 }
 
-/** "Typing" de 3 pontos enquanto a resposta não começou. */
+/** "Typing" de 3 pontos enquanto a resposta não começou a chegar. */
 function TypingBubble() {
   return (
     <div className="anim-fade flex items-end gap-2.5">

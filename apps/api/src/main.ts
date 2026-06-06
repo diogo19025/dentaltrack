@@ -13,6 +13,8 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: (process.env.CORS_ORIGIN ?? "http://localhost:3000").split(",").map((o) => o.trim()),
     credentials: true,
+    // Expõe o conversationId ao cliente (cross-origin) — o useChat lê esse header.
+    exposedHeaders: ["X-Conversation-Id"],
   });
 
   const port = Number(process.env.PORT ?? 3001);
