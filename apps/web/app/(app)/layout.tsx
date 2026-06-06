@@ -18,6 +18,25 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
+  // Onboarding idempotente: garante clínica + membership do usuário no 1º acesso
+  // (cobre signup, login e Google OAuth). Aguarda antes de renderizar para não
+  // haver corrida com o /chat. Não bloqueia o app se a API estiver fora.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+    try {
+      await fetch(`${apiUrl}/onboarding/bootstrap`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: "no-store",
+      });
+    } catch {
+      // API offline: segue renderizando (o chat tratará a falha).
+    }
+  }
+
   return (
     <div className="flex h-full overflow-hidden">
       <Sidebar userEmail={user.email ?? "Conta"} />
