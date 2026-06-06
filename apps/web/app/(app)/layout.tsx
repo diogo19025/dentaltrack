@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AppMain } from "@/components/shell/app-main";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { createClient } from "@/lib/supabase/server";
@@ -22,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <Sidebar userEmail={user.email ?? "Conta"} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+        <AppMain>{children}</AppMain>
       </div>
     </div>
   );
