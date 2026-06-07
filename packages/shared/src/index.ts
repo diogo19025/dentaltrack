@@ -6,3 +6,5 @@ export * from "./enums";
 export * from "./tags";
 export * from "./health";
 export * from "./chat";
+export * from "./settings";
+export * from "./procedures";

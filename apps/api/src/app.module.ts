@@ -7,6 +7,9 @@ import { ConversationsModule } from "./conversations/conversations.module";
 import { HealthModule } from "./health/health.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { ProceduresModule } from "./procedures/procedures.module";
+import { SettingsModule } from "./settings/settings.module";
+import { TagsModule } from "./tags/tags.module";
 
 @Module({
   imports: [
@@ -17,6 +20,9 @@ import { PrismaModule } from "./prisma/prisma.module";
     ConversationsModule,
     ChatModule,
     OnboardingModule,
+    SettingsModule,
+    ProceduresModule,
+    TagsModule,
   ],
 })
 export class AppModule {}

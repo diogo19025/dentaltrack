@@ -85,7 +85,7 @@ dentaltrack/
 |---|---|---|---|
 | ✅ **F0** | Fundação + **Design System** | Monorepo roda; tokens/shadcn/shell prontos; autentica (Supabase), migra (Prisma). | 1 |
 | ✅ **F1** | Motor do Chatbot (BE) ‖ Login + Chat (FE) | Conversa web funcional ponta a ponta. **Validada E2E ao vivo (2026-06-06).** | 1–2 |
-| **F2** | Configurações & Catálogo (BE+FE) | Dono configura bot, procedimentos e tags. | 3 |
+| ✅ **F2** | Configurações & Catálogo (BE+FE) | Dono configura bot, procedimentos e tags. **Concluída (2026-06-07): settings + catálogo + tags (BE) e tela `/settings` com abas Identidade/Ofertas/Procedimentos/Tags (FE).** | 3 |
 | **F3** | Tags automáticas (BE) ‖ Dashboard + **Leads** (FE) | Tagging em produção + painel/leads com dados reais. | 3–4 |
 | **F4** | QA, polish & deploy | MVP estável, testado, com seed/demo. | 5 |
 
@@ -137,12 +137,15 @@ dentaltrack/
 | BE-1.8 | Resiliência | timeout/retry/fallback do provedor + tratamento de rate-limit do free tier | Falha de IA não derruba a request. |
 
 ### F2 — Configurações & Catálogo
+
+> ✅ **CONCLUÍDA (2026-06-07)** — `BE-2.1`…`BE-2.4` feitos (ver [`update.md`](./update.md)). `ClinicSettings` ganhou oferta+disponibilidade (migration `f2_settings_offer`); `Tag` (enum `TagColor` + keywords) na migration `f2_tags`. O `ai/prompt.ts` injeta oferta e horários no system prompt. As `keywords` das tags ficam prontas para o auto-tagging (F3).
+
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
-| BE-2.1 | Módulo **settings** | `get/updateSettings` (Zod) | Config persiste e alimenta BE-1.3. |
-| BE-2.2 | Módulo **procedures** (CRUD) | nome, descrição, faixa de preço, duração, tags | CRUD validado por `clinicId`. |
-| BE-2.3 | Módulo **tags** (CRUD) | nome, cor, categoria, **keywords de gatilho** | CRUD validado. |
-| BE-2.4 | Seed/Demo | clínica demo + procedimentos + tags odontológicas | `pnpm --filter api seed` popula base. |
+| ✅ BE-2.1 | Módulo **settings** | `get/updateSettings` (Zod) | Config persiste e alimenta BE-1.3. |
+| ✅ BE-2.2 | Módulo **procedures** (CRUD) | nome, descrição, faixa de preço, duração, tags | CRUD validado por `clinicId`. |
+| ✅ BE-2.3 | Módulo **tags** (CRUD) | nome, cor, categoria, **keywords de gatilho** | CRUD validado (nome único → 409). |
+| ✅ BE-2.4 | Seed/Demo | clínica demo + procedimentos + tags odontológicas | `pnpm --filter api seed` popula base. |
 
 ### F3 — Tags automáticas & Métricas
 | ID | Tarefa | Detalhe | Done quando |
@@ -204,13 +207,16 @@ dentaltrack/
 | FE-1.5 | Rail 296px | "Tags detectadas" (pílula + % confiança + barra `--primary`, **ao vivo**); "Resumo" (status/mensagens/início/canal "Web"); card "Sugestão do agente" (primary-tint). | Rail idêntico. |
 
 ### F2 — **`/settings`** (`screen_settings.jsx`)
+
+> ✅ **CONCLUÍDA (2026-06-07)** — `FE-2.1`…`FE-2.5` portados 1:1 do mock (RHF + `zodResolver` do schema compartilhado, `useWatch` p/ o preview reativo, TanStack Query em `hooks/use-settings.ts`). Upload de logo é só visual (sem persistência de arquivo). Ver [`update.md`](./update.md).
+
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
-| FE-2.1 | Header + Tabs segmented + grid `1fr 320px` | Header (título + "Cancelar" + "Salvar alterações"); abas "Identidade & Persona" e "Ofertas & Instruções"; form à esq. + **Preview do bot** sticky à dir. | Layout bate. |
-| FE-2.2 | Aba **Identidade** (RHF+Zod) | card identidade (upload logo tracejado + nome + especialidade `Select`); card persona (tom `segmented` Formal/Amigável/Acolhedor + nome do assistente + saudação `Textarea`). | Campos idênticos; valida. |
-| FE-2.3 | Aba **Ofertas** (RHF+Zod) | oferta c/ `Switch` + vigência (datas, ícone calendário); instruções `Textarea` + aviso primary-tint; disponibilidade (linhas dia/horário + `Switch`). | Idem. |
-| FE-2.4 | **Preview do bot** reativo (sticky) | mini-chat reflete tom + oferta em tempo real ("Atualiza conforme você edita"). | Preview reage à edição. |
-| FE-2.5 | Persistir via API (`/settings`) | salvar alimenta o system prompt (BE-2.1/BE-1.3). | Persiste e reflete no chat. |
+| ✅ FE-2.1 | Header + Tabs segmented + grid `1fr 320px` | Header (título + "Cancelar" + "Salvar alterações"); abas "Identidade & Persona" e "Ofertas & Instruções"; form à esq. + **Preview do bot** sticky à dir. | Layout bate. |
+| ✅ FE-2.2 | Aba **Identidade** (RHF+Zod) | card identidade (upload logo tracejado + nome + especialidade `Select`); card persona (tom `segmented` Formal/Amigável/Acolhedor + nome do assistente + saudação `Textarea`). | Campos idênticos; valida. |
+| ✅ FE-2.3 | Aba **Ofertas** (RHF+Zod) | oferta c/ `Switch` + vigência (datas, ícone calendário); instruções `Textarea` + aviso primary-tint; disponibilidade (linhas dia/horário + `Switch`). | Idem. |
+| ✅ FE-2.4 | **Preview do bot** reativo (sticky) | mini-chat reflete tom + oferta em tempo real ("Atualiza conforme você edita"). | Preview reage à edição. |
+| ✅ FE-2.5 | Persistir via API (`/settings`) | salvar alimenta o system prompt (BE-2.1/BE-1.3). | Persiste e reflete no chat. |
 
 ### F3 — **`/` Dashboard** & **`/leads`** (`screen_dashboard.jsx` · `screen_leads.jsx`)
 | ID | Tarefa | Detalhe | Done quando |
@@ -222,7 +228,7 @@ dentaltrack/
 | FE-3.5 | Tabela "Conversas recentes" | Paciente·Procedimento·Tags·Status·Atualizada; hover `--accent`, avatar, `StatusBadge`, pílulas; "Ver todas". | Tabela idêntica. |
 | FE-3.6 | **Leads** (`/leads`) | 4 cards-resumo (Total · Agendados · Em andamento · Não compl.) + tabela (Lead·Contato·Interesse·Tags·Status·Origem·Capturado·⋯) com busca, filtro de status (Tabs) e paginação. | Tela Leads 1:1; dados reais. |
 
-> **Fora do handoff (sem mockup):** o CRUD de **procedimentos** e de **tags** (necessário ao MVP — §5 BE-2.2/BE-2.3) **não tem tela no design**. Implementar com o **mesmo design system** (Card + Table + Dialog do mapa de componentes), provavelmente como abas extras em Configurações — alinhar o visual com o design antes de finalizar.
+> **Fora do handoff (sem mockup):** o CRUD de **procedimentos** e de **tags** (necessário ao MVP — §5 BE-2.2/BE-2.3) **não tem tela no design**. ✅ **Feito (2026-06-07)** com o **mesmo design system** (Card + Table + Dialog + tokens): adicionados como **abas extras em Configurações** (`/settings` → "Procedimentos" e "Tags"), com criação/edição em Dialog (RHF), exclusão e estados vazios. Seletor de cor por swatch nas tags; preços em reais convertidos p/ centavos.
 
 ### F4 — QA, fidelidade & polish (BE+FE)
 | ID | Tarefa | Done quando |

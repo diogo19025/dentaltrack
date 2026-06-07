@@ -17,6 +17,11 @@ function makeSettings(over: Partial<ClinicSettings> = {}): ClinicSettings {
     tone: null,
     greeting: null,
     instructions: null,
+    offerEnabled: false,
+    offerText: null,
+    offerStartsOn: null,
+    offerEndsOn: null,
+    availability: null,
     createdAt: NOW,
     updatedAt: NOW,
     ...over,
@@ -91,6 +96,44 @@ describe("buildSystemPrompt", () => {
   it("funciona sem procedimentos (lista vazia)", () => {
     const prompt = buildSystemPrompt({ clinic: makeClinic(), procedures: [] });
     expect(prompt).toContain("ainda não cadastrou procedimentos");
+  });
+
+  it("inclui a oferta vigente apenas quando ativa, com a vigência", () => {
+    const comOferta = buildSystemPrompt({
+      clinic: makeClinic(),
+      settings: makeSettings({
+        offerEnabled: true,
+        offerText: "Avaliação inicial gratuita em junho.",
+        offerStartsOn: "01/06/2026",
+        offerEndsOn: "30/06/2026",
+      }),
+      procedures: [],
+    });
+    expect(comOferta).toContain("Avaliação inicial gratuita em junho.");
+    expect(comOferta).toContain("01/06/2026");
+    expect(comOferta).toContain("30/06/2026");
+
+    const ofertaPausada = buildSystemPrompt({
+      clinic: makeClinic(),
+      settings: makeSettings({ offerEnabled: false, offerText: "Promo secreta." }),
+      procedures: [],
+    });
+    expect(ofertaPausada).not.toContain("Promo secreta.");
+  });
+
+  it("resume a disponibilidade listando só os dias abertos", () => {
+    const prompt = buildSystemPrompt({
+      clinic: makeClinic(),
+      settings: makeSettings({
+        availability: [
+          { day: "Segunda a sexta", hours: "08:00 – 18:00", open: true },
+          { day: "Domingo", hours: "Fechado", open: false },
+        ],
+      }),
+      procedures: [],
+    });
+    expect(prompt).toContain("Segunda a sexta");
+    expect(prompt).not.toContain("Domingo");
   });
 
   it("inclui as diretrizes-chave (lead nome+telefone e não inventar preços)", () => {
