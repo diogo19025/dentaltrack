@@ -3,13 +3,18 @@ jest.mock("./model", () => ({
   getProvider: jest.fn(() => "google"),
   getFallbackProvider: jest.fn(() => undefined),
 }));
-jest.mock("ai", () => ({ generateText: jest.fn(), stepCountIs: jest.fn(() => "stop") }));
+jest.mock("ai", () => ({
+  generateText: jest.fn(),
+  streamText: jest.fn(),
+  stepCountIs: jest.fn(() => "stop"),
+}));
 
-import { generateText } from "ai";
-import { AiUnavailableError, generateAssistantReply } from "./generate-reply";
+import { generateText, streamText } from "ai";
+import { AiUnavailableError, generateAssistantReply, streamAssistantReply } from "./generate-reply";
 import { getFallbackProvider } from "./model";
 
 const generateTextMock = generateText as jest.MockedFunction<typeof generateText>;
+const streamTextMock = streamText as jest.MockedFunction<typeof streamText>;
 const fallbackMock = getFallbackProvider as jest.MockedFunction<typeof getFallbackProvider>;
 
 describe("generateAssistantReply", () => {
@@ -76,5 +81,44 @@ describe("generateAssistantReply", () => {
       generateAssistantReply([{ role: "user", content: "oi" }]),
     ).rejects.toBeInstanceOf(AiUnavailableError);
     expect(generateTextMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("streamAssistantReply", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("passa timeout (abortSignal) e maxRetries ao streamText e devolve o resultado pipável", () => {
+    const fake = { pipeUIMessageStreamToResponse: jest.fn() };
+    streamTextMock.mockReturnValueOnce(fake as never);
+
+    const result = streamAssistantReply([{ role: "user", content: "oi" }]);
+
+    const args = streamTextMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(args.maxRetries).toBeDefined();
+    expect(args.abortSignal).toBeInstanceOf(AbortSignal);
+    expect(result).toBe(fake);
+  });
+
+  it("mapeia o onFinish do SDK (text trim + totalUsage.totalTokens) para o callback", () => {
+    streamTextMock.mockReturnValueOnce({ pipeUIMessageStreamToResponse: jest.fn() } as never);
+    const onFinish = jest.fn();
+
+    streamAssistantReply([{ role: "user", content: "oi" }], undefined, undefined, { onFinish });
+
+    const args = streamTextMock.mock.calls[0][0] as { onFinish: (e: unknown) => void };
+    args.onFinish({ text: "  Olá  ", totalUsage: { totalTokens: 7 } });
+    expect(onFinish).toHaveBeenCalledWith({ text: "Olá", tokens: 7 });
+  });
+
+  it("mapeia o onError do SDK para o callback (só o erro)", () => {
+    streamTextMock.mockReturnValueOnce({ pipeUIMessageStreamToResponse: jest.fn() } as never);
+    const onError = jest.fn();
+
+    streamAssistantReply([{ role: "user", content: "oi" }], undefined, undefined, { onError });
+
+    const args = streamTextMock.mock.calls[0][0] as { onError: (e: unknown) => void };
+    const boom = new Error("boom");
+    args.onError({ error: boom });
+    expect(onError).toHaveBeenCalledWith(boom);
   });
 });

@@ -5,6 +5,7 @@ import { ChatModule } from "./chat/chat.module";
 import { validateEnv } from "./config/env.validation";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { HealthModule } from "./health/health.module";
+import { OnboardingModule } from "./onboarding/onboarding.module";
 import { PrismaModule } from "./prisma/prisma.module";
 
 @Module({
@@ -15,6 +16,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     HealthModule,
     ConversationsModule,
     ChatModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}

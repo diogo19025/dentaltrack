@@ -1,29 +1,45 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { type ComponentProps, type FormEvent, type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Logo } from "@/components/brand/logo";
+import {
+  Calendar,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  type LucideIcon,
+  Lock,
+  Mail,
+  Sparkles,
+  Stethoscope,
+  Tag,
+  Users,
+} from "lucide-react";
 import { GoogleLogo } from "@/components/brand/google-logo";
+import { ToothMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
+import { cn } from "@/lib/utils";
 
 type Mode = "login" | "signup";
 
 /**
- * Login/Signup funcional (F0.4) com Supabase Auth.
- * O layout pixel-perfect em 2 colunas (com painel de marca) é da fase F-Login.
+ * Login / Signup — réplica 1:1 de `screen_login.jsx` (F-Login).
+ * Split 2 colunas: painel de marca teal (esq.) + formulário (dir.).
+ * Auth real via Supabase (signIn/signUp/OAuth Google).
  */
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("login");
+  const [show, setShow] = useState(false);
   const [clinic, setClinic] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const isSignup = mode === "signup";
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -68,105 +84,249 @@ export default function LoginPage() {
     if (error) setError(error.message);
   }
 
+  function toggleMode() {
+    setMode(isSignup ? "login" : "signup");
+    setError(null);
+    setNotice(null);
+  }
+
   return (
-    <main className="flex min-h-full items-center justify-center bg-background px-4 py-10">
-      <div className="w-full max-w-[388px]">
-        <div className="mb-8 flex justify-center">
-          <Logo mark={30} font={22} />
+    <div className="grid min-h-screen bg-background lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+      {/* Painel de marca */}
+      <aside className="relative hidden flex-col justify-between overflow-hidden bg-primary px-14 py-12 text-white lg:flex">
+        <BrandPanelDecor />
+
+        <div className="relative flex items-center gap-[11px]">
+          <span className="flex size-10 items-center justify-center rounded-[11px] bg-white/[0.14] backdrop-blur-[2px]">
+            <ToothMark size={24} strokeWidth={1.9} />
+          </span>
+          <span className="text-[19px] font-semibold tracking-[-0.02em]">DentalTrack</span>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-7 shadow-[var(--shadow-sm)]">
-          <h1 className="text-[22px] font-semibold tracking-[-0.015em]">
-            {mode === "login" ? "Bem-vindo de volta" : "Criar sua conta"}
+        <div className="relative max-w-[420px]">
+          <span className="mb-[22px] inline-flex items-center gap-1.5 rounded-full bg-white/[0.14] px-2.5 py-[5px] text-xs font-medium text-[#eafaf6]">
+            <Sparkles className="size-[13px]" /> Assistente de atendimento com IA
+          </span>
+          <h1 className="text-[34px] font-semibold leading-[1.2] tracking-[-0.025em]">
+            Um atendimento que nunca dorme para a sua clínica.
           </h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            {mode === "login"
-              ? "Entre para acompanhar sua clínica."
-              : "Comece a atender com IA em minutos."}
+          <p className="mt-[18px] text-[15.5px] leading-[1.6] text-white/[0.82]">
+            Um assistente que responde seus pacientes na hora, esclarece dúvidas e já marca a
+            consulta — a qualquer hora do dia. Você acompanha tudo num painel simples e fácil de
+            entender.
+          </p>
+          <div className="mt-[34px] flex gap-[26px]">
+            {(
+              [
+                ["Acompanhamento de clientes", Users],
+                ["Consultas marcadas", Calendar],
+                ["Interesses dos pacientes", Tag],
+              ] as const
+            ).map(([label, Icon]) => (
+              <div key={label} className="flex items-center gap-[9px] text-[13.5px] text-white/90">
+                <Icon className="size-[17px]" />
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="relative text-[13px] text-white/70">
+          © 2026 DentalTrack · Plataforma para clínicas odontológicas
+        </div>
+      </aside>
+
+      {/* Painel do formulário */}
+      <main className="flex items-center justify-center px-8 py-10">
+        <div key={mode} className="anim-fade-up w-full max-w-[388px]">
+          <h2 className="mb-1.5 text-[22px] font-semibold tracking-[-0.015em]">
+            {isSignup ? "Criar sua conta" : "Bem-vindo de volta"}
+          </h2>
+          <p className="mb-7 text-sm text-muted-foreground">
+            {isSignup
+              ? "Configure o assistente da sua clínica em minutos."
+              : "Entre para acessar o painel da sua clínica."}
           </p>
 
-          <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
-            {mode === "signup" && (
-              <div className="grid gap-2">
-                <Label htmlFor="clinic">Nome da clínica</Label>
-                <Input
+          <form onSubmit={onSubmit} className="flex flex-col gap-4">
+            {isSignup && (
+              <Field label="Nome da clínica" htmlFor="clinic">
+                <IconInput
                   id="clinic"
+                  icon={Stethoscope}
                   value={clinic}
                   onChange={(e) => setClinic(e.target.value)}
-                  placeholder="Clínica Sorriso Pleno"
+                  placeholder="Ex.: Clínica Sorriso Pleno"
                   required
                 />
-              </div>
+              </Field>
             )}
-            <div className="grid gap-2">
-              <Label htmlFor="email">E-mail</Label>
-              <Input
+
+            <Field label="E-mail" htmlFor="email">
+              <IconInput
                 id="email"
+                icon={Mail}
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="voce@clinica.com"
+                placeholder="voce@clinica.com.br"
                 autoComplete="email"
                 required
               />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                minLength={6}
-                required
-              />
-            </div>
+            </Field>
+
+            <Field label="Senha" htmlFor="password">
+              <div className="relative">
+                <Lock className="pointer-events-none absolute left-[13px] top-1/2 size-[17px] -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type={show ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  autoComplete={isSignup ? "new-password" : "current-password"}
+                  minLength={6}
+                  required
+                  className="h-[42px] bg-card pl-10 pr-11 focus-visible:border-primary focus-visible:ring-primary-tint"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow(!show)}
+                  aria-label={show ? "Ocultar senha" : "Mostrar senha"}
+                  className="absolute right-2 top-1/2 flex -translate-y-1/2 p-1.5 text-muted-foreground"
+                >
+                  {show ? <EyeOff className="size-[17px]" /> : <Eye className="size-[17px]" />}
+                </button>
+              </div>
+            </Field>
+
+            {!isSignup && (
+              <div className="-mt-0.5 flex items-center justify-between">
+                <label className="flex cursor-pointer items-center gap-2 text-[13px] text-muted-foreground">
+                  <input type="checkbox" defaultChecked className="size-[15px] accent-primary" />
+                  Manter conectado
+                </label>
+                <button
+                  type="button"
+                  className="text-[13px] font-medium text-primary hover:underline"
+                >
+                  Esqueci a senha
+                </button>
+              </div>
+            )}
 
             {error && <p className="text-sm text-destructive">{error}</p>}
             {notice && <p className="text-sm text-success">{notice}</p>}
 
-            <Button type="submit" className="h-11 w-full" disabled={loading}>
-              {loading ? "Aguarde…" : mode === "login" ? "Entrar" : "Criar conta"}
+            <Button
+              type="submit"
+              disabled={loading}
+              className="mt-1 h-[46px] w-full text-[15px]"
+            >
+              {loading ? "Aguarde…" : isSignup ? "Criar conta" : "Entrar"}
+              <ChevronRight className="size-[17px]" />
             </Button>
           </form>
 
-          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="my-[22px] flex items-center gap-3">
             <span className="h-px flex-1 bg-border" />
-            ou
+            <span className="text-xs text-muted-foreground">ou</span>
             <span className="h-px flex-1 bg-border" />
           </div>
 
           <Button
-            variant="outline"
-            className="h-11 w-full gap-2"
-            onClick={withGoogle}
             type="button"
+            variant="outline"
+            onClick={withGoogle}
+            className="h-[46px] w-full border-border-strong bg-card text-[15px] text-secondary-foreground hover:bg-secondary"
           >
-            <GoogleLogo /> Continuar com Google
+            <GoogleLogo size={17} /> Continuar com Google
           </Button>
 
-          <p className="mt-6 text-center text-sm text-muted-foreground">
-            {mode === "login" ? "Não tem conta?" : "Já tem conta?"}{" "}
+          <p className="mt-[26px] text-center text-sm text-muted-foreground">
+            {isSignup ? "Já tem conta?" : "Ainda não tem conta?"}{" "}
             <button
               type="button"
+              onClick={toggleMode}
               className="font-semibold text-primary hover:underline"
-              onClick={() => {
-                setMode(mode === "login" ? "signup" : "login");
-                setError(null);
-                setNotice(null);
-              }}
             >
-              {mode === "login" ? "Criar conta" : "Entrar"}
+              {isSignup ? "Entrar" : "Criar conta"}
             </button>
           </p>
         </div>
+      </main>
+    </div>
+  );
+}
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
-          © DentalTrack · Atendimento com IA
-        </p>
-      </div>
-    </main>
+/** Rótulo + campo (espelha `.field-label` do design). */
+function Field({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <label htmlFor={htmlFor} className="mb-[7px] block text-[13px] font-medium text-foreground">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+/** Input com ícone à esquerda (espelha `.input-wrap` do design). */
+function IconInput({
+  icon: Icon,
+  className,
+  ...props
+}: ComponentProps<typeof Input> & { icon: LucideIcon }) {
+  return (
+    <div className="relative">
+      <Icon className="pointer-events-none absolute left-[13px] top-1/2 size-[17px] -translate-y-1/2 text-muted-foreground" />
+      <Input
+        className={cn(
+          "h-[42px] bg-card pl-10 focus-visible:border-primary focus-visible:ring-primary-tint",
+          className,
+        )}
+        {...props}
+      />
+    </div>
+  );
+}
+
+/** Decoração SVG sutil do painel de marca (glows + grid + círculos). */
+function BrandPanelDecor() {
+  return (
+    <svg
+      className="absolute inset-0 size-full opacity-50"
+      preserveAspectRatio="xMidYMid slice"
+      aria-hidden="true"
+    >
+      <defs>
+        <radialGradient id="bg1" cx="78%" cy="14%" r="60%">
+          <stop offset="0%" stopColor="#1a8f81" />
+          <stop offset="100%" stopColor="transparent" />
+        </radialGradient>
+        <radialGradient id="bg2" cx="14%" cy="92%" r="55%">
+          <stop offset="0%" stopColor="#0a5b53" />
+          <stop offset="100%" stopColor="transparent" />
+        </radialGradient>
+        <pattern id="grid" width="34" height="34" patternUnits="userSpaceOnUse">
+          <path d="M34 0H0V34" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        </pattern>
+      </defs>
+      <rect width="100%" height="100%" fill="url(#bg1)" />
+      <rect width="100%" height="100%" fill="url(#bg2)" />
+      <rect width="100%" height="100%" fill="url(#grid)" />
+      <g opacity="0.10" stroke="#fff" strokeWidth="1.4" fill="none">
+        <circle cx="84%" cy="76%" r="120" />
+        <circle cx="84%" cy="76%" r="74" />
+      </g>
+    </svg>
   );
 }

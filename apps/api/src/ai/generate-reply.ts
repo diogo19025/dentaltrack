@@ -1,4 +1,5 @@
-import { type ToolSet, generateText, stepCountIs } from "ai";
+import { type ToolSet, generateText, stepCountIs, streamText } from "ai";
+import type { ServerResponse } from "node:http";
 import { type LlmProvider, getFallbackProvider, getModel, getProvider } from "./model";
 
 /** Máximo de passos (rodadas de tool-call + resposta final) por turno. */
@@ -33,8 +34,8 @@ export class AiUnavailableError extends Error {
 }
 
 /**
- * System prompt genérico (sem dados da clínica ainda — o prompt builder com
- * persona/ofertas/catálogo entra no próximo passo, BE-1.3).
+ * System prompt genérico (fallback quando não há dados da clínica). O prompt
+ * builder com persona/ofertas/catálogo está em `ai/prompt.ts` (BE-1.3).
  */
 export const DEFAULT_SYSTEM_PROMPT = [
   "Você é o assistente virtual de uma clínica odontológica no Brasil.",
@@ -43,10 +44,6 @@ export const DEFAULT_SYSTEM_PROMPT = [
   "Não invente preços exatos, diagnósticos ou informações clínicas específicas; em caso de dúvida, sugira uma avaliação presencial.",
 ].join(" ");
 
-/**
- * Gera a resposta do assistente via IA real (BE-1.6, sem streaming/tools).
- * Recebe o histórico (user/assistant) e devolve o texto + tokens usados.
- */
 /** Uma tentativa contra um provider específico (com timeout + retries do SDK). */
 async function callProvider(
   provider: LlmProvider,
@@ -72,9 +69,9 @@ async function callProvider(
 }
 
 /**
- * Gera a resposta do assistente via IA real (BE-1.6/1.8, sem streaming/tools).
- * Hardening: timeout + retry (SDK) no provider primário e, se houver um
- * fallback configurado (`LLM_FALLBACK_PROVIDER`), uma tentativa nele.
+ * Gera a resposta do assistente via IA real, **sem streaming** (usado pelo
+ * `ai:smoke` e por testes). Hardening: timeout + retry (SDK) no provider
+ * primário e, se houver `LLM_FALLBACK_PROVIDER`, uma tentativa nele.
  * Qualquer falha vira `AiUnavailableError` (erro padronizado) — nunca crua.
  */
 export async function generateAssistantReply(
@@ -97,4 +94,59 @@ export async function generateAssistantReply(
     }
     throw new AiUnavailableError(primaryErr);
   }
+}
+
+/** Subconjunto do StreamTextResult que o adapter (controller) usa para pipar. */
+export interface StreamingReply {
+  pipeUIMessageStreamToResponse(
+    response: ServerResponse,
+    options?: {
+      headers?: Record<string, string>;
+      status?: number;
+      onError?: (error: unknown) => string;
+    },
+  ): void;
+}
+
+/** Callbacks de ciclo de vida do stream (persistência + log). */
+export interface StreamReplyOptions {
+  /** Fim da geração: texto final (trim) + tokens — para persistir a resposta. */
+  onFinish?: (result: GenerateReplyResult) => void | Promise<void>;
+  /** Erro do provider durante o stream — para log (não derruba a request). */
+  onError?: (error: unknown) => void;
+}
+
+/**
+ * Versão **streaming** do BE-1.6: devolve o resultado do `streamText` para o
+ * adapter pipar como UI message stream (consumível pelo `useChat`). Mantém o
+ * hardening de timeout + retries do SDK; a persistência fica no `onFinish`.
+ *
+ * Sem fallback de provider aqui: trocar de provider no meio do stream (após os
+ * headers já enviados) não é possível. Erros viram uma mensagem amigável no
+ * próprio stream (via `onError` do pipe, no adapter).
+ */
+export function streamAssistantReply(
+  messages: ReplyMessage[],
+  system: string = DEFAULT_SYSTEM_PROMPT,
+  tools?: ToolSet,
+  options: StreamReplyOptions = {},
+): StreamingReply {
+  const streamOptions = {
+    model: getModel(getProvider()),
+    system,
+    messages,
+    ...(tools ? { tools, stopWhen: stepCountIs(MAX_STEPS) } : {}),
+    maxRetries: MAX_RETRIES,
+    abortSignal: AbortSignal.timeout(TIMEOUT_MS),
+    onError: options.onError
+      ? ({ error }: { error: unknown }) => options.onError!(error)
+      : undefined,
+    onFinish: options.onFinish
+      ? (event: { text: string; totalUsage?: { totalTokens?: number } }) =>
+          options.onFinish!({ text: event.text.trim(), tokens: event.totalUsage?.totalTokens })
+      : undefined,
+  };
+  // Mesmo motivo do `callProvider`: os genéricos de `tools` estouram o tsc
+  // (TS2589). O cast corta a inferência profunda sem mudar o runtime.
+  return streamText(streamOptions as never) as unknown as StreamingReply;
 }

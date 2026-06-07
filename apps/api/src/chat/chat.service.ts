@@ -1,21 +1,16 @@
-import {
-  BadRequestException,
-  Injectable,
-  Logger,
-  NotFoundException,
-  ServiceUnavailableException,
-} from "@nestjs/common";
-import type { ChatRequest, ChatResponse } from "@dentaltrack/shared";
-import { AiUnavailableError, type ReplyMessage, generateAssistantReply } from "../ai/generate-reply";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
+import type { ServerResponse } from "node:http";
+import type { ChatRequest } from "@dentaltrack/shared";
+import { type ReplyMessage, streamAssistantReply } from "../ai/generate-reply";
 import { buildSystemPrompt } from "../ai/prompt";
 import { buildChatTools } from "../ai/tools";
 import { ConversationsService } from "../conversations/conversations.service";
 import { PrismaService } from "../prisma/prisma.service";
 
 /**
- * Orquestra um turno de conversa (BE-1.6 — IA real, sem streaming/tools).
- * Fluxo: resolve/abre conversa → grava msg do usuário → chama a IA com o
- * histórico → grava a resposta → retorna. Tudo escopado por `clinicId`.
+ * Orquestra um turno de conversa com **streaming** (BE-1.6). Channel-agnostic:
+ * o motor não conhece o canal. Tudo escopado pelo `clinicId` do tenant
+ * autenticado (resolvido pelo TenantGuard a partir do JWT).
  */
 @Injectable()
 export class ChatService {
@@ -26,74 +21,63 @@ export class ChatService {
     private readonly prisma: PrismaService,
   ) {}
 
-  async handleMessage(input: ChatRequest): Promise<ChatResponse> {
-    const { conversationId, clinicId } = await this.resolveConversation(input);
+  /**
+   * Streama um turno (BE-1.6) na clínica do usuário autenticado (`clinicId`):
+   * abre/continua a conversa, persiste a mensagem do paciente, monta o system
+   * prompt + histórico + tools e pipa a resposta do AI SDK como UI message
+   * stream (consumível pelo `useChat`). A resposta do bot é persistida no
+   * `onFinish`; o `conversationId` volta no header `X-Conversation-Id`. As tools
+   * (lead/agendamento) rodam durante o stream e disparam a transição p/ `agendada`.
+   */
+  async streamMessage(input: ChatRequest, clinicId: string, res: ServerResponse): Promise<void> {
+    const conversationId = await this.resolveConversation(input, clinicId);
 
-    // 1. Persiste a mensagem do paciente.
+    // 1. Persiste a mensagem do paciente (antes do stream → retry mantém contexto).
     await this.conversations.appendMessage(conversationId, "user", input.message, {}, clinicId);
 
-    // 2. Monta o system prompt (dados da clínica) + histórico e chama a IA.
+    // 2. System prompt (dados da clínica) + histórico (user/assistant) + tools.
     const systemPrompt = await this.buildPrompt(clinicId);
     const convo = await this.conversations.getConversation(conversationId, clinicId);
     const history: ReplyMessage[] = convo.messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({ role: m.role as ReplyMessage["role"], content: m.content }));
 
-    // Tools com contexto da conversa (capturam lead, agendam — escopadas no clinicId).
     const tools = buildChatTools({
       prisma: this.prisma,
       conversations: this.conversations,
       clinicId,
       conversationId,
     });
-    const reply = await this.generateReply(history, systemPrompt, conversationId, tools);
 
-    // 3. Persiste a resposta do bot (com tokens usados).
-    const assistant = await this.conversations.appendMessage(
-      conversationId,
-      "assistant",
-      reply.text,
-      { tokens: reply.tokens },
-      clinicId,
-    );
-
-    return {
-      conversationId,
-      assistantMessage: {
-        id: assistant.id,
-        role: "assistant",
-        content: assistant.content,
-        createdAt: assistant.createdAt.toISOString(),
+    // 3. Streama; persiste o texto final do bot (com tokens) no onFinish.
+    const stream = streamAssistantReply(history, systemPrompt, tools, {
+      onFinish: async ({ text, tokens }) => {
+        if (!text) return;
+        try {
+          await this.conversations.appendMessage(
+            conversationId,
+            "assistant",
+            text,
+            { tokens },
+            clinicId,
+          );
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          this.logger.error(`Falha ao persistir resposta (conversa ${conversationId}): ${detail}`);
+        }
       },
-    };
-  }
+      onError: (err) => {
+        const detail = err instanceof Error ? err.message : String(err);
+        this.logger.error(`IA (stream) indisponível (conversa ${conversationId}): ${detail}`);
+      },
+    });
 
-  /**
-   * Chama a IA tratando falhas do provider (chave/rate limit/timeout):
-   * loga o erro real e devolve um 503 amigável — sem derrubar o backend.
-   * A mensagem do usuário já foi persistida, então o retry mantém o contexto.
-   */
-  private async generateReply(
-    history: ReplyMessage[],
-    systemPrompt: string,
-    conversationId: string,
-    tools?: ReturnType<typeof buildChatTools>,
-  ) {
-    try {
-      return await generateAssistantReply(history, systemPrompt, tools);
-    } catch (err) {
-      if (err instanceof AiUnavailableError) {
-        const detail = err.cause instanceof Error ? err.cause.message : String(err.cause);
-        this.logger.error(`IA indisponível (conversa ${conversationId}): ${detail}`);
-        throw new ServiceUnavailableException({
-          statusCode: 503,
-          error: "AI_UNAVAILABLE",
-          message:
-            "O assistente está temporariamente indisponível. Sua mensagem foi salva — tente novamente em instantes.",
-        });
-      }
-      throw err;
-    }
+    // 4. Pipa como UI message stream; devolve o conversationId no header.
+    stream.pipeUIMessageStreamToResponse(res, {
+      headers: { "X-Conversation-Id": conversationId },
+      onError: () =>
+        "O assistente está temporariamente indisponível. Sua mensagem foi salva — tente novamente em instantes.",
+    });
   }
 
   /**
@@ -114,47 +98,23 @@ export class ChatService {
   }
 
   /**
-   * Garante uma conversa e seu `clinicId`:
-   * - com `conversationId`: deriva o clinicId da própria conversa;
-   * - sem ele: abre uma nova conversa na clínica resolvida (body ou 1ª/demo).
+   * Resolve a conversa do turno, sempre escopada na clínica do tenant:
+   * - com `conversationId`: valida que pertence à clínica (404 se não);
+   * - sem ele: abre uma nova conversa na clínica.
    */
-  private async resolveConversation(
-    input: ChatRequest,
-  ): Promise<{ conversationId: string; clinicId: string }> {
+  private async resolveConversation(input: ChatRequest, clinicId: string): Promise<string> {
     if (input.conversationId) {
-      const convo = await this.prisma.conversation.findUnique({
-        where: { id: input.conversationId },
-        select: { id: true, clinicId: true },
+      const convo = await this.prisma.conversation.findFirst({
+        where: { id: input.conversationId, clinicId },
+        select: { id: true },
       });
       if (!convo) {
         throw new NotFoundException(`Conversa ${input.conversationId} não encontrada.`);
       }
-      if (input.clinicId && input.clinicId !== convo.clinicId) {
-        throw new BadRequestException("conversationId não pertence à clínica informada.");
-      }
-      return { conversationId: convo.id, clinicId: convo.clinicId };
+      return convo.id;
     }
 
-    const clinicId = await this.resolveClinicId(input.clinicId);
     const convo = await this.conversations.createConversation(clinicId);
-    return { conversationId: convo.id, clinicId };
-  }
-
-  /** clinicId do body (validado) ou a 1ª clínica (a demo do seed). */
-  private async resolveClinicId(clinicId?: string): Promise<string> {
-    if (clinicId) {
-      const exists = await this.prisma.clinic.findUnique({
-        where: { id: clinicId },
-        select: { id: true },
-      });
-      if (!exists) throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
-      return clinicId;
-    }
-
-    const first = await this.prisma.clinic.findFirst({ orderBy: { createdAt: "asc" } });
-    if (!first) {
-      throw new BadRequestException("Nenhuma clínica cadastrada. Rode o seed (pnpm db:seed).");
-    }
-    return first.id;
+    return convo.id;
   }
 }
