@@ -324,3 +324,51 @@ Identidade/Ofertas mantêm o form + Preview; as de Procedimentos/Tags renderizam
 O dono configura persona, oferta, horários, **procedimentos e tags** sem código, e tudo alimenta o
 bot. Próximo: aplicar as migrations ao vivo e seguir para a **F3** (auto-tagging + dashboard/leads),
 onde as `keywords` das tags finalmente entram em uso.
+
+---
+
+## Fase 2 — Auditoria + tags↔procedimentos + validação ao vivo (2026-06-08)
+
+> Auditoria independente da F2 (build/test/lint rodados do zero) + fechamento do
+> item de escopo que faltava ("tags associadas a procedimentos", `plan.md` BE-2.2 /
+> `context.md` §5.3) + **validação ao vivo** contra o Supabase real.
+
+### Auditoria (o que estava certo)
+Pipeline rodado do zero: `shared` build, `prisma generate`, API typecheck + **61 testes** +
+`nest build`, Web typecheck + lint (0 warnings) + `next build` — **tudo verde**, como o PR #4
+afirmava. As **2 migrations da F2 já estavam aplicadas** no Supabase (`prisma migrate status` →
+"up to date"). O PR foi honesto sobre o que entregou.
+
+### Bug corrigido — seed não propagava a oferta (BE-2.4)
+`clinicSettings.upsert` usava `update: {}` (vazio). Como a `clinic_settings` da demo já existia
+desde a F1, rodar o seed da F2 **nunca** populava `offerEnabled/offerText/availability` (a demo
+ao vivo estava sem oferta/disponibilidade). Corrigido: os mesmos dados (`demoSettings`) em
+`create` **e** `update` → seed idempotente de verdade.
+
+### tags↔procedimentos (fecha BE-2.2 / context §5.3)
+Era o único item do **texto** do escopo da F2 que faltava (o PR não alegou tê-lo feito).
+- **Schema**: relação **N:N** implícita `Procedure` ⇄ `Tag` (`@relation("ProcedureTags")`).
+  Migration `20260607140000_f2_procedure_tags` (join `_ProcedureTags`), gerada por
+  `prisma migrate diff --from-config-datasource` (SQL exato, sem adivinhação).
+- **Shared**: `procedureSchema` ganhou `tagIds: string[]`; `create/updateProcedureSchema`
+  aceitam `tagIds?` (`max(20)`).
+- **`ProceduresService`**: `list/create/update` incluem as tags (`set`/`connect`), retornam
+  **DTO** (com `tagIds`, sem vazar `clinicId`/timestamps) e **validam posse** das tags
+  (`assertTagsOwned` → 400 cross-tenant).
+- **Tools (`suggestProcedures`)**: além da busca textual, agora prioriza procedimentos cujas
+  **tags** casam com o relato do paciente (nome/keyword da tag aparece no texto) — é o elo que
+  dá uso real à associação. As tags também entram na view dos procedimentos.
+- **Seed**: cada procedimento da demo nasce com sua tag (Implante→implante, etc.).
+- **UI**: o dialog de procedimento ganhou **seletor de tags** (chips toggle via `useTags`) e a
+  tabela mostra as tags associadas (pílulas coloridas).
+
+### Qualidade / validação
+- **64 testes** (11 suites): +3 no `ProceduresService` (conecta/seta tags, 400 cross-tenant);
+  `tools.spec` ajustado para o `include` das tags. API typecheck + build verdes; Web typecheck +
+  lint + `next build` verdes; `turbo build` (3/3) verde.
+- **Validação ao vivo (realizada) ✅:** `migrate deploy` aplicou a migration nova no Supabase;
+  `db:seed` populou a demo. Conferido no banco real: oferta ativa + disponibilidade, **5 tags**,
+  e os **5 procedimentos com a tag correta associada** (ex.: `Implante dentário → [implante]`).
+
+### Pendência conhecida (deferida, com motivo)
+- **Upload de logo**: segue só visual (sem persistência de arquivo) — fora do escopo da F2.

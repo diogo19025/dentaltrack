@@ -38,6 +38,7 @@ describe("buildChatTools", () => {
         priceMinCents: 150000,
         priceMaxCents: 350000,
         durationMinutes: 90,
+        tags: [{ name: "implante" }],
       },
     ]);
 
@@ -84,7 +85,7 @@ describe("buildChatTools", () => {
 
   it("bookAppointment: cria appointment e marca conversa como agendada", async () => {
     prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: "lead-1" }); // lookup do leadId
-    prismaMock.procedure.findMany.mockResolvedValueOnce([{ id: "p1", name: "Implante" }]);
+    prismaMock.procedure.findMany.mockResolvedValueOnce([{ id: "p1", name: "Implante", tags: [] }]);
     prismaMock.appointment.create.mockResolvedValueOnce({ id: "appt-1" });
     conversationsMock.markAsScheduled.mockResolvedValueOnce({});
 

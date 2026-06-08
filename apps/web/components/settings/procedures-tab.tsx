@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import type { CreateProcedureInput, ProcedureDto } from "@dentaltrack/shared";
+import type { CreateProcedureInput, ProcedureDto, TagColor, TagDto } from "@dentaltrack/shared";
 import { Pencil, Plus, Stethoscope, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,12 +18,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import {
   useCreateProcedure,
   useDeleteProcedure,
   useProcedures,
   useUpdateProcedure,
 } from "@/hooks/use-procedures";
+import { useTags } from "@/hooks/use-tags";
 
 /** Formata centavos como BRL curto (150000 → "R$ 1.500"). */
 function formatCents(cents: number): string {
@@ -43,15 +45,31 @@ function priceLabel(p: ProcedureDto): string {
   return "—";
 }
 
+/** Pílula colorida de uma tag (mini). */
+function MiniTag({ name, color }: { name: string; color: TagColor }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+      style={{ background: `var(--tag-${color}-bg)`, color: `var(--tag-${color}-fg)` }}
+    >
+      {name}
+    </span>
+  );
+}
+
 /**
  * Aba "Procedimentos" das Configurações (BE-2.2 no FE). Sem mockup no handoff —
  * construída com o design system existente (Card + Table + Dialog), conforme
- * o plan.md §6. CRUD via TanStack Query contra `/procedures`.
+ * o plan.md §6. CRUD via TanStack Query contra `/procedures`. Cada procedimento
+ * pode ter tags de interesse associadas (relação N:N).
  */
 export function ProceduresTab() {
   const { data: procedures = [], isLoading } = useProcedures();
+  const { data: tags = [] } = useTags();
   const del = useDeleteProcedure();
   const [editing, setEditing] = useState<ProcedureDto | null | undefined>(undefined);
+
+  const tagById = new Map(tags.map((t) => [t.id, t]));
 
   function remove(p: ProcedureDto) {
     if (confirm(`Remover o procedimento "${p.name}"?`)) del.mutate(p.id);
@@ -100,6 +118,14 @@ export function ProceduresTab() {
                       {p.description}
                     </div>
                   )}
+                  {p.tagIds.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {p.tagIds.map((id) => {
+                        const t = tagById.get(id);
+                        return t ? <MiniTag key={id} name={t.name} color={t.color} /> : null;
+                      })}
+                    </div>
+                  )}
                 </td>
                 <td className="tabular px-3 py-3 text-muted-foreground">{priceLabel(p)}</td>
                 <td className="tabular px-3 py-3 text-muted-foreground">
@@ -144,6 +170,7 @@ export function ProceduresTab() {
         <ProcedureDialog
           key={editing?.id ?? "new"}
           procedure={editing}
+          allTags={tags}
           onClose={() => setEditing(undefined)}
         />
       )}
@@ -158,14 +185,17 @@ interface ProcForm {
   priceMax: string;
   duration: string;
   active: boolean;
+  tagIds: string[];
 }
 
 /** Dialog de criar/editar procedimento. Preços em reais (convertidos p/ centavos). */
 function ProcedureDialog({
   procedure,
+  allTags,
   onClose,
 }: {
   procedure: ProcedureDto | null;
+  allTags: TagDto[];
   onClose: () => void;
 }) {
   const create = useCreateProcedure();
@@ -181,12 +211,19 @@ function ProcedureDialog({
       priceMax: procedure?.priceMaxCents != null ? String(procedure.priceMaxCents / 100) : "",
       duration: procedure?.durationMinutes != null ? String(procedure.durationMinutes) : "",
       active: procedure?.active ?? true,
+      tagIds: procedure?.tagIds ?? [],
     },
   });
   const active = useWatch({ control, name: "active" });
+  const tagIds = useWatch({ control, name: "tagIds" });
 
   const toCents = (s: string) => (s.trim() === "" ? undefined : Math.round(Number(s) * 100));
   const toInt = (s: string) => (s.trim() === "" ? undefined : Math.round(Number(s)));
+
+  function toggleTag(id: string) {
+    const next = tagIds.includes(id) ? tagIds.filter((t) => t !== id) : [...tagIds, id];
+    setValue("tagIds", next, { shouldDirty: true });
+  }
 
   const onSubmit = handleSubmit((v) => {
     const input: CreateProcedureInput = {
@@ -196,6 +233,7 @@ function ProcedureDialog({
       priceMaxCents: toCents(v.priceMax),
       durationMinutes: toInt(v.duration),
       active: v.active,
+      tagIds: v.tagIds,
     };
     const onDone = { onSuccess: onClose };
     if (isEdit) update.mutate({ id: procedure.id, input }, onDone);
@@ -235,6 +273,45 @@ function ProcedureDialog({
               <Input type="number" min={0} step="5" {...register("duration")} placeholder="90" />
             </div>
           </div>
+
+          <div>
+            <Label className="mb-2 text-[13px]">Tags de interesse</Label>
+            {allTags.length === 0 ? (
+              <p className="text-[12.5px] text-muted-foreground">
+                Nenhuma tag ainda — crie tags na aba “Tags” para associá-las aqui.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {allTags.map((t) => {
+                  const on = tagIds.includes(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => toggleTag(t.id)}
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
+                        on
+                          ? "border-transparent"
+                          : "border-border text-muted-foreground hover:border-foreground/30",
+                      )}
+                      style={
+                        on
+                          ? { background: `var(--tag-${t.color}-bg)`, color: `var(--tag-${t.color}-fg)` }
+                          : undefined
+                      }
+                    >
+                      {t.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <p className="mt-1.5 text-[12px] text-muted-foreground">
+              Ajudam o agente a sugerir este procedimento conforme o interesse do paciente.
+            </p>
+          </div>
+
           <label className="flex items-center justify-between rounded-[var(--radius-md)] bg-muted px-3.5 py-2.5">
             <span className="text-[13.5px] font-medium">Ativo no catálogo</span>
             <Switch checked={active} onCheckedChange={(v) => setValue("active", v)} />

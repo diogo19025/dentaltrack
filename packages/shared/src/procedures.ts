@@ -15,6 +15,8 @@ export const procedureSchema = z.object({
   priceMaxCents: z.number().int().nullable(),
   durationMinutes: z.number().int().nullable(),
   active: z.boolean(),
+  /** IDs das tags de interesse associadas (relação N:N — ver `tags.ts`). */
+  tagIds: z.array(z.string().uuid()),
 });
 export type ProcedureDto = z.infer<typeof procedureSchema>;
 
@@ -27,6 +29,7 @@ export const createProcedureSchema = z
     priceMaxCents: z.number().int().nonnegative().optional(),
     durationMinutes: z.number().int().positive().max(1440).optional(),
     active: z.boolean().optional(),
+    tagIds: z.array(z.string().uuid()).max(20).optional(),
   })
   .refine(
     (p) =>
@@ -43,5 +46,6 @@ export const updateProcedureSchema = z.object({
   priceMaxCents: z.number().int().nonnegative().nullable().optional(),
   durationMinutes: z.number().int().positive().max(1440).nullable().optional(),
   active: z.boolean().optional(),
+  tagIds: z.array(z.string().uuid()).max(20).optional(),
 });
 export type UpdateProcedureInput = z.infer<typeof updateProcedureSchema>;
