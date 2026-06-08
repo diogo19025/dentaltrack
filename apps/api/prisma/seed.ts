@@ -66,6 +66,52 @@ const PROCEDURES: SeedProcedure[] = [
   },
 ];
 
+interface SeedTag {
+  id: string;
+  name: string;
+  color: "teal" | "violet" | "amber" | "blue" | "rose" | "sage";
+  category: string;
+  keywords: string[];
+}
+
+const TAGS: SeedTag[] = [
+  {
+    id: "00000000-0000-0000-0000-00000000e001",
+    name: "implante",
+    color: "teal",
+    category: "Procedimento",
+    keywords: ["implante", "dente perdido", "perdi um dente"],
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000e002",
+    name: "clareamento",
+    color: "amber",
+    category: "Estética",
+    keywords: ["clarear", "clareamento", "branquear", "dente amarelo"],
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000e003",
+    name: "ortodontia",
+    color: "blue",
+    category: "Procedimento",
+    keywords: ["aparelho", "alinhar", "dentes tortos", "ortodontia"],
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000e004",
+    name: "urgência",
+    color: "rose",
+    category: "Urgência",
+    keywords: ["dor", "urgência", "quebrou", "inchado", "sangramento"],
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000e005",
+    name: "limpeza",
+    color: "sage",
+    category: "Prevenção",
+    keywords: ["limpeza", "tártaro", "profilaxia", "placa"],
+  },
+];
+
 async function main(): Promise<void> {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" });
   const prisma = new PrismaClient({ adapter });
@@ -105,11 +151,36 @@ async function main(): Promise<void> {
         tone: "acolhedor",
         greeting: "Olá! Sou a Sofia, assistente virtual da clínica. Como posso ajudar seu sorriso hoje?",
         instructions: "Ofereça sempre uma avaliação inicial antes de orçar procedimentos.",
+        offerEnabled: true,
+        offerText: "Avaliação inicial gratuita durante o mês de junho para novos pacientes.",
+        offerStartsOn: "01/06/2026",
+        offerEndsOn: "30/06/2026",
+        availability: [
+          { day: "Segunda a sexta", hours: "08:00 – 18:00", open: true },
+          { day: "Sábado", hours: "08:00 – 12:00", open: true },
+          { day: "Domingo", hours: "Fechado", open: false },
+        ],
       },
     });
-    console.log("  ↳ configurações (persona) da clínica demo");
+    console.log("  ↳ configurações (persona + oferta) da clínica demo");
 
-    console.log(`✔ Seed concluído: ${PROCEDURES.length} procedimentos + settings.`);
+    for (const tag of TAGS) {
+      await prisma.tag.upsert({
+        where: { id: tag.id },
+        update: {
+          name: tag.name,
+          color: tag.color,
+          category: tag.category,
+          keywords: tag.keywords,
+        },
+        create: { clinicId: clinic.id, ...tag },
+      });
+      console.log(`  ↳ tag: ${tag.name}`);
+    }
+
+    console.log(
+      `✔ Seed concluído: ${PROCEDURES.length} procedimentos + ${TAGS.length} tags + settings.`,
+    );
   } finally {
     await prisma.$disconnect();
   }

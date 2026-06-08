@@ -197,3 +197,130 @@ builda o `shared` e sobe **web + api** juntos (acabou a corrida "Cannot find mod
 Todos os itens de F1 — `BE-1.1..1.8`, `F-Login`, `FE-1.1..1.5` — **concluídos e validados**.
 Próximo: **Fase 2 (Configurações & Catálogo)** — a clínica nova nasce vazia (sem procedimentos/
 persona), então configurar catálogo/persona é o foco da F2 (e dá qualidade às respostas do bot).
+
+---
+
+## Fase 2 — Configurações & Catálogo (2026-06-07)
+
+> Leva da **F2**, centrada no único design hi-fi que a fase tem: a tela
+> `screen_settings.jsx`. Entrega o **fluxo de Configurações ponta a ponta** (BE-2.1 + FE-2.1..2.5)
+> e o **back-end do catálogo** (BE-2.2) + seed (BE-2.4). O que o dono salvar em `/settings`
+> **reflete no chat** automaticamente (o prompt builder já lê esses campos).
+
+### Contrato compartilhado (`packages/shared`)
+Dois novos módulos Zod (fonte de verdade BE↔FE), exportados no `index.ts`:
+- `settings.ts` — `clinicSettingsSchema` (resposta de `GET /settings`, sem nulls) e
+  `updateSettingsSchema` (corpo parcial de `PATCH`). Inclui `TONES` (formal/amigável/acolhedor),
+  `availabilitySlotSchema` e `DEFAULT_AVAILABILITY`.
+- `procedures.ts` — `procedureSchema`, `createProcedureSchema` (com `refine` garantindo
+  `priceMax ≥ priceMin`) e `updateProcedureSchema`.
+
+### Schema & migration
+`ClinicSettings` ganhou os campos de **oferta** e **disponibilidade**, que faltavam para a aba
+"Ofertas & Instruções" do design: `offerEnabled` (bool), `offerText`, `offerStartsOn`,
+`offerEndsOn` (vigência em texto, como no mock) e `availability` (`Json` — lista
+`[{ day, hours, open }]`). Migration `20260607120000_f2_settings_offer` (gerada offline, à mão,
+no formato do Prisma) + `prisma generate`.
+*Por quê texto/Json e não datas/colunas estruturadas:* fidelidade ao mock (campos de data são
+inputs de texto) e simplicidade — a oferta que importa ao prompt é o **texto**; a vigência é
+contexto. Uma coluna `Json` mantém o schema enxuto e a UI de disponibilidade fiel (3 linhas).
+
+### BE-2.1 — Módulo `settings` + prompt builder
+- `SettingsService` (`get/updateSettings`, escopado por `clinicId`): `get` junta `Clinic.name`
+  + `ClinicSettings` e **preenche defaults** (sem nulls; tom→`amigavel`, disponibilidade→default);
+  `update` grava o nome em `Clinic` e o resto em `ClinicSettings` via **upsert** (cria on-demand),
+  tudo numa transação. 404 se a clínica não existir.
+- `SettingsController` — `GET`/`PATCH /settings` sob `TenantGuard` (o `clinicId` vem do JWT,
+  nunca do cliente). DTO via `createZodDto`.
+- **`ai/prompt.ts`** passou a incluir a **oferta vigente** (só quando `offerEnabled`, com a
+  vigência) e os **horários de atendimento** (só os dias abertos). *É o elo que faz a config
+  do dono mudar o comportamento do bot* — fecha o ciclo BE-2.1 ⇄ BE-1.3.
+
+### BE-2.2 — Módulo `procedures` (CRUD)
+`ProceduresService` (`list/create/update/remove`) + `ProceduresController`
+(`GET/POST/PATCH/DELETE /procedures`, `:id` via `ParseUUIDPipe`) sob `TenantGuard`. `update`/
+`remove` validam **posse** (`findFirst` por `id`+`clinicId`) antes de gravar → 404 cross-tenant.
+
+### BE-2.4 — Seed
+A clínica demo agora nasce com **oferta ativa** (avaliação grátis em junho, vigência) e
+**disponibilidade** (Seg–Sex / Sáb / Dom), para `/settings` e o preview já mostrarem dados reais.
+
+### FE-2.1..2.5 — Tela `/settings` (réplica 1:1 de `screen_settings.jsx`)
+Placeholder → tela completa: header (Cancelar / **Salvar alterações**), **segmented** de abas
+(Identidade & Persona · Ofertas & Instruções), grid `1fr 320px` e **Preview do bot sticky e
+reativo** (reflete tom, saudação e oferta em tempo real, espelhando o `BotPreview` do mock).
+- **RHF + Zod compartilhado** (`zodResolver(clinicSettingsSchema)` → tipos batem sem cast),
+  `useWatch` para o preview (compatível com o React Compiler — sem o warning de `watch()`).
+- Dados via **TanStack Query** (`hooks/use-settings.ts`): `useSettings` (GET) + `useUpdateSettings`
+  (PATCH, atualiza o cache no sucesso). `reset(data)` ao carregar; Salvar/Cancelar por `isDirty`.
+- Componentes do **design system** existente (Card, Input, Textarea, Select, Switch, Label,
+  Skeleton) + `Segmented` local; tokens do tema (`primary-tint`, `success-tint`, `--radius-md`…).
+
+### Qualidade / validação
+- **57 testes** (10 suites): +`SettingsService` (defaults, 404, upsert nome↔settings),
+  +`ProceduresService` (escopo, posse cross-tenant 404), +2 casos no `prompt.spec` (oferta só
+  quando ativa; disponibilidade só dias abertos). Suites de F1 seguem verdes.
+- **API**: typecheck + build verdes. **Web**: typecheck + lint (0 warnings) + `next build` verdes
+  (`/settings` na lista de rotas). Shared rebuildado (`tsup`).
+- ⚠️ **Falta validação ao vivo**: a migration `20260607120000_f2_settings_offer` foi gerada
+  offline e **ainda não foi aplicada** no Supabase — rodar `pnpm --filter @dentaltrack/api db:deploy`
+  (+ `db:seed`) antes de testar `/settings` contra o banco real.
+
+### O que NÃO entrou nesta leva (deferido, com motivo)
+- **BE-2.3 — Tags (CRUD + modelo `Tag`/`ConversationTag`)**: deferido. As tags só ganham
+  consumidor no **auto-tagging (F3)**; criar modelo+CRUD agora, sem UI nem uso, é custo sem
+  retorno. O design também não tem tela de tags.
+- **UI admin de procedimentos/tags (FE)**: o próprio `plan.md` (§6) avisa que **não há mockup**
+  para esse CRUD. O back-end (BE-2.2) está pronto e o seed popula o catálogo; a tela de gestão
+  fica para quando o visual for alinhado (provavelmente abas extras em Configurações).
+- **Upload de logo**: a área de upload é visual (sem persistência de arquivo) — fora do escopo
+  desta entrega.
+
+### Aceite parcial da Fase 2 (1ª leva)
+**Concluído:** BE-2.1, BE-2.2, BE-2.4 e FE-2.1..2.5 (a tela do design). **Pendente da F2:**
+BE-2.3 (tags) e a UI de catálogo/tags — fechados na 2ª leva (abaixo).
+
+---
+
+## Fase 2 — Fechamento: Tags (BE-2.3) + UI de Catálogo e Tags (2026-06-07)
+
+> 2ª leva da F2, fechando os dois itens que faltavam para o **aceite do MVP §8**
+> ("o dono faz CRUD de procedimentos e tags sem código").
+
+### BE-2.3 — Módulo `tags` (CRUD)
+- **Schema**: modelo `Tag` (`name`, `color`, `category?`, `keywords String[]`) com `@@unique([clinicId, name])`. `color` virou **enum Prisma `TagColor`** (espelha `TAG_COLORS` do shared, como `Channel`/`ConversationStatus`) → o tipo do banco casa com o `TagDto` sem cast. Migration `20260607130000_f2_tags` (cria o tipo enum + tabela).
+- **Módulo**: `TagsService` (`list/create/update/remove` por `clinicId`) + controller `GET/POST/PATCH/DELETE /tags` sob `TenantGuard`. Nome duplicado (P2002 do Prisma) é traduzido em **409**. `keywords` ficam prontas para o auto-tagging (F3).
+- **Shared**: `tags.ts` ganhou `tagColorSchema`, `tagSchema`, `createTagSchema`, `updateTagSchema`.
+- **Seed**: 5 tags demo (implante/clareamento/ortodontia/urgência/limpeza) com cor + keywords.
+
+### FE — Abas "Procedimentos" e "Tags" em `/settings`
+Sem mockup no handoff → construídas com o **design system** (Card + Table + Dialog + tokens),
+conforme `plan.md §6. O `Segmented` de `/settings` passou de 2 para **4 abas**: as de
+Identidade/Ofertas mantêm o form + Preview; as de Procedimentos/Tags renderizam em **largura cheia**
+(tabela + "Adicionar" + Dialog de criar/editar + excluir com confirmação + estado vazio).
+- **Procedimentos**: tabela (nome/descrição, faixa de preço, duração, status ativo) + Dialog (preços
+  em **reais**, convertidos p/ centavos no submit; switch "ativo").
+- **Tags**: tabela (pílula colorida, categoria, keywords) + Dialog com **seletor de cor por swatch**
+  e keywords separadas por vírgula.
+- Hooks TanStack (`use-procedures.ts`, `use-tags.ts`) com invalidação de cache no sucesso.
+- Bônus: o **Salvar** das abas de settings agora dá `reset(saved)` no sucesso (limpa o `isDirty`,
+  mostra "Alterações salvas" e desabilita o botão).
+
+### Qualidade / validação
+- **61 testes** (11 suites): +`TagsService` (escopo, 409 duplicado, posse cross-tenant 404).
+- **API**: typecheck + build verdes. **Web**: typecheck + lint (**0 warnings** — os dialogs usam
+  `useWatch`, não `watch()`) + `next build` verdes.
+- ⚠️ **Validação ao vivo pendente**: aplicar as **duas** migrations da F2
+  (`f2_settings_offer` e `f2_tags`) com `pnpm --filter @dentaltrack/api db:deploy` (+ `db:seed`)
+  antes de testar contra o Supabase real.
+
+### Limitações conhecidas
+- **Upload de logo**: continua só visual (sem persistência de arquivo).
+- No **editar** procedimento, esvaziar um campo de preço/duração **não limpa** o valor (envia
+  `undefined` → mantém) — decisão p/ não duplicar schema create/update; clarear exige reabrir.
+
+### Aceite da Fase 2 ✅
+**Todos** os itens da F2 concluídos: `BE-2.1..2.4` e `FE-2.1..2.5` + as abas de catálogo/tags.
+O dono configura persona, oferta, horários, **procedimentos e tags** sem código, e tudo alimenta o
+bot. Próximo: aplicar as migrations ao vivo e seguir para a **F3** (auto-tagging + dashboard/leads),
+onde as `keywords` das tags finalmente entram em uso.

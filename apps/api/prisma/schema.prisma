@@ -27,12 +27,32 @@ model Clinic {
   settings      ClinicSettings?
   memberships   Membership[]
   procedures    Procedure[]
+  tags          Tag[]
   conversations Conversation[]
   messages      Message[]
   leads         Lead[]
   appointments  Appointment[]
 
   @@map("clinic")
+}
+
+/// Tag de interesse configurável pela clínica (F2 · BE-2.3). `keywords` são os
+/// gatilhos do auto-tagging (F3). `color` espelha a paleta fixa do design.
+model Tag {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @map("clinic_id") @db.Uuid
+  name      String
+  color     TagColor @default(teal)
+  category  String?
+  keywords  String[] @default([])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, name])
+  @@index([clinicId])
+  @@map("tag")
 }
 
 /// Configuração do bot por clínica (1:1) — alimenta o system prompt (BE-1.3).
@@ -46,6 +66,13 @@ model ClinicSettings {
   tone          String?
   greeting      String?
   instructions  String?
+  // F2 — Ofertas & disponibilidade (alimentam o system prompt, BE-1.3).
+  offerEnabled  Boolean  @default(false) @map("offer_enabled")
+  offerText     String?  @map("offer_text")
+  offerStartsOn String?  @map("offer_starts_on")
+  offerEndsOn   String?  @map("offer_ends_on")
+  /// Linhas de disponibilidade [{ day, hours, open }] — ver @dentaltrack/shared.
+  availability  Json?
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -207,4 +234,16 @@ enum MessageRole {
   system
 
   @@map("message_role")
+}
+
+/// Paleta fixa de cor de tag (espelha TAG_COLORS em @dentaltrack/shared).
+enum TagColor {
+  teal
+  violet
+  amber
+  blue
+  rose
+  sage
+
+  @@map("tag_color")
 }

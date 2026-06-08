@@ -33,6 +33,34 @@ function formatPrice(proc: Procedure): string | null {
   return null;
 }
 
+/** Vigência da oferta em texto ("de X até Y", "até Y", "a partir de X"). */
+function formatOfferPeriod(startsOn?: string | null, endsOn?: string | null): string | null {
+  const start = startsOn?.trim();
+  const end = endsOn?.trim();
+  if (start && end) return `de ${start} a ${end}`;
+  if (start) return `a partir de ${start}`;
+  if (end) return `até ${end}`;
+  return null;
+}
+
+/**
+ * Resume a disponibilidade (campo Json `[{ day, hours, open }]`) numa linha,
+ * listando só os dias abertos. Defensivo: ignora formato inesperado.
+ */
+function formatAvailability(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const open = value
+    .filter(
+      (s): s is { day: string; hours: string; open: boolean } =>
+        typeof s === "object" &&
+        s !== null &&
+        (s as { open?: unknown }).open === true &&
+        typeof (s as { day?: unknown }).day === "string",
+    )
+    .map((s) => `${s.day.trim()}${s.hours?.trim() ? ` (${s.hours.trim()})` : ""}`);
+  return open.length > 0 ? open.join("; ") : null;
+}
+
 /** Uma linha resumida do catálogo para um procedimento. */
 function formatProcedure(proc: Procedure): string {
   const parts: string[] = [];
@@ -75,6 +103,21 @@ export function buildSystemPrompt({
   }
   if (settings?.instructions?.trim()) {
     lines.push(`Instruções específicas da clínica: ${settings.instructions.trim()}`);
+  }
+
+  // Oferta vigente (só entra no prompt se estiver ativa).
+  if (settings?.offerEnabled && settings.offerText?.trim()) {
+    const vigencia = formatOfferPeriod(settings.offerStartsOn, settings.offerEndsOn);
+    lines.push(
+      `Oferta vigente${vigencia ? ` (${vigencia})` : ""}: ${settings.offerText.trim()} ` +
+        "Mencione esta oferta quando fizer sentido na conversa, sem ser insistente.",
+    );
+  }
+
+  // Disponibilidade de atendimento (orienta o bot ao propor horários).
+  const availability = formatAvailability(settings?.availability);
+  if (availability) {
+    lines.push(`Horários de atendimento: ${availability}`);
   }
 
   // Catálogo de procedimentos.
