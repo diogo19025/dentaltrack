@@ -48,7 +48,8 @@ model Tag {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  clinic     Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  procedures Procedure[] @relation("ProcedureTags")
 
   @@unique([clinicId, name])
   @@index([clinicId])
@@ -113,6 +114,7 @@ model Procedure {
 
   clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   appointments Appointment[]
+  tags         Tag[]         @relation("ProcedureTags")
 
   @@index([clinicId])
   @@map("procedure")

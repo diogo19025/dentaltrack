@@ -3,8 +3,9 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
 
 /**
- * Seed da base (BE-2.4, antecipado para a base mínima da F1):
- * uma clínica demo + catálogo de procedimentos odontológicos.
+ * Seed da base (BE-2.4): uma clínica demo + configurações (persona + oferta) +
+ * catálogo de procedimentos odontológicos + tags de interesse, com as tags
+ * associadas aos procedimentos (relação N:N — alimenta o suggestProcedures).
  * Idempotente — usa IDs fixos e `upsert`, pode rodar várias vezes.
  *
  * Rodar: pnpm --filter @dentaltrack/api db:seed  (requer DATABASE_URL).
@@ -12,59 +13,6 @@ import { PrismaClient } from "../generated/prisma/client";
 
 // IDs fixos para idempotência (DEMO).
 const DEMO_CLINIC_ID = "00000000-0000-0000-0000-0000000c1141";
-
-interface SeedProcedure {
-  id: string;
-  name: string;
-  description: string;
-  priceMinCents: number;
-  priceMaxCents: number;
-  durationMinutes: number;
-}
-
-const PROCEDURES: SeedProcedure[] = [
-  {
-    id: "00000000-0000-0000-0000-00000000d001",
-    name: "Implante dentário",
-    description:
-      "Reposição de dente perdido com pino de titânio e coroa. Inclui avaliação e planejamento.",
-    priceMinCents: 150000,
-    priceMaxCents: 350000,
-    durationMinutes: 90,
-  },
-  {
-    id: "00000000-0000-0000-0000-00000000d002",
-    name: "Clareamento dental",
-    description: "Clareamento estético a laser ou com moldeira para um sorriso mais branco.",
-    priceMinCents: 50000,
-    priceMaxCents: 120000,
-    durationMinutes: 60,
-  },
-  {
-    id: "00000000-0000-0000-0000-00000000d003",
-    name: "Ortodontia (aparelho)",
-    description: "Correção do alinhamento dos dentes com aparelho fixo ou alinhadores.",
-    priceMinCents: 200000,
-    priceMaxCents: 600000,
-    durationMinutes: 60,
-  },
-  {
-    id: "00000000-0000-0000-0000-00000000d004",
-    name: "Limpeza (profilaxia)",
-    description: "Remoção de placa e tártaro, polimento e orientação de higiene bucal.",
-    priceMinCents: 15000,
-    priceMaxCents: 30000,
-    durationMinutes: 45,
-  },
-  {
-    id: "00000000-0000-0000-0000-00000000d005",
-    name: "Urgência / dor",
-    description: "Atendimento de urgência para dor de dente, abscesso ou trauma.",
-    priceMinCents: 10000,
-    priceMaxCents: 40000,
-    durationMinutes: 30,
-  },
-];
 
 interface SeedTag {
   id: string;
@@ -112,6 +60,66 @@ const TAGS: SeedTag[] = [
   },
 ];
 
+interface SeedProcedure {
+  id: string;
+  name: string;
+  description: string;
+  priceMinCents: number;
+  priceMaxCents: number;
+  durationMinutes: number;
+  /** Tag de interesse associada (id de TAGS). */
+  tagId: string;
+}
+
+const PROCEDURES: SeedProcedure[] = [
+  {
+    id: "00000000-0000-0000-0000-00000000d001",
+    name: "Implante dentário",
+    description:
+      "Reposição de dente perdido com pino de titânio e coroa. Inclui avaliação e planejamento.",
+    priceMinCents: 150000,
+    priceMaxCents: 350000,
+    durationMinutes: 90,
+    tagId: "00000000-0000-0000-0000-00000000e001",
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000d002",
+    name: "Clareamento dental",
+    description: "Clareamento estético a laser ou com moldeira para um sorriso mais branco.",
+    priceMinCents: 50000,
+    priceMaxCents: 120000,
+    durationMinutes: 60,
+    tagId: "00000000-0000-0000-0000-00000000e002",
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000d003",
+    name: "Ortodontia (aparelho)",
+    description: "Correção do alinhamento dos dentes com aparelho fixo ou alinhadores.",
+    priceMinCents: 200000,
+    priceMaxCents: 600000,
+    durationMinutes: 60,
+    tagId: "00000000-0000-0000-0000-00000000e003",
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000d004",
+    name: "Limpeza (profilaxia)",
+    description: "Remoção de placa e tártaro, polimento e orientação de higiene bucal.",
+    priceMinCents: 15000,
+    priceMaxCents: 30000,
+    durationMinutes: 45,
+    tagId: "00000000-0000-0000-0000-00000000e005",
+  },
+  {
+    id: "00000000-0000-0000-0000-00000000d005",
+    name: "Urgência / dor",
+    description: "Atendimento de urgência para dor de dente, abscesso ou trauma.",
+    priceMinCents: 10000,
+    priceMaxCents: 40000,
+    durationMinutes: 30,
+    tagId: "00000000-0000-0000-0000-00000000e004",
+  },
+];
+
 async function main(): Promise<void> {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" });
   const prisma = new PrismaClient({ adapter });
@@ -124,7 +132,47 @@ async function main(): Promise<void> {
     });
     console.log(`✔ Clínica demo: ${clinic.name} (${clinic.id})`);
 
-    for (const proc of PROCEDURES) {
+    // Persona + oferta + disponibilidade da demo. Os mesmos dados vão em `create`
+    // e `update` para o seed ser idempotente mesmo numa base já semeada na F1:
+    // antes, `update: {}` deixava a demo sem os campos de oferta/disponibilidade
+    // da F2 (a clinic_settings já existia, então nada era atualizado).
+    const demoSettings = {
+      specialty: "odontologia geral e estética",
+      description:
+        "Clínica odontológica focada em atendimento acolhedor e procedimentos estéticos.",
+      assistantName: "Sofia",
+      tone: "acolhedor",
+      greeting:
+        "Olá! Sou a Sofia, assistente virtual da clínica. Como posso ajudar seu sorriso hoje?",
+      instructions: "Ofereça sempre uma avaliação inicial antes de orçar procedimentos.",
+      offerEnabled: true,
+      offerText: "Avaliação inicial gratuita durante o mês de junho para novos pacientes.",
+      offerStartsOn: "01/06/2026",
+      offerEndsOn: "30/06/2026",
+      availability: [
+        { day: "Segunda a sexta", hours: "08:00 – 18:00", open: true },
+        { day: "Sábado", hours: "08:00 – 12:00", open: true },
+        { day: "Domingo", hours: "Fechado", open: false },
+      ],
+    };
+    await prisma.clinicSettings.upsert({
+      where: { clinicId: clinic.id },
+      update: demoSettings,
+      create: { clinicId: clinic.id, ...demoSettings },
+    });
+    console.log("  ↳ configurações (persona + oferta) da clínica demo");
+
+    // Tags antes dos procedimentos (para poder associá-las no upsert abaixo).
+    for (const tag of TAGS) {
+      await prisma.tag.upsert({
+        where: { id: tag.id },
+        update: { name: tag.name, color: tag.color, category: tag.category, keywords: tag.keywords },
+        create: { clinicId: clinic.id, ...tag },
+      });
+      console.log(`  ↳ tag: ${tag.name}`);
+    }
+
+    for (const { tagId, ...proc } of PROCEDURES) {
       await prisma.procedure.upsert({
         where: { id: proc.id },
         update: {
@@ -134,52 +182,15 @@ async function main(): Promise<void> {
           priceMaxCents: proc.priceMaxCents,
           durationMinutes: proc.durationMinutes,
           active: true,
+          tags: { set: [{ id: tagId }] },
         },
-        create: { clinicId: clinic.id, ...proc },
+        create: { clinicId: clinic.id, ...proc, tags: { connect: [{ id: tagId }] } },
       });
       console.log(`  ↳ procedimento: ${proc.name}`);
     }
 
-    await prisma.clinicSettings.upsert({
-      where: { clinicId: clinic.id },
-      update: {},
-      create: {
-        clinicId: clinic.id,
-        specialty: "odontologia geral e estética",
-        description: "Clínica odontológica focada em atendimento acolhedor e procedimentos estéticos.",
-        assistantName: "Sofia",
-        tone: "acolhedor",
-        greeting: "Olá! Sou a Sofia, assistente virtual da clínica. Como posso ajudar seu sorriso hoje?",
-        instructions: "Ofereça sempre uma avaliação inicial antes de orçar procedimentos.",
-        offerEnabled: true,
-        offerText: "Avaliação inicial gratuita durante o mês de junho para novos pacientes.",
-        offerStartsOn: "01/06/2026",
-        offerEndsOn: "30/06/2026",
-        availability: [
-          { day: "Segunda a sexta", hours: "08:00 – 18:00", open: true },
-          { day: "Sábado", hours: "08:00 – 12:00", open: true },
-          { day: "Domingo", hours: "Fechado", open: false },
-        ],
-      },
-    });
-    console.log("  ↳ configurações (persona + oferta) da clínica demo");
-
-    for (const tag of TAGS) {
-      await prisma.tag.upsert({
-        where: { id: tag.id },
-        update: {
-          name: tag.name,
-          color: tag.color,
-          category: tag.category,
-          keywords: tag.keywords,
-        },
-        create: { clinicId: clinic.id, ...tag },
-      });
-      console.log(`  ↳ tag: ${tag.name}`);
-    }
-
     console.log(
-      `✔ Seed concluído: ${PROCEDURES.length} procedimentos + ${TAGS.length} tags + settings.`,
+      `✔ Seed concluído: ${TAGS.length} tags + ${PROCEDURES.length} procedimentos (com tags) + settings.`,
     );
   } finally {
     await prisma.$disconnect();

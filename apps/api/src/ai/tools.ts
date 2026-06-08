@@ -60,6 +60,7 @@ interface ProcedureRow {
   priceMinCents: number | null;
   priceMaxCents: number | null;
   durationMinutes: number | null;
+  tags: { name: string }[];
 }
 
 function toView(p: ProcedureRow) {
@@ -69,6 +70,7 @@ function toView(p: ProcedureRow) {
     descricao: p.description,
     preco: priceLabel(p.priceMinCents, p.priceMaxCents),
     duracaoMin: p.durationMinutes,
+    tags: p.tags.map((t) => t.name),
   };
 }
 
@@ -93,8 +95,49 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
       },
       orderBy: { name: "asc" },
       take,
+      include: { tags: { select: { name: true } } },
     });
     return rows.map(toView);
+  }
+
+  /**
+   * Sugestão por interesse: combina a busca textual com os procedimentos cujas
+   * TAGS de interesse casam com o relato do paciente (nome da tag ou alguma
+   * keyword aparece no texto). As tags são poucas por clínica, então buscá-las
+   * todas e filtrar em memória é barato — e é o elo tags↔procedimentos (BE-2.2).
+   */
+  async function suggestByInterest(interesse: string) {
+    const text = interesse.toLowerCase();
+    const tags = await prisma.tag.findMany({
+      where: { clinicId },
+      select: { id: true, name: true, keywords: true },
+    });
+    const matchedTagIds = tags
+      .filter(
+        (t) =>
+          text.includes(t.name.toLowerCase()) ||
+          t.keywords.some((k) => k && text.includes(k.toLowerCase())),
+      )
+      .map((t) => t.id);
+
+    let byTags: ReturnType<typeof toView>[] = [];
+    if (matchedTagIds.length > 0) {
+      const rows: ProcedureRow[] = await prisma.procedure.findMany({
+        where: { clinicId, active: true, tags: { some: { id: { in: matchedTagIds } } } },
+        orderBy: { name: "asc" },
+        take: 5,
+        include: { tags: { select: { name: true } } },
+      });
+      byTags = rows.map(toView);
+    }
+
+    // Tags primeiro (mais específico), depois a busca textual; dedup por id.
+    const seen = new Set<string>();
+    const combined = [...byTags, ...(await findProcedures(interesse))].filter((p) =>
+      seen.has(p.id) ? false : (seen.add(p.id), true),
+    );
+    // Fallback: nada casou → mostra o catálogo geral (comportamento anterior).
+    return combined.length > 0 ? combined.slice(0, 5) : findProcedures(undefined);
   }
 
   // Tipar como Record<string, unknown> evita o tsc comparar cada tool contra os
@@ -129,8 +172,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
       }),
       execute: async (input) => {
         const { interesse } = input as SuggestInput;
-        let procedures = await findProcedures(interesse);
-        if (procedures.length === 0) procedures = await findProcedures(undefined);
+        const procedures = await suggestByInterest(interesse);
         return { procedures, total: procedures.length };
       },
     }),
