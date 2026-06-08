@@ -22,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -189,37 +190,6 @@ export default function SettingsPage() {
         </form>
       )}
     </>
-  );
-}
-
-/** Controle segmentado (abas e tom de voz) — espelha `Segmented` do design. */
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-}: {
-  options: readonly { value: T; label: string }[];
-  value: T;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="inline-flex items-center rounded-lg bg-muted p-[3px]">
-      {options.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={cn(
-            "rounded-md px-3.5 py-1.5 text-[13.5px] font-medium transition-all",
-            value === opt.value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-foreground/60 hover:text-foreground",
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
   );
 }
 

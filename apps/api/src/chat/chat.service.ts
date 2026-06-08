@@ -3,6 +3,7 @@ import type { ServerResponse } from "node:http";
 import type { ChatRequest } from "@dentaltrack/shared";
 import { type ReplyMessage, streamAssistantReply } from "../ai/generate-reply";
 import { buildSystemPrompt } from "../ai/prompt";
+import { tagConversation } from "../ai/tagging";
 import { buildChatTools } from "../ai/tools";
 import { ConversationsService } from "../conversations/conversations.service";
 import { PrismaService } from "../prisma/prisma.service";
@@ -61,6 +62,9 @@ export class ChatService {
             { tokens },
             clinicId,
           );
+          // Auto-tagging (BE-3.1) — best-effort, fora do caminho do stream e
+          // após a resposta persistida (o classificador lê o histórico do banco).
+          void tagConversation({ prisma: this.prisma, clinicId, conversationId });
         } catch (err) {
           const detail = err instanceof Error ? err.message : String(err);
           this.logger.error(`Falha ao persistir resposta (conversa ${conversationId}): ${detail}`);

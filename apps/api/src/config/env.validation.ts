@@ -26,6 +26,12 @@ export const envSchema = z.object({
   // Hardening do provider (timeout/retry).
   AI_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).optional(),
+
+  // ─── F3 ───
+  // Confiança mínima para gravar uma tag no auto-tagging (BE-3.1).
+  AI_TAG_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).optional(),
+  // Horas de inatividade até marcar a conversa como abandonada (cron BE-3.4).
+  ABANDON_AFTER_HOURS: z.coerce.number().int().positive().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

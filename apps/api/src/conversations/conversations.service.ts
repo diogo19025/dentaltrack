@@ -1,5 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import type { Channel, ConversationStatus, MessageRole } from "@dentaltrack/shared";
+import type {
+  Channel,
+  ConversationDetail,
+  ConversationStatus,
+  ConversationSummary,
+  MessageRole,
+} from "@dentaltrack/shared";
 import { PrismaService } from "../prisma/prisma.service";
 import { canTransition } from "./conversation-status";
 
@@ -89,6 +95,83 @@ export class ConversationsService {
       throw new NotFoundException(`Conversa ${conversationId} não encontrada.`);
     }
     return conversation;
+  }
+
+  /**
+   * Conversas recentes da clínica (F3 · tabela do dashboard). Mais recente
+   * primeiro (por `lastMessageAt`, depois `createdAt`). Inclui lead, tags
+   * detectadas e o procedimento do último agendamento.
+   */
+  async listRecent(clinicId: string, limit = 8): Promise<ConversationSummary[]> {
+    const convos = await this.prisma.conversation.findMany({
+      where: { clinicId },
+      orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+      take: limit,
+      select: {
+        id: true,
+        status: true,
+        lastMessageAt: true,
+        lead: { select: { name: true } },
+        conversationTags: {
+          orderBy: { confidence: "desc" },
+          select: { tag: { select: { name: true, color: true } } },
+        },
+        appointments: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { procedure: { select: { name: true } } },
+        },
+      },
+    });
+
+    return convos.map((c) => ({
+      id: c.id,
+      leadName: c.lead?.name ?? null,
+      procedure: c.appointments[0]?.procedure?.name ?? null,
+      tags: c.conversationTags.map((ct) => ({ name: ct.tag.name, color: ct.tag.color })),
+      status: c.status,
+      lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
+    }));
+  }
+
+  /**
+   * Detalhe da conversa (F3 · rail de tags do chat). Escopado por `clinicId`.
+   * Retorna status, contagem de mensagens e as tags detectadas (com confiança).
+   */
+  async getDetail(conversationId: string, clinicId: string): Promise<ConversationDetail> {
+    const convo = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, clinicId },
+      select: {
+        id: true,
+        status: true,
+        channel: true,
+        createdAt: true,
+        _count: { select: { messages: true } },
+        conversationTags: {
+          orderBy: { confidence: "desc" },
+          select: {
+            confidence: true,
+            tag: { select: { id: true, name: true, color: true } },
+          },
+        },
+      },
+    });
+    if (!convo) {
+      throw new NotFoundException(`Conversa ${conversationId} não encontrada.`);
+    }
+    return {
+      id: convo.id,
+      status: convo.status,
+      channel: convo.channel,
+      createdAt: convo.createdAt.toISOString(),
+      messageCount: convo._count.messages,
+      tags: convo.conversationTags.map((ct) => ({
+        id: ct.tag.id,
+        name: ct.tag.name,
+        color: ct.tag.color,
+        confidence: ct.confidence,
+      })),
+    };
   }
 
   /** Marca a conversa como `agendada` (conversão). Ver BE-1.7. */

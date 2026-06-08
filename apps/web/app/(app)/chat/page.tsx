@@ -2,6 +2,7 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   Bot,
@@ -17,7 +18,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Tag } from "@/components/ui/tag";
 import { Textarea } from "@/components/ui/textarea";
+import { useConversationDetail } from "@/hooks/use-conversations";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -95,9 +99,15 @@ const chatTransport = new DefaultChatTransport<UIMessage>({
 
 export default function ChatPage() {
   const [input, setInput] = useState("");
+  // Espelha o `currentConversationId` (módulo) em estado para acionar o fetch
+  // das tags detectadas (auto-tagging F3) no rail.
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
-  // Reseta a conversa ao (re)montar a tela (nova sessão de chat).
+  const queryClient = useQueryClient();
+
+  // Reseta o id (módulo) ao (re)montar a tela (nova sessão de chat). O estado
+  // `conversationId` já nasce null a cada montagem (key={pathname} no shell).
   useEffect(() => {
     currentConversationId = null;
     return () => {
@@ -108,8 +118,21 @@ export default function ChatPage() {
   const { messages, sendMessage, status, error, regenerate } = useChat({
     transport: chatTransport,
     messages: [GREETING],
+    onFinish: () => {
+      // Captura o id criado no 1º turno e refaz a busca das tags do rail. O
+      // auto-tagging roda no servidor *após* a resposta (chamada de IA), então
+      // um 2º invalidate com folga cobre essa latência.
+      if (currentConversationId) setConversationId(currentConversationId);
+      const invalidate = () =>
+        void queryClient.invalidateQueries({ queryKey: ["conversations", "detail"] });
+      invalidate();
+      window.setTimeout(invalidate, 2500);
+    },
   });
   const busy = status === "submitted" || status === "streaming";
+
+  // Detalhe da conversa (status + tags detectadas) para o rail.
+  const { data: detail } = useConversationDetail(conversationId);
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -231,7 +254,7 @@ export default function ChatPage() {
 
       {/* Rail lateral */}
       <div className="flex min-h-0 flex-col gap-[18px] overflow-y-auto">
-        {/* Tags detectadas (auto-tagging real chega na F3) */}
+        {/* Tags detectadas (auto-tagging F3 — ao vivo) */}
         <Card className="gap-0 p-[22px_24px]">
           <div className="mb-1 flex items-center gap-2">
             <TagIcon className="size-4 text-primary" />
@@ -240,13 +263,36 @@ export default function ChatPage() {
           <p className="mb-4 text-[12.5px] text-muted-foreground">
             Interesses classificados pela IA nesta conversa.
           </p>
-          <div className="text-[13px] text-muted-foreground">Nenhuma tag ainda.</div>
+          {detail && detail.tags.length > 0 ? (
+            <div className="flex flex-col gap-3.5">
+              {detail.tags.map((t) => {
+                const pct = Math.round(t.confidence * 100);
+                return (
+                  <div key={t.id}>
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <Tag name={t.name} color={t.color} />
+                      <span className="tabular text-[12px] text-muted-foreground">{pct}%</span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-[13px] text-muted-foreground">Nenhuma tag ainda.</div>
+          )}
         </Card>
 
         {/* Resumo da conversa */}
         <Card className="gap-0 p-[22px_24px]">
           <div className="mb-3.5 text-base font-semibold tracking-[-0.01em]">Resumo da conversa</div>
-          <SummaryRow icon={Circle} label="Status" value={<StatusAndamento />} />
+          <SummaryRow
+            icon={Circle}
+            label="Status"
+            value={<StatusBadge status={detail?.status ?? "em_andamento"} />}
+          />
           <div className="my-3 h-px bg-border" />
           <SummaryRow
             icon={MessageCircle}

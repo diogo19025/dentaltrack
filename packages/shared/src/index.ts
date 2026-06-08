@@ -8,3 +8,6 @@ export * from "./health";
 export * from "./chat";
 export * from "./settings";
 export * from "./procedures";
+export * from "./metrics";
+export * from "./leads";
+export * from "./conversations";

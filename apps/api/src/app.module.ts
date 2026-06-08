@@ -5,6 +5,9 @@ import { ChatModule } from "./chat/chat.module";
 import { validateEnv } from "./config/env.validation";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { HealthModule } from "./health/health.module";
+import { JobsModule } from "./jobs/jobs.module";
+import { LeadsModule } from "./leads/leads.module";
+import { MetricsModule } from "./metrics/metrics.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { ProceduresModule } from "./procedures/procedures.module";
@@ -23,6 +26,9 @@ import { TagsModule } from "./tags/tags.module";
     SettingsModule,
     ProceduresModule,
     TagsModule,
+    MetricsModule,
+    LeadsModule,
+    JobsModule,
   ],
 })
 export class AppModule {}
