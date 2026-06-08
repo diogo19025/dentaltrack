@@ -372,3 +372,90 @@ Era o único item do **texto** do escopo da F2 que faltava (o PR não alegou tê
 
 ### Pendência conhecida (deferida, com motivo)
 - **Upload de logo**: segue só visual (sem persistência de arquivo) — fora do escopo da F2.
+
+---
+
+## Fase 3 — Tags automáticas (BE) + Dashboard & Leads (FE) (2026-06-08)
+
+> Fecha o ciclo do MVP: o **auto-tagging entra em produção** e o **painel/leads passam a
+> exibir dados reais**. BE-3.1..3.4 + endpoints de apoio (`/metrics`, `/leads`,
+> `/conversations`) e FE-3.1..3.6 (réplica 1:1 de `screen_dashboard.jsx` e `screen_leads.jsx`).
+
+### Schema & migration (fundação)
+Os dois modelos que a F1 adiou (`docs/context.md §9`) entraram: **`ConversationTag`**
+(`conversation_tag` — aplicação de tag por conversa, com `confidence`, único por (conversa, tag))
+e **`DailyMetric`** (`daily_metric` — pré-agregação diária por clínica). Migration
+`20260608120000_f3_tagging_metrics` escrita à mão (DDL aditivo, no formato Prisma, espelhando
+`f2_tags`); `prisma generate` ok. **Aplicada ao vivo** (`db:deploy`) no Supabase.
+
+### BE-3.1 — Auto-tagging (`ai/tagging.ts`)
+`tagConversation()`: pré-filtro por **keyword** (das tags da clínica) → se houver candidatas,
+**`generateObject`** (AI SDK, saída Zod `[{tag, confidence}]`) restrito às candidatas → `upsert`
+em `conversation_tag` acima de `AI_TAG_MIN_CONFIDENCE` (env, default 0.6). **Best-effort: nunca
+lança** (try/catch + log). Disparado **fire-and-forget no `onFinish`** do `ChatService` (após
+persistir a resposta) — fora do caminho do stream. Reusa o mesmo cast `as never` do
+`generate-reply.ts` para evitar o TS2589 dos genéricos do AI SDK.
+
+### BE-3.2/3.3 — Métricas (`metrics/` + `GET /metrics?range=`)
+`MetricsService` (escopado por `clinicId`) com as definições de `context.md §10`: leads totais,
+**msgs do bot (janela fixa 50d)**, taxa de resposta (engajadas/iniciadas), conversão
+(agendadas/iniciadas), em andamento, não completadas — cada KPI com **delta % vs. janela
+anterior** e **sparkline** (bucket diário). Séries: **linha** (bot×paciente/dia), **funil**
+(iniciadas→engajadas→agendadas), **top tags** (`conversationTag` agrupado) e **distribuição de
+status** (donut). `GET /metrics?range=7d|30d|50d|90d` (default 50d) sob `TenantGuard`.
+
+### BE-3.4 — Cron (`jobs/`, `@nestjs/schedule`)
+`MetricsJobs`: `markAbandoned` (de hora em hora — `em_andamento` sem atividade por
+`ABANDON_AFTER_HOURS`, default 24h → `abandonada`) e `aggregateDaily` (1×/dia — upsert de
+`daily_metric` do dia anterior por clínica). `ScheduleModule.forRoot()` no `JobsModule`.
+
+### Endpoints de apoio (contratos `plan.md §5`)
+- **`GET /leads`** (`leads/`): lista + resumo (4 cards). Interesse derivado do último agendamento
+  (senão 1ª tag); tags distintas das conversas; status = conversa mais recente.
+- **`GET /conversations?limit=`** (tabela "recentes" do dashboard) e **`GET /conversations/:id`**
+  (detalhe com tags detectadas, p/ o rail do chat) — no `ConversationsController` novo.
+- **Contratos compartilhados** (`packages/shared`): `metrics.ts`, `leads.ts`, `conversations.ts`.
+
+### FE-3.1..3.6 — Dashboard, Leads e tags ao vivo no chat
+- **Charts** (`components/charts/`): **Recharts** para `Sparkline` (Area), `LineChart` (2 séries,
+  grid pontilhado, tooltip temático) e `Donut` (Pie innerRadius + total central + trilho muted);
+  **CSS** fiel para `Funnel` e `HBars` (barras + pílula de tag).
+- **Dashboard** (`app/(app)/page.tsx`): filtro de período (segmented 7/30/50/90, default 50) +
+  Exportar; **6 KPI cards** (`KpiCard` + sparkline nos 4 primeiros); linha+donut; funil+top tags;
+  **tabela de conversas recentes**. Estados loading (Skeleton) e vazio tratados.
+- **Leads** (`app/(app)/leads/page.tsx`): 4 cards-resumo + tabela com **busca**, **filtro de
+  status** (segmented), **paginação** client-side e **Exportar CSV** (gerado no cliente).
+- **Chat — tags ao vivo** (fecha o FE-1.5): o rail "Tags detectadas" busca `GET /conversations/:id`
+  via `onFinish` do `useChat` (com 2º refetch defasado p/ cobrir a latência do auto-tagging) e
+  mostra pílula + % de confiança + barra. O Status do resumo passa a refletir o estado real.
+- **Primitivas extraídas/reusadas**: `ui/segmented.tsx` (substitui o duplicado em `/settings`,
+  agora com ativo=primary, mais fiel), `ui/tag.tsx`, `ui/status-badge.tsx`; classe `.table` +
+  `.stagger`/`bar-grow` portadas p/ o `globals.css`. Badge "Leads" da sidebar = contagem real.
+
+### Demo seed (`prisma/seed-demo.ts` · `db:seed:demo`)
+Script **separado** do catálogo: limpa as conversas da clínica demo e gera ~90 conversas
+sintéticas ao longo de ~50 dias (mensagens datadas, leads, agendamentos e `conversation_tag`
+coerentes) para o dashboard/leads renderizarem com volume. Idempotente; **não** roda no `db:seed`.
+
+### Qualidade / validação
+- **API**: **78 testes** (15 suites; +14): `tagging` (pré-filtro/limiar/never-throws),
+  `MetricsService` (KPIs §10, funil, top tags, série), `LeadsService` (derivação/resumo),
+  `MetricsJobs` (abandono + agregação). `typecheck` + `nest build` verdes.
+- **Web**: `typecheck` + `lint` (**0 warnings**) + `next build` verdes (`/`, `/leads`, `/chat`,
+  `/settings`). **`turbo build` 3/3** verde.
+- **Validação ao vivo (realizada) ✅:** `db:deploy` aplicou a migration `f3_tagging_metrics` no
+  Supabase; `db:seed` + `db:seed:demo` popularam a clínica demo (90 conversas). O smoke
+  `db:smoke:f3` rodou o `MetricsService`/`LeadsService` contra o banco real e conferiu números
+  **internamente consistentes**: 90 leads · 164 msgs do bot (50d) · resposta 59% (53/90) ·
+  conversão 23% (21/90) · em andamento 32 · não completadas 37; funil 90→53→21; status soma 90;
+  top tags (105) implante/limpeza/clareamento/ortodontia/urgência; linha com 50 pontos diários.
+  Auto-tagging (`conversation_tag`) gravado; leads com interesse/tags/status derivados corretos.
+
+### Novas envs (opcionais, com default)
+`AI_TAG_MIN_CONFIDENCE` (0.6) · `ABANDON_AFTER_HOURS` (24) — em `env.validation.ts`/`.env.example`.
+
+### Aceite da Fase 3 ✅
+`BE-3.1..3.4` + `FE-3.1..3.6` implementados, verdes (offline) **e validados ao vivo** (migration
+aplicada + smoke contra o Supabase real). Com isso, os **4 pilares** do MVP (chatbot · dashboard ·
+configurações · tags) estão funcionais ponta a ponta. Próximo: **F4** — QA, conferência de
+fidelidade 1:1 das 5 telas, testes FE/E2E (Vitest/Playwright) e deploy em produção.

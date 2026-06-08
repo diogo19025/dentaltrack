@@ -24,14 +24,16 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  settings      ClinicSettings?
-  memberships   Membership[]
-  procedures    Procedure[]
-  tags          Tag[]
-  conversations Conversation[]
-  messages      Message[]
-  leads         Lead[]
-  appointments  Appointment[]
+  settings         ClinicSettings?
+  memberships      Membership[]
+  procedures       Procedure[]
+  tags             Tag[]
+  conversations    Conversation[]
+  messages         Message[]
+  leads            Lead[]
+  appointments     Appointment[]
+  conversationTags ConversationTag[]
+  dailyMetrics     DailyMetric[]
 
   @@map("clinic")
 }
@@ -48,8 +50,9 @@ model Tag {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  clinic     Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  procedures Procedure[] @relation("ProcedureTags")
+  clinic           Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  procedures       Procedure[]       @relation("ProcedureTags")
+  conversationTags ConversationTag[]
 
   @@unique([clinicId, name])
   @@index([clinicId])
@@ -132,10 +135,11 @@ model Conversation {
   createdAt     DateTime           @default(now()) @map("created_at")
   updatedAt     DateTime           @updatedAt @map("updated_at")
 
-  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  messages     Message[]
-  appointments Appointment[]
+  clinic           Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  lead             Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages         Message[]
+  appointments     Appointment[]
+  conversationTags ConversationTag[]
 
   @@index([clinicId])
   @@index([clinicId, status])
@@ -203,6 +207,50 @@ model Appointment {
   @@index([conversationId])
   @@index([leadId])
   @@map("appointment")
+}
+
+/// Aplicação de uma tag de interesse a uma conversa (F3 · BE-3.1). Gravada pelo
+/// auto-tagging com a `confidence` (0..1) retornada pelo LLM. Única por
+/// (conversa, tag) — o auto-tagging faz upsert. `clinicId` denormalizado p/
+/// queries de métricas (top tags) escopadas por tenant.
+model ConversationTag {
+  id             String   @id @default(uuid()) @db.Uuid
+  clinicId       String   @map("clinic_id") @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  tagId          String   @map("tag_id") @db.Uuid
+  confidence     Float    @default(0)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  clinic       Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, tagId])
+  @@index([clinicId])
+  @@index([tagId])
+  @@index([conversationId])
+  @@map("conversation_tag")
+}
+
+/// Pré-agregação diária por clínica (F3 · BE-3.4) — alimenta o dashboard rápido.
+/// Preenchida pelo cron (`@nestjs/schedule`). Uma linha por (clínica, dia).
+model DailyMetric {
+  id                     String   @id @default(uuid()) @db.Uuid
+  clinicId               String   @map("clinic_id") @db.Uuid
+  date                   DateTime @db.Date
+  botMessages            Int      @default(0) @map("bot_messages")
+  userMessages           Int      @default(0) @map("user_messages")
+  leads                  Int      @default(0)
+  conversationsStarted   Int      @default(0) @map("conversations_started")
+  conversationsScheduled Int      @default(0) @map("conversations_scheduled")
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, date])
+  @@index([clinicId])
+  @@map("daily_metric")
 }
 
 enum Role {

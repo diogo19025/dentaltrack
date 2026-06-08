@@ -16,15 +16,16 @@ import { Logo } from "@/components/brand/logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useLeads } from "@/hooks/use-leads";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: string; label: string; icon: LucideIcon; badge?: string };
+type NavItem = { href: string; label: string; icon: LucideIcon };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutGrid },
   { href: "/chat", label: "Chat", icon: MessageCircle },
-  { href: "/leads", label: "Leads", icon: Users, badge: "7" },
+  { href: "/leads", label: "Leads", icon: Users },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
@@ -41,6 +42,8 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: leadsData } = useLeads();
+  const leadsBadge = leadsData?.summary.total || 0;
 
   async function logout() {
     const supabase = createClient();
@@ -57,7 +60,13 @@ export function Sidebar({
       style={{ width: "var(--sidebar-w)" }}
     >
       <div className="px-5 pb-[18px] pt-5">
-        <Logo mark={26} font={18} />
+        <Link
+          href="/"
+          aria-label="DentalTrack — ir para o Dashboard"
+          className="inline-flex rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <Logo mark={26} font={18} />
+        </Link>
       </div>
 
       <div className="px-3 pt-1">
@@ -68,6 +77,7 @@ export function Sidebar({
           {NAV.map((item) => {
             const active = isActive(pathname, item.href);
             const Icon = item.icon;
+            const badge = item.href === "/leads" && leadsBadge > 0 ? String(leadsBadge) : undefined;
             return (
               <Link
                 key={item.href}
@@ -84,14 +94,14 @@ export function Sidebar({
                   style={{ color: active ? "var(--primary)" : "var(--muted-foreground)" }}
                 />
                 <span className="flex-1">{item.label}</span>
-                {item.badge && (
+                {badge && (
                   <span
                     className={cn(
                       "tabular rounded-full px-[7px] py-[2px] text-[11px] font-medium",
                       active ? "bg-primary text-white" : "bg-secondary text-muted-foreground",
                     )}
                   >
-                    {item.badge}
+                    {badge}
                   </span>
                 )}
               </Link>

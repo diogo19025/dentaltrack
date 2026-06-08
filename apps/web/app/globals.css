@@ -226,6 +226,39 @@
 .status-agendada { background: var(--status-agendada-tint); color: var(--status-agendada); }
 .status-abandonada { background: var(--status-abandonada-tint); color: var(--status-abandonada); }
 
+/* Tabela (1:1 com theme.css) — dashboard e leads */
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 14px;
+}
+.table thead th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.table tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+  vertical-align: middle;
+}
+.table tbody tr {
+  transition: background 0.14s ease;
+}
+.table tbody tr:hover {
+  background: var(--accent);
+}
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
 /* ===== Motion (médio) ===== */
 @keyframes fadeUp {
   from { transform: translateY(10px); }
@@ -248,6 +281,30 @@
 .anim-fade {
   animation: fadeIn 0.4s ease both;
 }
+
+/* Entrada escalonada (cards do dashboard/leads) — 1:1 com theme.css */
+.stagger > * {
+  animation: fadeUp 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0.02s; }
+.stagger > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger > *:nth-child(3) { animation-delay: 0.1s; }
+.stagger > *:nth-child(4) { animation-delay: 0.14s; }
+.stagger > *:nth-child(5) { animation-delay: 0.18s; }
+.stagger > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger > *:nth-child(7) { animation-delay: 0.26s; }
+.stagger > *:nth-child(8) { animation-delay: 0.3s; }
+
+/* Crescimento das barras (funil / top tags) — escala a partir da esquerda */
+@keyframes barGrow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.bar-grow {
+  transform-origin: left;
+  animation: barGrow 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
 .lift {
   transition:
     transform 0.2s cubic-bezier(0.22, 0.61, 0.36, 1),

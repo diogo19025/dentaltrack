@@ -86,7 +86,7 @@ dentaltrack/
 | ✅ **F0** | Fundação + **Design System** | Monorepo roda; tokens/shadcn/shell prontos; autentica (Supabase), migra (Prisma). | 1 |
 | ✅ **F1** | Motor do Chatbot (BE) ‖ Login + Chat (FE) | Conversa web funcional ponta a ponta. **Validada E2E ao vivo (2026-06-06).** | 1–2 |
 | ✅ **F2** | Configurações & Catálogo (BE+FE) | Dono configura bot, procedimentos e tags. **Concluída (2026-06-07): settings + catálogo + tags (BE) e tela `/settings` com abas Identidade/Ofertas/Procedimentos/Tags (FE).** | 3 |
-| **F3** | Tags automáticas (BE) ‖ Dashboard + **Leads** (FE) | Tagging em produção + painel/leads com dados reais. | 3–4 |
+| ✅ **F3** | Tags automáticas (BE) ‖ Dashboard + **Leads** (FE) | Tagging em produção + painel/leads com dados reais. **Concluída (2026-06-08): auto-tagging, métricas + cron (BE) e Dashboard/Leads 1:1 (FE) + demo seed.** | 3–4 |
 | **F4** | QA, polish & deploy | MVP estável, testado, com seed/demo. | 5 |
 
 `‖` = trabalho paralelo BE/FE. Detalhe por tarefa abaixo (IDs `BE-x.y` / `FE-x.y`).
@@ -148,12 +148,18 @@ dentaltrack/
 | ✅ BE-2.4 | Seed/Demo | clínica demo + procedimentos + tags odontológicas | `pnpm --filter api seed` popula base. |
 
 ### F3 — Tags automáticas & Métricas
+
+> ✅ **CONCLUÍDA (2026-06-08)** — `BE-3.1`…`BE-3.4` feitos (ver [`update.md`](./update.md)).
+> Schema ganhou `ConversationTag` + `DailyMetric` (migration `f3_tagging_metrics`). O auto-tagging
+> roda fire-and-forget no `onFinish` do chat. Endpoints de apoio adicionados (`GET /leads`,
+> `GET /conversations` + `/:id`). **78 testes** (API). *Migration ainda não aplicada ao vivo.*
+
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
-| BE-3.1 | **Auto-tagging** (`ai/tagging.ts`) | pré-filtro por keyword → `generateObject` (Zod: `[{tag, confidence}]`); grava `conversation_tag` acima do limiar | Conversa recebe tags automaticamente. |
-| BE-3.2 | Módulo **metrics** (queries) | leads, msgs bot (50d), taxa de resposta, conversão, em_andamento, abandonadas (ver `context.md` §10) | Números corretos em teste. |
-| BE-3.3 | `GET /metrics?range=` | agrega + séries (linha/funil/top-tags/status) | Payload pronto para o FE. |
-| BE-3.4 | **Cron** (`@nestjs/schedule`) | preenche `daily_metric` + marca `abandonada` por inatividade | Jobs rodam e populam tabela. |
+| ✅ BE-3.1 | **Auto-tagging** (`ai/tagging.ts`) | pré-filtro por keyword → `generateObject` (Zod: `[{tag, confidence}]`); grava `conversation_tag` acima do limiar | Conversa recebe tags automaticamente. |
+| ✅ BE-3.2 | Módulo **metrics** (queries) | leads, msgs bot (50d), taxa de resposta, conversão, em_andamento, abandonadas (ver `context.md` §10) | Números corretos em teste. |
+| ✅ BE-3.3 | `GET /metrics?range=` | agrega + séries (linha/funil/top-tags/status) | Payload pronto para o FE. |
+| ✅ BE-3.4 | **Cron** (`@nestjs/schedule`) | preenche `daily_metric` + marca `abandonada` por inatividade | Jobs rodam e populam tabela. |
 
 ### Contratos de API (REST, sob `SupabaseJwtGuard`)
 | Método | Rota | Função |
@@ -219,14 +225,20 @@ dentaltrack/
 | ✅ FE-2.5 | Persistir via API (`/settings`) | salvar alimenta o system prompt (BE-2.1/BE-1.3). | Persiste e reflete no chat. |
 
 ### F3 — **`/` Dashboard** & **`/leads`** (`screen_dashboard.jsx` · `screen_leads.jsx`)
+
+> ✅ **CONCLUÍDA (2026-06-08)** — `FE-3.1`…`FE-3.6` portados 1:1 (ver [`update.md`](./update.md)).
+> Charts em **Recharts** (sparkline/linha/donut) + barras CSS (funil/top-tags); dados reais via
+> TanStack Query (`/metrics`, `/leads`, `/conversations`). **Bônus:** rail do chat com **tags ao
+> vivo** (fecha o FE-1.5) e `Segmented`/`Tag`/`StatusBadge` extraídos para reuso.
+
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
-| FE-3.1 | **Charts Recharts** (`components/charts`) | mapear os 5 do `charts.jsx`: `Sparkline` (Area), `LineChart` (2 séries, grid pontilhado), `Donut` (`Pie` innerRadius + total central), `Funnel` (barras + %), `HBars` (barras h. + pílula tag) — cores `--chart-1..5`. | Gráficos = layout do protótipo. |
-| FE-3.2 | Dashboard: header + período | segmented **7/30/50/90** (default **50**) + botão "Exportar"; refaz fetch por `range` (TanStack). | Filtro funciona. |
-| FE-3.3 | **6 KPI cards** | ícone quadrado primary-tint + badge delta (▲/▼) + label + número (30px `tabular`) + hint + **sparkline** (4 primeiros). Métricas do `context.md §10` (BE-3.3). | Cards idênticos, dados reais. |
-| FE-3.4 | Linha + Donut + Funil + Top tags | LineChart "Bot × paciente · 50d"; Donut de status (total central + legenda %); Funil (Iniciadas→Engajadas→Agendadas); HBars top tags. | Seções idênticas. |
-| FE-3.5 | Tabela "Conversas recentes" | Paciente·Procedimento·Tags·Status·Atualizada; hover `--accent`, avatar, `StatusBadge`, pílulas; "Ver todas". | Tabela idêntica. |
-| FE-3.6 | **Leads** (`/leads`) | 4 cards-resumo (Total · Agendados · Em andamento · Não compl.) + tabela (Lead·Contato·Interesse·Tags·Status·Origem·Capturado·⋯) com busca, filtro de status (Tabs) e paginação. | Tela Leads 1:1; dados reais. |
+| ✅ FE-3.1 | **Charts Recharts** (`components/charts`) | mapear os 5 do `charts.jsx`: `Sparkline` (Area), `LineChart` (2 séries, grid pontilhado), `Donut` (`Pie` innerRadius + total central), `Funnel` (barras + %), `HBars` (barras h. + pílula tag) — cores `--chart-1..5`. | Gráficos = layout do protótipo. |
+| ✅ FE-3.2 | Dashboard: header + período | segmented **7/30/50/90** (default **50**) + botão "Exportar"; refaz fetch por `range` (TanStack). | Filtro funciona. |
+| ✅ FE-3.3 | **6 KPI cards** | ícone quadrado primary-tint + badge delta (▲/▼) + label + número (30px `tabular`) + hint + **sparkline** (4 primeiros). Métricas do `context.md §10` (BE-3.3). | Cards idênticos, dados reais. |
+| ✅ FE-3.4 | Linha + Donut + Funil + Top tags | LineChart "Bot × paciente · 50d"; Donut de status (total central + legenda %); Funil (Iniciadas→Engajadas→Agendadas); HBars top tags. | Seções idênticas. |
+| ✅ FE-3.5 | Tabela "Conversas recentes" | Paciente·Procedimento·Tags·Status·Atualizada; hover `--accent`, avatar, `StatusBadge`, pílulas; "Ver todas". | Tabela idêntica. |
+| ✅ FE-3.6 | **Leads** (`/leads`) | 4 cards-resumo (Total · Agendados · Em andamento · Não compl.) + tabela (Lead·Contato·Interesse·Tags·Status·Origem·Capturado·⋯) com busca, filtro de status (Tabs) e paginação. | Tela Leads 1:1; dados reais. |
 
 > **Fora do handoff (sem mockup):** o CRUD de **procedimentos** e de **tags** (necessário ao MVP — §5 BE-2.2/BE-2.3) **não tem tela no design**. ✅ **Feito (2026-06-07)** com o **mesmo design system** (Card + Table + Dialog + tokens): adicionados como **abas extras em Configurações** (`/settings` → "Procedimentos" e "Tags"), com criação/edição em Dialog (RHF), exclusão e estados vazios. Seletor de cor por swatch nas tags; preços em reais convertidos p/ centavos.
 
