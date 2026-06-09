@@ -152,7 +152,8 @@ dentaltrack/
 > ✅ **CONCLUÍDA (2026-06-08)** — `BE-3.1`…`BE-3.4` feitos (ver [`update.md`](./update.md)).
 > Schema ganhou `ConversationTag` + `DailyMetric` (migration `f3_tagging_metrics`). O auto-tagging
 > roda fire-and-forget no `onFinish` do chat. Endpoints de apoio adicionados (`GET /leads`,
-> `GET /conversations` + `/:id`). **78 testes** (API). *Migration ainda não aplicada ao vivo.*
+> `GET /conversations` + `/:id`). **78 testes** (API). **Migration aplicada ao vivo** no Supabase,
+> com seed demo (`db:seed:demo`) e smoke (`db:smoke:f3`) validando métricas/leads consistentes.
 
 | ID | Tarefa | Detalhe | Done quando |
 |---|---|---|---|
@@ -271,14 +272,16 @@ bookAppointment(lead, proc, preferencia) → cria appointment ⇒ status='agenda
 
 ## 8. Critérios de aceitação do MVP
 
-- [ ] Um paciente conversa **em web** e o bot **tira dúvida, sugere procedimento e registra agendamento**.
-- [ ] O bot responde com a **persona e dados da clínica** configurados (nome, oferta, instruções).
-- [ ] Cada conversa é **persistida** e recebe **tags automáticas** de interesse.
-- [ ] O **dashboard** exibe, com dados reais: leads totais · msgs do bot (50d) · taxa de resposta · taxa de conversão · em andamento · não completadas · gráficos (linha, funil, top tags, status).
-- [ ] O dono faz **CRUD** de procedimentos e tags e edita **configurações** sem código.
-- [ ] **Front-end é réplica 1:1** do protótipo em `docs/design_handoff_dentaltrack/`: tokens (cores/tipografia/raios/sombras), layout das 5 telas (login, dashboard, chat, configurações, leads), estados e motion — com dados reais **sem alterar o layout**.
-- [ ] App **multi-tenant**, autenticado, responsivo (tema **light-only**), com deploy em produção (web na **Vercel** · API NestJS no **Railway/Render/Fly**).
-- [ ] Arquitetura **channel-agnostic** comprovada: o motor não conhece o canal (pronto para o adaptador WhatsApp).
+> **Status (2026-06-09, pós-F3):** 5/8 atendidos e validados ao vivo. Os 3 restantes fecham na **F4**: conferência formal de fidelidade 1:1 (QA-4.3), deploy em produção (QA-4.5) e revisão final da arquitetura channel-agnostic.
+
+- [x] Um paciente conversa **em web** e o bot **tira dúvida, sugere procedimento e registra agendamento**. *(F1, validado ao vivo)*
+- [x] O bot responde com a **persona e dados da clínica** configurados (nome, oferta, instruções). *(F1/F2)*
+- [x] Cada conversa é **persistida** e recebe **tags automáticas** de interesse. *(F1/F3)*
+- [x] O **dashboard** exibe, com dados reais: leads totais · msgs do bot (50d) · taxa de resposta · taxa de conversão · em andamento · não completadas · gráficos (linha, funil, top tags, status). *(F3, validado com demo seed + smoke)*
+- [x] O dono faz **CRUD** de procedimentos e tags e edita **configurações** sem código. *(F2)*
+- [ ] **Front-end é réplica 1:1** do protótipo em `docs/design_handoff_dentaltrack/`: tokens (cores/tipografia/raios/sombras), layout das 5 telas (login, dashboard, chat, configurações, leads), estados e motion — com dados reais **sem alterar o layout**. *(telas construídas 1:1; conferência formal lado a lado = QA-4.3, F4)*
+- [ ] App **multi-tenant**, autenticado, responsivo (tema **light-only**), com deploy em produção (web na **Vercel** · API NestJS no **Railway/Render/Fly**). *(multi-tenant + auth ok; falta o deploy — QA-4.5, F4)*
+- [ ] Arquitetura **channel-agnostic** comprovada: o motor não conhece o canal (pronto para o adaptador WhatsApp). *(motor isolado do canal desde a F1; revisão final na F4)*
 
 ---
 
@@ -292,6 +295,7 @@ bookAppointment(lead, proc, preferencia) → cria appointment ⇒ status='agenda
 | `LLM_PROVIDER` | `google` (Gemini) \| `groq` \| `anthropic` \| `openai`. |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini (free tier) — provider padrão do MVP. |
 | `GROQ_API_KEY` | Alternativa gratuita (Groq). |
+| `AI_TAG_MIN_CONFIDENCE` · `ABANDON_AFTER_HOURS` | Opcionais (F3): limiar do auto-tagging (default 0.6) · horas de inatividade até `abandonada` (default 24). |
 
 **Frontend (`apps/web`)**
 | Var | Uso |

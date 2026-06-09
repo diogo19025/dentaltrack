@@ -11,7 +11,10 @@ Monorepo: **web → Vercel**, **api → Render/Railway (Docker)**, **dados/auth 
 | `SUPABASE_URL` | Supabase → Project Settings → API. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API. |
 | `SUPABASE_JWT_SECRET` | (opcional, só HS256) Project Settings → API → JWT. |
+| `LLM_PROVIDER` · `GOOGLE_GENERATIVE_AI_API_KEY` | Provider de IA (`google` é o padrão) + key do Gemini ([AI Studio](https://aistudio.google.com/app/apikey)). |
 | `CORS_ORIGIN` | Domínio do frontend (ex.: `https://app.vercel.app`). |
+
+> Opcionais (defaults ok): `GROQ_API_KEY` (provider alternativo), `AI_TAG_MIN_CONFIDENCE` (0.6), `ABANDON_AFTER_HOURS` (24) — ver `apps/api/.env.example`.
 
 **`apps/web`** (ver `apps/web/.env.local.example`)
 | Var | Onde obter |
@@ -20,10 +23,12 @@ Monorepo: **web → Vercel**, **api → Render/Railway (Docker)**, **dados/auth 
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API. |
 | `NEXT_PUBLIC_API_URL` | URL pública da API (Render/Railway). |
 
-## 1. Banco (Supabase) — primeira migration
+## 1. Banco (Supabase) — migrations + seed
 ```bash
 # apps/api/.env preenchido com DATABASE_URL
-pnpm --filter @dentaltrack/api db:migrate   # cria as tabelas (clinic, membership)
+pnpm --filter @dentaltrack/api db:deploy      # aplica todas as migrations (F0→F3)
+pnpm --filter @dentaltrack/api db:seed        # clínica demo + catálogo + tags
+pnpm --filter @dentaltrack/api db:seed:demo   # (opcional) ~90 conversas p/ dashboard/leads
 ```
 
 ## 2. Frontend → Vercel
