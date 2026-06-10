@@ -1,8 +1,8 @@
-import { Logger } from "@nestjs/common";
-import { generateObject } from "ai";
-import { z } from "zod";
-import type { PrismaService } from "../prisma/prisma.service";
-import { getModel } from "./model";
+import { Logger } from '@nestjs/common';
+import { generateObject } from 'ai';
+import { z } from 'zod';
+import type { PrismaService } from '../prisma/prisma.service';
+import { getModel } from './model';
 
 /**
  * Auto-tagging (BE-3.1): classifica o interesse de uma conversa e grava as tags
@@ -14,7 +14,7 @@ import { getModel } from "./model";
  * **nunca lança** — uma falha aqui não pode derrubar o fluxo da conversa.
  */
 
-const logger = new Logger("AutoTagging");
+const logger = new Logger('AutoTagging');
 
 /** Confiança mínima para gravar a tag (env, default 0.6). */
 const MIN_CONFIDENCE = Number(process.env.AI_TAG_MIN_CONFIDENCE ?? 0.6);
@@ -44,7 +44,9 @@ const resultSchema = z.object({
  * keyword (se nada casar, não chama a IA — economia de quota) e só persiste as
  * tags conhecidas acima do limiar. Idempotente: faz `upsert` por (conversa, tag).
  */
-export async function tagConversation(ctx: TagConversationContext): Promise<void> {
+export async function tagConversation(
+  ctx: TagConversationContext,
+): Promise<void> {
   const { prisma, clinicId, conversationId } = ctx;
   try {
     // 1. Tags da clínica + mensagens recentes da conversa.
@@ -54,8 +56,12 @@ export async function tagConversation(ctx: TagConversationContext): Promise<void
         select: { id: true, name: true, keywords: true },
       }),
       prisma.message.findMany({
-        where: { conversationId, clinicId, role: { in: ["user", "assistant"] } },
-        orderBy: { createdAt: "desc" },
+        where: {
+          conversationId,
+          clinicId,
+          role: { in: ['user', 'assistant'] },
+        },
+        orderBy: { createdAt: 'desc' },
         take: MAX_MESSAGES,
         select: { role: true, content: true, createdAt: true },
       }),
@@ -63,7 +69,10 @@ export async function tagConversation(ctx: TagConversationContext): Promise<void
     if (tags.length === 0 || messages.length === 0) return;
 
     // 2. Pré-filtro por keyword: nome da tag ou alguma keyword aparece no texto.
-    const haystack = messages.map((m) => m.content).join("\n").toLowerCase();
+    const haystack = messages
+      .map((m) => m.content)
+      .join('\n')
+      .toLowerCase();
     const candidates = tags.filter(
       (t) =>
         haystack.includes(t.name.toLowerCase()) ||
@@ -75,8 +84,10 @@ export async function tagConversation(ctx: TagConversationContext): Promise<void
     const transcript = messages
       .slice()
       .reverse()
-      .map((m) => `${m.role === "user" ? "Paciente" : "Assistente"}: ${m.content}`)
-      .join("\n");
+      .map(
+        (m) => `${m.role === 'user' ? 'Paciente' : 'Assistente'}: ${m.content}`,
+      )
+      .join('\n');
     const allowed = candidates.map((t) => t.name);
 
     const options = {
@@ -85,12 +96,12 @@ export async function tagConversation(ctx: TagConversationContext): Promise<void
       maxRetries: 1,
       abortSignal: AbortSignal.timeout(TIMEOUT_MS),
       system: [
-        "Você classifica conversas de uma clínica odontológica pelo interesse demonstrado pelo paciente.",
-        "Escolha apenas tags da lista permitida que realmente reflitam o interesse da conversa.",
-        "Atribua um confidence de 0 a 1 para cada tag escolhida. Não invente tags fora da lista.",
-        "Se nada se aplicar, retorne uma lista vazia.",
-      ].join(" "),
-      prompt: `Tags permitidas: ${allowed.join(", ")}.\n\nConversa:\n${transcript}\n\nQuais tags se aplicam e com qual confiança?`,
+        'Você classifica conversas de uma clínica odontológica pelo interesse demonstrado pelo paciente.',
+        'Escolha apenas tags da lista permitida que realmente reflitam o interesse da conversa.',
+        'Atribua um confidence de 0 a 1 para cada tag escolhida. Não invente tags fora da lista.',
+        'Se nada se aplicar, retorne uma lista vazia.',
+      ].join(' '),
+      prompt: `Tags permitidas: ${allowed.join(', ')}.\n\nConversa:\n${transcript}\n\nQuais tags se aplicam e com qual confiança?`,
     };
     // Os genéricos de `generateObject` estouram o type-checker (TS2589, ver
     // ai/tools.ts). O cast corta a inferência profunda; tipamos a saída à mão.
@@ -99,11 +110,14 @@ export async function tagConversation(ctx: TagConversationContext): Promise<void
     };
 
     // 4. Persiste as que passam o limiar e cujo nome é conhecido (map name→id).
-    const idByName = new Map(candidates.map((t) => [t.name.toLowerCase(), t.id]));
+    const idByName = new Map(
+      candidates.map((t) => [t.name.toLowerCase(), t.id]),
+    );
     for (const item of object.tags ?? []) {
-      const tagId = idByName.get(item.tag?.toLowerCase?.() ?? "");
+      const tagId = idByName.get(item.tag?.toLowerCase?.() ?? '');
       const confidence = Number(item.confidence);
-      if (!tagId || !Number.isFinite(confidence) || confidence < MIN_CONFIDENCE) continue;
+      if (!tagId || !Number.isFinite(confidence) || confidence < MIN_CONFIDENCE)
+        continue;
       await prisma.conversationTag.upsert({
         where: { conversationId_tagId: { conversationId, tagId } },
         update: { confidence },

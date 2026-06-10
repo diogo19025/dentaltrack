@@ -1,6 +1,11 @@
-import { type ToolSet, generateText, stepCountIs, streamText } from "ai";
-import type { ServerResponse } from "node:http";
-import { type LlmProvider, getFallbackProvider, getModel, getProvider } from "./model";
+import { type ToolSet, generateText, stepCountIs, streamText } from 'ai';
+import type { ServerResponse } from 'node:http';
+import {
+  type LlmProvider,
+  getFallbackProvider,
+  getModel,
+  getProvider,
+} from './model';
 
 /** Máximo de passos (rodadas de tool-call + resposta final) por turno. */
 const MAX_STEPS = 6;
@@ -12,7 +17,7 @@ const MAX_RETRIES = Number(process.env.AI_MAX_RETRIES ?? 2);
 
 /** Mensagem de contexto enviada ao modelo (apenas user/assistant). */
 export interface ReplyMessage {
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
 }
 
@@ -28,8 +33,8 @@ export interface GenerateReplyResult {
  */
 export class AiUnavailableError extends Error {
   constructor(readonly cause: unknown) {
-    super("Falha ao gerar a resposta da IA.");
-    this.name = "AiUnavailableError";
+    super('Falha ao gerar a resposta da IA.');
+    this.name = 'AiUnavailableError';
   }
 }
 
@@ -38,11 +43,11 @@ export class AiUnavailableError extends Error {
  * builder com persona/ofertas/catálogo está em `ai/prompt.ts` (BE-1.3).
  */
 export const DEFAULT_SYSTEM_PROMPT = [
-  "Você é o assistente virtual de uma clínica odontológica no Brasil.",
-  "Responda sempre em português do Brasil, de forma cordial, clara e breve.",
-  "Tire dúvidas sobre procedimentos e conduza gentilmente o paciente para agendar uma avaliação quando fizer sentido.",
-  "Não invente preços exatos, diagnósticos ou informações clínicas específicas; em caso de dúvida, sugira uma avaliação presencial.",
-].join(" ");
+  'Você é o assistente virtual de uma clínica odontológica no Brasil.',
+  'Responda sempre em português do Brasil, de forma cordial, clara e breve.',
+  'Tire dúvidas sobre procedimentos e conduza gentilmente o paciente para agendar uma avaliação quando fizer sentido.',
+  'Não invente preços exatos, diagnósticos ou informações clínicas específicas; em caso de dúvida, sugira uma avaliação presencial.',
+].join(' ');
 
 /** Uma tentativa contra um provider específico (com timeout + retries do SDK). */
 async function callProvider(
@@ -143,10 +148,13 @@ export function streamAssistantReply(
       : undefined,
     onFinish: options.onFinish
       ? (event: { text: string; totalUsage?: { totalTokens?: number } }) =>
-          options.onFinish!({ text: event.text.trim(), tokens: event.totalUsage?.totalTokens })
+          options.onFinish!({
+            text: event.text.trim(),
+            tokens: event.totalUsage?.totalTokens,
+          })
       : undefined,
   };
   // Mesmo motivo do `callProvider`: os genéricos de `tools` estouram o tsc
   // (TS2589). O cast corta a inferência profunda sem mudar o runtime.
-  return streamText(streamOptions as never) as unknown as StreamingReply;
+  return streamText(streamOptions as never);
 }

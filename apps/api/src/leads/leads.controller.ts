@@ -1,14 +1,14 @@
-import { Controller, Get, UseGuards } from "@nestjs/common";
-import type { LeadsResponse } from "@dentaltrack/shared";
-import { ClinicId } from "../auth/clinic-id.decorator";
-import { TenantGuard } from "../auth/tenant.guard";
-import { LeadsService } from "./leads.service";
+import { Controller, Get, UseGuards } from '@nestjs/common';
+import type { LeadsResponse } from '@dentaltrack/shared';
+import { ClinicId } from '../auth/clinic-id.decorator';
+import { TenantGuard } from '../auth/tenant.guard';
+import { LeadsService } from './leads.service';
 
 /**
  * GET /leads (F3 · FE-3.6) — leads capturados + resumo. Protegido pelo
  * SupabaseJwtGuard (global) + TenantGuard (resolve o `clinicId`).
  */
-@Controller("leads")
+@Controller('leads')
 @UseGuards(TenantGuard)
 export class LeadsController {
   constructor(private readonly leads: LeadsService) {}

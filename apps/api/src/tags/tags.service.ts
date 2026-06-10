@@ -1,7 +1,11 @@
-import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import type { CreateTagInput, UpdateTagInput } from "@dentaltrack/shared";
-import { Prisma, type Tag } from "../../generated/prisma/client";
-import { PrismaService } from "../prisma/prisma.service";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type { CreateTagInput, UpdateTagInput } from '@dentaltrack/shared';
+import { Prisma, type Tag } from '../../generated/prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Tags de interesse da clínica (BE-2.3). CRUD escopado por `clinicId`. As
@@ -14,18 +18,29 @@ export class TagsService {
 
   /** Lista as tags da clínica (ordem alfabética). */
   list(clinicId: string): Promise<Tag[]> {
-    return this.prisma.tag.findMany({ where: { clinicId }, orderBy: { name: "asc" } });
+    return this.prisma.tag.findMany({
+      where: { clinicId },
+      orderBy: { name: 'asc' },
+    });
   }
 
   /** Cria uma tag na clínica (409 se o nome já existir). */
   create(clinicId: string, input: CreateTagInput): Promise<Tag> {
-    return this.run(() => this.prisma.tag.create({ data: { clinicId, ...input } }));
+    return this.run(() =>
+      this.prisma.tag.create({ data: { clinicId, ...input } }),
+    );
   }
 
   /** Atualiza uma tag da clínica (404 se não pertencer ao tenant, 409 se nome duplicado). */
-  async update(clinicId: string, id: string, input: UpdateTagInput): Promise<Tag> {
+  async update(
+    clinicId: string,
+    id: string,
+    input: UpdateTagInput,
+  ): Promise<Tag> {
     await this.ensureExists(clinicId, id);
-    return this.run(() => this.prisma.tag.update({ where: { id }, data: input }));
+    return this.run(() =>
+      this.prisma.tag.update({ where: { id }, data: input }),
+    );
   }
 
   /** Remove uma tag da clínica (404 se não pertencer ao tenant). */
@@ -37,7 +52,10 @@ export class TagsService {
 
   /** Garante que a tag existe e pertence à clínica do tenant. */
   private async ensureExists(clinicId: string, id: string): Promise<void> {
-    const found = await this.prisma.tag.findFirst({ where: { id, clinicId }, select: { id: true } });
+    const found = await this.prisma.tag.findFirst({
+      where: { id, clinicId },
+      select: { id: true },
+    });
     if (!found) throw new NotFoundException(`Tag ${id} não encontrada.`);
   }
 
@@ -46,8 +64,11 @@ export class TagsService {
     try {
       return await op();
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-        throw new ConflictException("Já existe uma tag com esse nome.");
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException('Já existe uma tag com esse nome.');
       }
       throw err;
     }

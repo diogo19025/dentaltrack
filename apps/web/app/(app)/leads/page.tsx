@@ -89,7 +89,7 @@ export default function LeadsPage() {
         {/* Toolbar */}
         <div className="flex flex-wrap items-center gap-3 border-b border-border px-[18px] py-4">
           <div className="relative min-w-[220px] max-w-[340px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-[17px] -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-[13px] top-1/2 size-[17px] -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => onSearch(e.target.value)}
@@ -98,8 +98,8 @@ export default function LeadsPage() {
             />
           </div>
           <div className="flex-1" />
-          <Segmented options={STATUS_FILTERS} value={filter} onChange={onFilter} />
-          <Button variant="secondary" size="icon" aria-label="Filtros">
+          <Segmented aria-label="Filtrar por status" options={STATUS_FILTERS} value={filter} onChange={onFilter} />
+          <Button variant="secondary" size="icon-sm" aria-label="Filtros">
             <Filter className="size-4" />
           </Button>
         </div>
@@ -169,7 +169,7 @@ export default function LeadsPage() {
                       )}
                     </td>
                     <td>
-                      <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-[12px] font-medium text-muted-foreground">
+                      <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-[5px] text-[12px] font-medium text-muted-foreground">
                         {l.source === "web" ? "Web" : l.source}
                       </span>
                     </td>
@@ -194,8 +194,8 @@ export default function LeadsPage() {
         {!isLoading && filtered.length > 0 && (
           <div className="flex items-center justify-between border-t border-border px-[18px] py-3.5">
             <span className="text-[13px] text-muted-foreground">
-              Mostrando <strong className="text-foreground">{pageItems.length}</strong> de{" "}
-              {filtered.length} leads
+              Mostrando <strong className="text-foreground">{filtered.length}</strong> de{" "}
+              {leads.length} leads
             </span>
             <div className="flex gap-2">
               <Button

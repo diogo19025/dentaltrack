@@ -16,8 +16,9 @@ const META: Record<ConversationStatus, { label: string; color: string }> = {
  */
 export function Donut({ data, size = 168 }: { data: StatusSlice[]; size?: number }) {
   const total = data.reduce((a, b) => a + b.value, 0);
-  const inner = size / 2 - 26;
-  const outer = size / 2 - 2;
+  // Anel de 16px centrado como no mock (raio até size/2-16, strokeWidth 16).
+  const inner = size / 2 - 24;
+  const outer = size / 2 - 8;
 
   return (
     <div className="flex items-center gap-6">
@@ -40,7 +41,7 @@ export function Donut({ data, size = 168 }: { data: StatusSlice[]; size?: number
                 dataKey="value"
                 innerRadius={inner}
                 outerRadius={outer}
-                paddingAngle={2}
+                cornerRadius={8}
                 stroke="none"
                 startAngle={90}
                 endAngle={-270}
@@ -60,7 +61,7 @@ export function Donut({ data, size = 168 }: { data: StatusSlice[]; size?: number
 
       <div className="flex flex-col gap-3">
         {data.map((s) => (
-          <div key={s.status} className="flex items-center gap-2.5">
+          <div key={s.status} className="flex items-center gap-[9px]">
             <span className="size-2.5 flex-none rounded-[3px]" style={{ background: META[s.status].color }} />
             <span className="text-[13px]">{META[s.status].label}</span>
             <span className="tabular ml-1 text-[13px] text-muted-foreground">

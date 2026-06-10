@@ -22,3 +22,13 @@ services:
         sync: false
       - key: CORS_ORIGIN
         sync: false
+      # IA do chatbot (sem isto o bot não responde em produção).
+      - key: LLM_PROVIDER
+        value: google
+      - key: GOOGLE_GENERATIVE_AI_API_KEY
+        sync: false
+      # Fallback opcional (hardening BE-1.8): groq + GROQ_API_KEY.
+      - key: LLM_FALLBACK_PROVIDER
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false

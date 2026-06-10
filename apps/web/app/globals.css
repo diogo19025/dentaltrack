@@ -112,6 +112,8 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-active: var(--primary-active);
   --color-primary-tint: var(--primary-tint);
   --color-primary-tint-strong: var(--primary-tint-strong);
   --color-secondary: var(--secondary);
@@ -148,6 +150,14 @@
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
+
+  /* Sombras clínicas do design → utilitários shadow-* (sem isto o Tailwind
+     usa as sombras pretas default, fora do tema). */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -270,6 +280,12 @@
 }
 @keyframes shimmer {
   100% { background-position: -200% 0; }
+}
+/* Skeleton de loading (1:1 com o `Skeleton` do ui.jsx — gradiente + shimmer). */
+.shimmer {
+  background: linear-gradient(90deg, #eef3f2, #e3ebea, #eef3f2);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
 }
 @keyframes fadeIn {
   from { opacity: 0.4; }

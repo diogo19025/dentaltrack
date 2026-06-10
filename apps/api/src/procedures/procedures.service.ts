@@ -1,6 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import type { CreateProcedureInput, ProcedureDto, UpdateProcedureInput } from "@dentaltrack/shared";
-import { PrismaService } from "../prisma/prisma.service";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import type {
+  CreateProcedureInput,
+  ProcedureDto,
+  UpdateProcedureInput,
+} from '@dentaltrack/shared';
+import { PrismaService } from '../prisma/prisma.service';
 
 /** Procedimento com as tags associadas (só os ids) — base do `ProcedureDto`. */
 interface ProcedureRow {
@@ -45,14 +53,17 @@ export class ProceduresService {
   async list(clinicId: string): Promise<ProcedureDto[]> {
     const rows = await this.prisma.procedure.findMany({
       where: { clinicId },
-      orderBy: { name: "asc" },
+      orderBy: { name: 'asc' },
       include: WITH_TAGS,
     });
     return rows.map(toDto);
   }
 
   /** Cria um procedimento na clínica, associando as tags informadas. */
-  async create(clinicId: string, input: CreateProcedureInput): Promise<ProcedureDto> {
+  async create(
+    clinicId: string,
+    input: CreateProcedureInput,
+  ): Promise<ProcedureDto> {
     const { tagIds, ...rest } = input;
     await this.assertTagsOwned(clinicId, tagIds);
     const row = await this.prisma.procedure.create({
@@ -67,14 +78,21 @@ export class ProceduresService {
   }
 
   /** Atualiza um procedimento da clínica (404 se não pertencer ao tenant). */
-  async update(clinicId: string, id: string, input: UpdateProcedureInput): Promise<ProcedureDto> {
+  async update(
+    clinicId: string,
+    id: string,
+    input: UpdateProcedureInput,
+  ): Promise<ProcedureDto> {
     await this.ensureExists(clinicId, id);
     const { tagIds, ...rest } = input;
     await this.assertTagsOwned(clinicId, tagIds);
     const row = await this.prisma.procedure.update({
       where: { id },
       // `set` substitui o conjunto de tags pelo informado (só quando enviado).
-      data: { ...rest, ...(tagIds ? { tags: { set: tagIds.map((id) => ({ id })) } } : {}) },
+      data: {
+        ...rest,
+        ...(tagIds ? { tags: { set: tagIds.map((id) => ({ id })) } } : {}),
+      },
       include: WITH_TAGS,
     });
     return toDto(row);
@@ -93,16 +111,24 @@ export class ProceduresService {
       where: { id, clinicId },
       select: { id: true },
     });
-    if (!found) throw new NotFoundException(`Procedimento ${id} não encontrado.`);
+    if (!found)
+      throw new NotFoundException(`Procedimento ${id} não encontrado.`);
   }
 
   /** Garante que todas as tags informadas pertencem à clínica (anti cross-tenant). */
-  private async assertTagsOwned(clinicId: string, tagIds?: string[]): Promise<void> {
+  private async assertTagsOwned(
+    clinicId: string,
+    tagIds?: string[],
+  ): Promise<void> {
     if (!tagIds || tagIds.length === 0) return;
     const unique = [...new Set(tagIds)];
-    const count = await this.prisma.tag.count({ where: { clinicId, id: { in: unique } } });
+    const count = await this.prisma.tag.count({
+      where: { clinicId, id: { in: unique } },
+    });
     if (count !== unique.length) {
-      throw new BadRequestException("Uma ou mais tags não pertencem à clínica.");
+      throw new BadRequestException(
+        'Uma ou mais tags não pertencem à clínica.',
+      );
     }
   }
 }

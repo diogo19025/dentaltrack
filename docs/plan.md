@@ -87,7 +87,7 @@ dentaltrack/
 | ✅ **F1** | Motor do Chatbot (BE) ‖ Login + Chat (FE) | Conversa web funcional ponta a ponta. **Validada E2E ao vivo (2026-06-06).** | 1–2 |
 | ✅ **F2** | Configurações & Catálogo (BE+FE) | Dono configura bot, procedimentos e tags. **Concluída (2026-06-07): settings + catálogo + tags (BE) e tela `/settings` com abas Identidade/Ofertas/Procedimentos/Tags (FE).** | 3 |
 | ✅ **F3** | Tags automáticas (BE) ‖ Dashboard + **Leads** (FE) | Tagging em produção + painel/leads com dados reais. **Concluída (2026-06-08): auto-tagging, métricas + cron (BE) e Dashboard/Leads 1:1 (FE) + demo seed.** | 3–4 |
-| **F4** | QA, polish & deploy | MVP estável, testado, com seed/demo. | 5 |
+| 🔶 **F4** | QA, polish & deploy | MVP estável, testado, com seed/demo. **Em conclusão (2026-06-09): QA-4.1…4.4 feitos + README/runbook; falta executar o deploy e a 1ª rodada ao vivo do E2E.** | 5 |
 
 `‖` = trabalho paralelo BE/FE. Detalhe por tarefa abaixo (IDs `BE-x.y` / `FE-x.y`).
 
@@ -244,13 +244,19 @@ dentaltrack/
 > **Fora do handoff (sem mockup):** o CRUD de **procedimentos** e de **tags** (necessário ao MVP — §5 BE-2.2/BE-2.3) **não tem tela no design**. ✅ **Feito (2026-06-07)** com o **mesmo design system** (Card + Table + Dialog + tokens): adicionados como **abas extras em Configurações** (`/settings` → "Procedimentos" e "Tags"), com criação/edição em Dialog (RHF), exclusão e estados vazios. Seletor de cor por swatch nas tags; preços em reais convertidos p/ centavos.
 
 ### F4 — QA, fidelidade & polish (BE+FE)
+
+> ⚙️ **EM CONCLUSÃO (2026-06-09)** — QA-4.1…4.4 feitos (ver [`update.md`](./update.md)).
+> Pendentes: **execução do deploy** (runbook pronto em [`DEPLOY.md`](./DEPLOY.md), feito em conjunto)
+> e a **1ª rodada ao vivo do E2E** (pré-requisito único no Supabase: service key **ou** confirmar o
+> usuário e2e — o runner imprime as instruções).
+
 | ID | Tarefa | Done quando |
 |---|---|---|
-| QA-4.1 | Testes unit: **Jest** (services, tools, métricas — API) · **Vitest** (web) | cobertura dos caminhos críticos. |
-| QA-4.2 | E2E (Playwright): login, conversar→agendar, editar config, dashboard, leads | fluxos verdes. |
-| QA-4.3 | **Conferência de fidelidade 1:1** com o protótipo (tokens, layout das 5 telas, estados, motion) | bate lado a lado com `DentalTrack.html`. |
-| QA-4.4 | A11y AA (foco/ring, contraste), responsividade, `prefers-reduced-motion`, estados vazio/loading/erro | revisão passa. |
-| QA-4.5 | Seed/demo + README + deploy produção (web→Vercel · api→Railway/Render) | MVP demonstrável com 1 clique. |
+| ✅ QA-4.1 | Testes unit: **Jest** (services, tools, métricas — API) · **Vitest** (web) | cobertura dos caminhos críticos. **82 (API) + 47 (web).** |
+| ✅ QA-4.2 | E2E (Playwright): login, conversar→agendar, editar config, dashboard, leads | fluxos verdes. **Suite pronta com provider `mock` da IA (determinístico/offline) em portas dedicadas; 1ª rodada aguarda o pré-requisito do usuário e2e.** |
+| ✅ QA-4.3 | **Conferência de fidelidade 1:1** com o protótipo (tokens, layout das 5 telas, estados, motion) | bate lado a lado com `DentalTrack.html`. **Auditoria completa + ~35 desvios corrigidos (primitivos shadcn re-medidos, sombras do tema, geometria dos charts).** |
+| ✅ QA-4.4 | A11y AA (foco/ring, contraste), responsividade, `prefers-reduced-motion`, estados vazio/loading/erro | revisão passa. **Labels↔campos, tablist com setas, role=log no chat, alerts/status, aria em switches/toggles.** |
+| 🔶 QA-4.5 | Seed/demo + README + deploy produção (web→Vercel · api→Railway/Render) | MVP demonstrável com 1 clique. **README + runbook + configs prontos (`render.yaml` com envs de IA); falta executar o deploy.** |
 
 ---
 

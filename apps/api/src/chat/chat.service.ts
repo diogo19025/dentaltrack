@@ -1,12 +1,12 @@
-import { Injectable, Logger, NotFoundException } from "@nestjs/common";
-import type { ServerResponse } from "node:http";
-import type { ChatRequest } from "@dentaltrack/shared";
-import { type ReplyMessage, streamAssistantReply } from "../ai/generate-reply";
-import { buildSystemPrompt } from "../ai/prompt";
-import { tagConversation } from "../ai/tagging";
-import { buildChatTools } from "../ai/tools";
-import { ConversationsService } from "../conversations/conversations.service";
-import { PrismaService } from "../prisma/prisma.service";
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { ServerResponse } from 'node:http';
+import type { ChatRequest } from '@dentaltrack/shared';
+import { type ReplyMessage, streamAssistantReply } from '../ai/generate-reply';
+import { buildSystemPrompt } from '../ai/prompt';
+import { tagConversation } from '../ai/tagging';
+import { buildChatTools } from '../ai/tools';
+import { ConversationsService } from '../conversations/conversations.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Orquestra um turno de conversa com **streaming** (BE-1.6). Channel-agnostic:
@@ -30,18 +30,34 @@ export class ChatService {
    * `onFinish`; o `conversationId` volta no header `X-Conversation-Id`. As tools
    * (lead/agendamento) rodam durante o stream e disparam a transição p/ `agendada`.
    */
-  async streamMessage(input: ChatRequest, clinicId: string, res: ServerResponse): Promise<void> {
+  async streamMessage(
+    input: ChatRequest,
+    clinicId: string,
+    res: ServerResponse,
+  ): Promise<void> {
     const conversationId = await this.resolveConversation(input, clinicId);
 
     // 1. Persiste a mensagem do paciente (antes do stream → retry mantém contexto).
-    await this.conversations.appendMessage(conversationId, "user", input.message, {}, clinicId);
+    await this.conversations.appendMessage(
+      conversationId,
+      'user',
+      input.message,
+      {},
+      clinicId,
+    );
 
     // 2. System prompt (dados da clínica) + histórico (user/assistant) + tools.
     const systemPrompt = await this.buildPrompt(clinicId);
-    const convo = await this.conversations.getConversation(conversationId, clinicId);
+    const convo = await this.conversations.getConversation(
+      conversationId,
+      clinicId,
+    );
     const history: ReplyMessage[] = convo.messages
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role as ReplyMessage["role"], content: m.content }));
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({
+        role: m.role as ReplyMessage['role'],
+        content: m.content,
+      }));
 
     const tools = buildChatTools({
       prisma: this.prisma,
@@ -57,30 +73,38 @@ export class ChatService {
         try {
           await this.conversations.appendMessage(
             conversationId,
-            "assistant",
+            'assistant',
             text,
             { tokens },
             clinicId,
           );
           // Auto-tagging (BE-3.1) — best-effort, fora do caminho do stream e
           // após a resposta persistida (o classificador lê o histórico do banco).
-          void tagConversation({ prisma: this.prisma, clinicId, conversationId });
+          void tagConversation({
+            prisma: this.prisma,
+            clinicId,
+            conversationId,
+          });
         } catch (err) {
           const detail = err instanceof Error ? err.message : String(err);
-          this.logger.error(`Falha ao persistir resposta (conversa ${conversationId}): ${detail}`);
+          this.logger.error(
+            `Falha ao persistir resposta (conversa ${conversationId}): ${detail}`,
+          );
         }
       },
       onError: (err) => {
         const detail = err instanceof Error ? err.message : String(err);
-        this.logger.error(`IA (stream) indisponível (conversa ${conversationId}): ${detail}`);
+        this.logger.error(
+          `IA (stream) indisponível (conversa ${conversationId}): ${detail}`,
+        );
       },
     });
 
     // 4. Pipa como UI message stream; devolve o conversationId no header.
     stream.pipeUIMessageStreamToResponse(res, {
-      headers: { "X-Conversation-Id": conversationId },
+      headers: { 'X-Conversation-Id': conversationId },
       onError: () =>
-        "O assistente está temporariamente indisponível. Sua mensagem foi salva — tente novamente em instantes.",
+        'O assistente está temporariamente indisponível. Sua mensagem foi salva — tente novamente em instantes.',
     });
   }
 
@@ -94,10 +118,11 @@ export class ChatService {
       this.prisma.clinicSettings.findUnique({ where: { clinicId } }),
       this.prisma.procedure.findMany({
         where: { clinicId, active: true },
-        orderBy: { name: "asc" },
+        orderBy: { name: 'asc' },
       }),
     ]);
-    if (!clinic) throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
+    if (!clinic)
+      throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
     return buildSystemPrompt({ clinic, settings, procedures });
   }
 
@@ -106,14 +131,19 @@ export class ChatService {
    * - com `conversationId`: valida que pertence à clínica (404 se não);
    * - sem ele: abre uma nova conversa na clínica.
    */
-  private async resolveConversation(input: ChatRequest, clinicId: string): Promise<string> {
+  private async resolveConversation(
+    input: ChatRequest,
+    clinicId: string,
+  ): Promise<string> {
     if (input.conversationId) {
       const convo = await this.prisma.conversation.findFirst({
         where: { id: input.conversationId, clinicId },
         select: { id: true },
       });
       if (!convo) {
-        throw new NotFoundException(`Conversa ${input.conversationId} não encontrada.`);
+        throw new NotFoundException(
+          `Conversa ${input.conversationId} não encontrada.`,
+        );
       }
       return convo.id;
     }

@@ -1,6 +1,6 @@
-import { Module } from "@nestjs/common";
-import { TagsController } from "./tags.controller";
-import { TagsService } from "./tags.service";
+import { Module } from '@nestjs/common';
+import { TagsController } from './tags.controller';
+import { TagsService } from './tags.service';
 
 /** Módulo de tags de interesse (BE-2.3 — F2). */
 @Module({

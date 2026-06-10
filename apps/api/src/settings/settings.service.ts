@@ -1,16 +1,16 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   type ClinicSettingsDto,
   DEFAULT_AVAILABILITY,
   TONES,
   type Tone,
   type UpdateSettingsInput,
-} from "@dentaltrack/shared";
-import type { Clinic, ClinicSettings } from "../../generated/prisma/client";
-import { PrismaService } from "../prisma/prisma.service";
+} from '@dentaltrack/shared';
+import type { Clinic, ClinicSettings } from '../../generated/prisma/client';
+import { PrismaService } from '../prisma/prisma.service';
 
 /** Tom padrão quando a clínica ainda não escolheu (espelha o design). */
-const DEFAULT_TONE: Tone = "amigavel";
+const DEFAULT_TONE: Tone = 'amigavel';
 
 /**
  * Serviço de Configurações do bot (BE-2.1). Tudo escopado por `clinicId`.
@@ -27,7 +27,8 @@ export class SettingsService {
       where: { id: clinicId },
       include: { settings: true },
     });
-    if (!clinic) throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
+    if (!clinic)
+      throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
     return this.toDto(clinic, clinic.settings);
   }
 
@@ -35,9 +36,15 @@ export class SettingsService {
    * Atualiza as configurações (parcial). O nome da clínica vai para `Clinic`;
    * o restante para `ClinicSettings` (criado on-demand via upsert).
    */
-  async updateSettings(clinicId: string, input: UpdateSettingsInput): Promise<ClinicSettingsDto> {
-    const clinic = await this.prisma.clinic.findUnique({ where: { id: clinicId } });
-    if (!clinic) throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
+  async updateSettings(
+    clinicId: string,
+    input: UpdateSettingsInput,
+  ): Promise<ClinicSettingsDto> {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+    });
+    if (!clinic)
+      throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
 
     const { clinicName, availability, ...rest } = input;
 
@@ -63,35 +70,44 @@ export class SettingsService {
   }
 
   /** Normaliza linha do banco → DTO (sem nulls; tom e disponibilidade válidos). */
-  private toDto(clinic: Clinic, settings: ClinicSettings | null): ClinicSettingsDto {
+  private toDto(
+    clinic: Clinic,
+    settings: ClinicSettings | null,
+  ): ClinicSettingsDto {
     const tone = settings?.tone;
     return {
       clinicName: clinic.name,
-      specialty: settings?.specialty ?? "",
-      description: settings?.description ?? "",
-      assistantName: settings?.assistantName ?? "",
+      specialty: settings?.specialty ?? '',
+      description: settings?.description ?? '',
+      assistantName: settings?.assistantName ?? '',
       tone: TONES.includes(tone as Tone) ? (tone as Tone) : DEFAULT_TONE,
-      greeting: settings?.greeting ?? "",
-      instructions: settings?.instructions ?? "",
+      greeting: settings?.greeting ?? '',
+      instructions: settings?.instructions ?? '',
       offerEnabled: settings?.offerEnabled ?? false,
-      offerText: settings?.offerText ?? "",
-      offerStartsOn: settings?.offerStartsOn ?? "",
-      offerEndsOn: settings?.offerEndsOn ?? "",
+      offerText: settings?.offerText ?? '',
+      offerStartsOn: settings?.offerStartsOn ?? '',
+      offerEndsOn: settings?.offerEndsOn ?? '',
       availability: this.normalizeAvailability(settings?.availability),
     };
   }
 
   /** Aceita o Json do banco e devolve sempre uma lista válida (ou o default). */
-  private normalizeAvailability(value: unknown): ClinicSettingsDto["availability"] {
+  private normalizeAvailability(
+    value: unknown,
+  ): ClinicSettingsDto['availability'] {
     if (!Array.isArray(value)) return DEFAULT_AVAILABILITY;
     const slots = value.filter(
       (s): s is { day: string; hours: string; open: boolean } =>
-        typeof s === "object" &&
+        typeof s === 'object' &&
         s !== null &&
-        typeof (s as { day?: unknown }).day === "string",
+        typeof (s as { day?: unknown }).day === 'string',
     );
     return slots.length > 0
-      ? slots.map((s) => ({ day: s.day, hours: s.hours ?? "", open: Boolean(s.open) }))
+      ? slots.map((s) => ({
+          day: s.day,
+          hours: s.hours ?? '',
+          open: Boolean(s.open),
+        }))
       : DEFAULT_AVAILABILITY;
   }
 }

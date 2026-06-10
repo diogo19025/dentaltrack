@@ -139,7 +139,7 @@ export default function LoginPage() {
       {/* Painel do formulário */}
       <main className="flex items-center justify-center px-8 py-10">
         <div key={mode} className="anim-fade-up w-full max-w-[388px]">
-          <h2 className="mb-1.5 text-[22px] font-semibold tracking-[-0.015em]">
+          <h2 className="mb-1.5 text-[22px] font-semibold leading-[1.2] tracking-[-0.015em]">
             {isSignup ? "Criar sua conta" : "Bem-vindo de volta"}
           </h2>
           <p className="mb-7 text-sm text-muted-foreground">
@@ -206,17 +206,22 @@ export default function LoginPage() {
                   <input type="checkbox" defaultChecked className="size-[15px] accent-primary" />
                   Manter conectado
                 </label>
-                <button
-                  type="button"
-                  className="text-[13px] font-medium text-primary hover:underline"
-                >
+                <button type="button" className="text-[13px] font-medium text-primary">
                   Esqueci a senha
                 </button>
               </div>
             )}
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
-            {notice && <p className="text-sm text-success">{notice}</p>}
+            {error && (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            )}
+            {notice && (
+              <p role="status" className="text-sm text-success">
+                {notice}
+              </p>
+            )}
 
             <Button
               type="submit"
@@ -224,7 +229,7 @@ export default function LoginPage() {
               className="mt-1 h-[46px] w-full text-[15px]"
             >
               {loading ? "Aguarde…" : isSignup ? "Criar conta" : "Entrar"}
-              <ChevronRight className="size-[17px]" />
+              <ChevronRight />
             </Button>
           </form>
 
@@ -245,11 +250,7 @@ export default function LoginPage() {
 
           <p className="mt-[26px] text-center text-sm text-muted-foreground">
             {isSignup ? "Já tem conta?" : "Ainda não tem conta?"}{" "}
-            <button
-              type="button"
-              onClick={toggleMode}
-              className="font-semibold text-primary hover:underline"
-            >
+            <button type="button" onClick={toggleMode} className="font-semibold text-primary">
               {isSignup ? "Entrar" : "Criar conta"}
             </button>
           </p>

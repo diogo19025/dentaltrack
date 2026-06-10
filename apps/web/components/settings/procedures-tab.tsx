@@ -252,29 +252,29 @@ function ProcedureDialog({
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div>
-            <Label className="mb-2 text-[13px]">Nome</Label>
-            <Input {...register("name", { required: true })} placeholder="Ex.: Implante dentário" autoFocus />
+            <Label htmlFor="proc-name" className="mb-2 text-[13px]">Nome</Label>
+            <Input id="proc-name" {...register("name", { required: true })} placeholder="Ex.: Implante dentário" autoFocus />
           </div>
           <div>
-            <Label className="mb-2 text-[13px]">Descrição</Label>
-            <Textarea rows={2} {...register("description")} placeholder="O que está incluído, indicações…" />
+            <Label htmlFor="proc-description" className="mb-2 text-[13px]">Descrição</Label>
+            <Textarea id="proc-description" rows={2} {...register("description")} placeholder="O que está incluído, indicações…" />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label className="mb-2 text-[13px]">Preço mín. (R$)</Label>
-              <Input type="number" min={0} step="0.01" {...register("priceMin")} placeholder="1500" />
+              <Label htmlFor="proc-price-min" className="mb-2 text-[13px]">Preço mín. (R$)</Label>
+              <Input id="proc-price-min" type="number" min={0} step="0.01" {...register("priceMin")} placeholder="1500" />
             </div>
             <div>
-              <Label className="mb-2 text-[13px]">Preço máx. (R$)</Label>
-              <Input type="number" min={0} step="0.01" {...register("priceMax")} placeholder="3500" />
+              <Label htmlFor="proc-price-max" className="mb-2 text-[13px]">Preço máx. (R$)</Label>
+              <Input id="proc-price-max" type="number" min={0} step="0.01" {...register("priceMax")} placeholder="3500" />
             </div>
             <div>
-              <Label className="mb-2 text-[13px]">Duração (min)</Label>
-              <Input type="number" min={0} step="5" {...register("duration")} placeholder="90" />
+              <Label htmlFor="proc-duration" className="mb-2 text-[13px]">Duração (min)</Label>
+              <Input id="proc-duration" type="number" min={0} step="5" {...register("duration")} placeholder="90" />
             </div>
           </div>
 
-          <div>
+          <div role="group" aria-label="Tags de interesse">
             <Label className="mb-2 text-[13px]">Tags de interesse</Label>
             {allTags.length === 0 ? (
               <p className="text-[12.5px] text-muted-foreground">
@@ -288,6 +288,7 @@ function ProcedureDialog({
                     <button
                       key={t.id}
                       type="button"
+                      aria-pressed={on}
                       onClick={() => toggleTag(t.id)}
                       className={cn(
                         "rounded-full border px-2.5 py-1 text-xs font-medium transition-all",
@@ -318,7 +319,7 @@ function ProcedureDialog({
           </label>
 
           {(create.isError || update.isError) && (
-            <p className="text-[12.5px] text-destructive">
+            <p role="alert" className="text-[12.5px] text-destructive">
               Não foi possível salvar. Confira os campos e tente novamente.
             </p>
           )}

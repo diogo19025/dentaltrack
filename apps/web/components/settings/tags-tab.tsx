@@ -182,16 +182,16 @@ function TagDialog({ tag, onClose }: { tag: TagDto | null; onClose: () => void }
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="mb-2 text-[13px]">Nome</Label>
-              <Input {...register("name", { required: true })} placeholder="Ex.: implante" autoFocus />
+              <Label htmlFor="tag-name" className="mb-2 text-[13px]">Nome</Label>
+              <Input id="tag-name" {...register("name", { required: true })} placeholder="Ex.: implante" autoFocus />
             </div>
             <div>
-              <Label className="mb-2 text-[13px]">Categoria</Label>
-              <Input {...register("category")} placeholder="Ex.: Procedimento" />
+              <Label htmlFor="tag-category" className="mb-2 text-[13px]">Categoria</Label>
+              <Input id="tag-category" {...register("category")} placeholder="Ex.: Procedimento" />
             </div>
           </div>
 
-          <div>
+          <div role="group" aria-label="Cor da tag">
             <Label className="mb-2 text-[13px]">Cor</Label>
             <div className="flex gap-2">
               {TAG_COLORS.map((c) => (
@@ -199,6 +199,7 @@ function TagDialog({ tag, onClose }: { tag: TagDto | null; onClose: () => void }
                   key={c}
                   type="button"
                   aria-label={c}
+                  aria-pressed={color === c}
                   onClick={() => setValue("color", c)}
                   className={cn(
                     "size-7 rounded-full ring-2 ring-offset-2 ring-offset-background transition-all",
@@ -216,13 +217,13 @@ function TagDialog({ tag, onClose }: { tag: TagDto | null; onClose: () => void }
           </div>
 
           <div>
-            <Label className="mb-2 text-[13px]">Palavras-chave</Label>
-            <Input {...register("keywords")} placeholder="implante, dente perdido, perdi um dente" />
+            <Label htmlFor="tag-keywords" className="mb-2 text-[13px]">Palavras-chave</Label>
+            <Input id="tag-keywords" {...register("keywords")} placeholder="implante, dente perdido, perdi um dente" />
             <p className="mt-1.5 text-[12px] text-muted-foreground">Separe por vírgula.</p>
           </div>
 
           {(create.isError || update.isError) && (
-            <p className="text-[12.5px] text-destructive">
+            <p role="alert" className="text-[12.5px] text-destructive">
               Não foi possível salvar. Talvez já exista uma tag com esse nome.
             </p>
           )}

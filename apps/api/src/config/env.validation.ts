@@ -1,8 +1,10 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 /** Schema das variáveis de ambiente da API (validado no boot). */
 export const envSchema = z.object({
-  NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  NODE_ENV: z
+    .enum(['development', 'test', 'production'])
+    .default('development'),
   PORT: z.coerce.number().default(3001),
   DATABASE_URL: z.string().url(),
   SUPABASE_URL: z.string().url(),
@@ -10,13 +12,14 @@ export const envSchema = z.object({
   SUPABASE_JWT_SECRET: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   // Origens permitidas no CORS (separadas por vírgula).
-  CORS_ORIGIN: z.string().default("http://localhost:3000"),
+  CORS_ORIGIN: z.string().default('http://localhost:3000'),
 
   // ─── IA (BE-1.5 / BE-1.8) ───
   // Provider do LLM. MVP gratuito: google (Gemini) | groq.
-  LLM_PROVIDER: z.enum(["google", "groq"]).default("google"),
+  // "mock" é determinístico/offline (QA-4.2) — só para E2E/testes.
+  LLM_PROVIDER: z.enum(['google', 'groq', 'mock']).default('google'),
   // Fallback opcional se o provider primário falhar (hardening).
-  LLM_FALLBACK_PROVIDER: z.enum(["google", "groq"]).optional(),
+  LLM_FALLBACK_PROVIDER: z.enum(['google', 'groq']).optional(),
   // Chave do Gemini (free tier) — provider padrão do MVP.
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   GOOGLE_MODEL: z.string().optional(),
@@ -42,8 +45,8 @@ export function validateEnv(config: Record<string, unknown>): Env {
   if (!parsed.success) {
     throw new Error(
       `Variáveis de ambiente inválidas:\n${parsed.error.issues
-        .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
-        .join("\n")}`,
+        .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
+        .join('\n')}`,
     );
   }
   return parsed.data;

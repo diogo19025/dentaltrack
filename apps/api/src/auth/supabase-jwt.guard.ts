@@ -4,19 +4,19 @@ import {
   Injectable,
   Logger,
   UnauthorizedException,
-} from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { Reflector } from "@nestjs/core";
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Reflector } from '@nestjs/core';
 import {
   createRemoteJWKSet,
   decodeProtectedHeader,
   jwtVerify,
   type JWTPayload,
   type JWTVerifyGetKey,
-} from "jose";
-import type { Env } from "../config/env.validation";
-import { IS_PUBLIC_KEY } from "./public.decorator";
-import type { AuthenticatedRequest } from "./types";
+} from 'jose';
+import type { Env } from '../config/env.validation';
+import { IS_PUBLIC_KEY } from './public.decorator';
+import type { AuthenticatedRequest } from './types';
 
 /**
  * Valida o JWT do Supabase em todas as rotas (exceto @Public).
@@ -41,8 +41,8 @@ export class SupabaseJwtGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const header = request.headers.authorization;
-    if (!header?.startsWith("Bearer ")) {
-      throw new UnauthorizedException("Token de autenticação ausente.");
+    if (!header?.startsWith('Bearer ')) {
+      throw new UnauthorizedException('Token de autenticação ausente.');
     }
 
     try {
@@ -50,35 +50,45 @@ export class SupabaseJwtGuard implements CanActivate {
       if (!payload.sub) throw new Error("claim 'sub' ausente");
       request.user = {
         id: payload.sub,
-        email: typeof payload.email === "string" ? payload.email : undefined,
-        role: typeof payload.role === "string" ? payload.role : undefined,
+        email: typeof payload.email === 'string' ? payload.email : undefined,
+        role: typeof payload.role === 'string' ? payload.role : undefined,
         raw: payload,
       };
       return true;
     } catch (err) {
-      this.logger.debug(`JWT inválido: ${err instanceof Error ? err.message : String(err)}`);
-      throw new UnauthorizedException("Token de autenticação inválido.");
+      this.logger.debug(
+        `JWT inválido: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw new UnauthorizedException('Token de autenticação inválido.');
     }
   }
 
   private async verify(token: string): Promise<JWTPayload> {
-    const secret = this.config.get("SUPABASE_JWT_SECRET", { infer: true });
+    const secret = this.config.get('SUPABASE_JWT_SECRET', { infer: true });
     const { alg } = decodeProtectedHeader(token);
 
     // HS256 simétrico (projetos Supabase legados).
-    if (alg === "HS256" && secret) {
-      const { payload } = await jwtVerify(token, new TextEncoder().encode(secret), {
-        audience: "authenticated",
-      });
+    if (alg === 'HS256' && secret) {
+      const { payload } = await jwtVerify(
+        token,
+        new TextEncoder().encode(secret),
+        {
+          audience: 'authenticated',
+        },
+      );
       return payload;
     }
 
     // Assimétrico (ES256/RS256) → JWKS público do Supabase.
     if (!this.jwks) {
-      const url = this.config.get("SUPABASE_URL", { infer: true });
-      this.jwks = createRemoteJWKSet(new URL(`${url}/auth/v1/.well-known/jwks.json`));
+      const url = this.config.get('SUPABASE_URL', { infer: true });
+      this.jwks = createRemoteJWKSet(
+        new URL(`${url}/auth/v1/.well-known/jwks.json`),
+      );
     }
-    const { payload } = await jwtVerify(token, this.jwks, { audience: "authenticated" });
+    const { payload } = await jwtVerify(token, this.jwks, {
+      audience: 'authenticated',
+    });
     return payload;
   }
 }

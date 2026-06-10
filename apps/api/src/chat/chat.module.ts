@@ -1,7 +1,7 @@
-import { Module } from "@nestjs/common";
-import { ConversationsModule } from "../conversations/conversations.module";
-import { ChatController } from "./chat.controller";
-import { ChatService } from "./chat.service";
+import { Module } from '@nestjs/common';
+import { ConversationsModule } from '../conversations/conversations.module';
+import { ChatController } from './chat.controller';
+import { ChatService } from './chat.service';
 
 /**
  * Módulo de chat (BE-1.6 — versão mockada). Reusa o ConversationsService

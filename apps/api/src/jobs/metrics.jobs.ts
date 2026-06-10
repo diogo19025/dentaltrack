@@ -1,6 +1,6 @@
-import { Injectable, Logger } from "@nestjs/common";
-import { Cron, CronExpression } from "@nestjs/schedule";
-import { PrismaService } from "../prisma/prisma.service";
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { PrismaService } from '../prisma/prisma.service';
 
 /** Horas de inatividade até marcar a conversa como abandonada (env, default 24). */
 const ABANDON_AFTER_HOURS = Number(process.env.ABANDON_AFTER_HOURS ?? 24);
@@ -25,10 +25,13 @@ export class MetricsJobs {
   async markAbandoned(): Promise<number> {
     const cutoff = new Date(Date.now() - ABANDON_AFTER_HOURS * 60 * 60 * 1000);
     const { count } = await this.prisma.conversation.updateMany({
-      where: { status: "em_andamento", lastMessageAt: { lt: cutoff } },
-      data: { status: "abandonada" },
+      where: { status: 'em_andamento', lastMessageAt: { lt: cutoff } },
+      data: { status: 'abandonada' },
     });
-    if (count > 0) this.logger.log(`markAbandoned: ${count} conversa(s) marcada(s) como abandonada.`);
+    if (count > 0)
+      this.logger.log(
+        `markAbandoned: ${count} conversa(s) marcada(s) como abandonada.`,
+      );
     return count;
   }
 
@@ -42,14 +45,27 @@ export class MetricsJobs {
 
     const clinics = await this.prisma.clinic.findMany({ select: { id: true } });
     for (const { id: clinicId } of clinics) {
-      const [botMessages, userMessages, leads, conversationsStarted, conversationsScheduled] =
-        await Promise.all([
-          this.prisma.message.count({ where: { clinicId, role: "assistant", createdAt: window } }),
-          this.prisma.message.count({ where: { clinicId, role: "user", createdAt: window } }),
-          this.prisma.lead.count({ where: { clinicId, createdAt: window } }),
-          this.prisma.conversation.count({ where: { clinicId, createdAt: window } }),
-          this.prisma.appointment.count({ where: { clinicId, createdAt: window } }),
-        ]);
+      const [
+        botMessages,
+        userMessages,
+        leads,
+        conversationsStarted,
+        conversationsScheduled,
+      ] = await Promise.all([
+        this.prisma.message.count({
+          where: { clinicId, role: 'assistant', createdAt: window },
+        }),
+        this.prisma.message.count({
+          where: { clinicId, role: 'user', createdAt: window },
+        }),
+        this.prisma.lead.count({ where: { clinicId, createdAt: window } }),
+        this.prisma.conversation.count({
+          where: { clinicId, createdAt: window },
+        }),
+        this.prisma.appointment.count({
+          where: { clinicId, createdAt: window },
+        }),
+      ]);
 
       const data = {
         botMessages,
@@ -64,7 +80,9 @@ export class MetricsJobs {
         create: { clinicId, date: day, ...data },
       });
     }
-    this.logger.log(`aggregateDaily: ${clinics.length} clínica(s) agregada(s) para ${day.toISOString().slice(0, 10)}.`);
+    this.logger.log(
+      `aggregateDaily: ${clinics.length} clínica(s) agregada(s) para ${day.toISOString().slice(0, 10)}.`,
+    );
   }
 }
 

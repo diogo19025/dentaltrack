@@ -4,9 +4,9 @@ import {
   ForbiddenException,
   Injectable,
   UnauthorizedException,
-} from "@nestjs/common";
-import { PrismaService } from "../prisma/prisma.service";
-import type { AuthenticatedRequest } from "./types";
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import type { AuthenticatedRequest } from './types';
 
 /**
  * Resolve o `clinicId` do usuário autenticado via Membership (multi-tenant).
@@ -23,10 +23,10 @@ export class TenantGuard implements CanActivate {
 
     const membership = await this.prisma.membership.findFirst({
       where: { userId: user.id },
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: 'asc' },
     });
     if (!membership) {
-      throw new ForbiddenException("Usuário sem clínica vinculada.");
+      throw new ForbiddenException('Usuário sem clínica vinculada.');
     }
 
     request.clinicId = membership.clinicId;

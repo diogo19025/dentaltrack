@@ -1,6 +1,6 @@
-import { Module } from "@nestjs/common";
-import { ScheduleModule } from "@nestjs/schedule";
-import { MetricsJobs } from "./metrics.jobs";
+import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
+import { MetricsJobs } from './metrics.jobs';
 
 /**
  * Jobs agendados (BE-3.4). Registra o scheduler (`@nestjs/schedule`) e o

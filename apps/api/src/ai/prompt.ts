@@ -1,4 +1,8 @@
-import type { Clinic, ClinicSettings, Procedure } from "../../generated/prisma/client";
+import type {
+  Clinic,
+  ClinicSettings,
+  Procedure,
+} from '../../generated/prisma/client';
 
 /**
  * Prompt builder (BE-1.3). Monta o system prompt da conversa a partir dos
@@ -13,9 +17,9 @@ export interface BuildSystemPromptInput {
 
 /** Formata centavos como BRL (ex.: 150000 → "R$ 1.500"). */
 function formatCents(cents: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }
@@ -34,7 +38,10 @@ function formatPrice(proc: Procedure): string | null {
 }
 
 /** Vigência da oferta em texto ("de X até Y", "até Y", "a partir de X"). */
-function formatOfferPeriod(startsOn?: string | null, endsOn?: string | null): string | null {
+function formatOfferPeriod(
+  startsOn?: string | null,
+  endsOn?: string | null,
+): string | null {
   const start = startsOn?.trim();
   const end = endsOn?.trim();
   if (start && end) return `de ${start} a ${end}`;
@@ -52,13 +59,15 @@ function formatAvailability(value: unknown): string | null {
   const open = value
     .filter(
       (s): s is { day: string; hours: string; open: boolean } =>
-        typeof s === "object" &&
+        typeof s === 'object' &&
         s !== null &&
         (s as { open?: unknown }).open === true &&
-        typeof (s as { day?: unknown }).day === "string",
+        typeof (s as { day?: unknown }).day === 'string',
     )
-    .map((s) => `${s.day.trim()}${s.hours?.trim() ? ` (${s.hours.trim()})` : ""}`);
-  return open.length > 0 ? open.join("; ") : null;
+    .map(
+      (s) => `${s.day.trim()}${s.hours?.trim() ? ` (${s.hours.trim()})` : ''}`,
+    );
+  return open.length > 0 ? open.join('; ') : null;
 }
 
 /** Uma linha resumida do catálogo para um procedimento. */
@@ -67,8 +76,9 @@ function formatProcedure(proc: Procedure): string {
   if (proc.description) parts.push(proc.description);
   const price = formatPrice(proc);
   if (price) parts.push(`valor aproximado: ${price}`);
-  if (proc.durationMinutes != null) parts.push(`duração: ~${proc.durationMinutes} min`);
-  const detail = parts.length > 0 ? ` — ${parts.join("; ")}` : "";
+  if (proc.durationMinutes != null)
+    parts.push(`duração: ~${proc.durationMinutes} min`);
+  const detail = parts.length > 0 ? ` — ${parts.join('; ')}` : '';
   return `- ${proc.name}${detail}`;
 }
 
@@ -83,7 +93,7 @@ export function buildSystemPrompt({
   const specialty = settings?.specialty?.trim();
   lines.push(
     `Você é o assistente virtual de atendimento da clínica odontológica "${clinic.name}"` +
-      (specialty ? `, especializada em ${specialty}.` : "."),
+      (specialty ? `, especializada em ${specialty}.` : '.'),
   );
   if (settings?.description?.trim()) {
     lines.push(`Sobre a clínica: ${settings.description.trim()}`);
@@ -94,23 +104,32 @@ export function buildSystemPrompt({
     lines.push(`Seu nome é ${settings.assistantName.trim()}.`);
   }
   if (settings?.tone?.trim()) {
-    lines.push(`Use sempre um tom ${settings.tone.trim()} ao falar com o paciente.`);
+    lines.push(
+      `Use sempre um tom ${settings.tone.trim()} ao falar com o paciente.`,
+    );
   }
 
   // Saudação / instruções específicas da clínica.
   if (settings?.greeting?.trim()) {
-    lines.push(`Saudação sugerida ao iniciar a conversa: "${settings.greeting.trim()}"`);
+    lines.push(
+      `Saudação sugerida ao iniciar a conversa: "${settings.greeting.trim()}"`,
+    );
   }
   if (settings?.instructions?.trim()) {
-    lines.push(`Instruções específicas da clínica: ${settings.instructions.trim()}`);
+    lines.push(
+      `Instruções específicas da clínica: ${settings.instructions.trim()}`,
+    );
   }
 
   // Oferta vigente (só entra no prompt se estiver ativa).
   if (settings?.offerEnabled && settings.offerText?.trim()) {
-    const vigencia = formatOfferPeriod(settings.offerStartsOn, settings.offerEndsOn);
+    const vigencia = formatOfferPeriod(
+      settings.offerStartsOn,
+      settings.offerEndsOn,
+    );
     lines.push(
-      `Oferta vigente${vigencia ? ` (${vigencia})` : ""}: ${settings.offerText.trim()} ` +
-        "Mencione esta oferta quando fizer sentido na conversa, sem ser insistente.",
+      `Oferta vigente${vigencia ? ` (${vigencia})` : ''}: ${settings.offerText.trim()} ` +
+        'Mencione esta oferta quando fizer sentido na conversa, sem ser insistente.',
     );
   }
 
@@ -121,48 +140,50 @@ export function buildSystemPrompt({
   }
 
   // Catálogo de procedimentos.
-  lines.push("");
+  lines.push('');
   if (procedures.length > 0) {
-    lines.push("Catálogo de procedimentos oferecidos pela clínica:");
+    lines.push('Catálogo de procedimentos oferecidos pela clínica:');
     for (const proc of procedures) lines.push(formatProcedure(proc));
   } else {
     lines.push(
-      "A clínica ainda não cadastrou procedimentos. Não cite procedimentos ou preços específicos; ofereça uma avaliação inicial.",
+      'A clínica ainda não cadastrou procedimentos. Não cite procedimentos ou preços específicos; ofereça uma avaliação inicial.',
     );
   }
 
   // Diretrizes de comportamento.
-  lines.push("");
-  lines.push("Diretrizes de atendimento:");
+  lines.push('');
+  lines.push('Diretrizes de atendimento:');
   lines.push(
-    "- Responda sempre em português do Brasil, como um atendente de clínica odontológica: cordial, claro e objetivo.",
+    '- Responda sempre em português do Brasil, como um atendente de clínica odontológica: cordial, claro e objetivo.',
   );
   lines.push(
-    "- Quando o paciente demonstrar interesse em um procedimento ou em agendar, conduza-o gentilmente a deixar o nome e o telefone para contato.",
+    '- Quando o paciente demonstrar interesse em um procedimento ou em agendar, conduza-o gentilmente a deixar o nome e o telefone para contato.',
   );
   lines.push(
-    "- Não invente preços, horários ou procedimentos que não estejam no catálogo acima. Se não tiver a informação, ofereça uma avaliação presencial.",
+    '- Não invente preços, horários ou procedimentos que não estejam no catálogo acima. Se não tiver a informação, ofereça uma avaliação presencial.',
   );
   lines.push(
-    "- Quando faltar alguma informação para ajudar (qual procedimento, preferência de dia/horário, nome ou telefone), pergunte de forma simples e direta, uma coisa de cada vez.",
+    '- Quando faltar alguma informação para ajudar (qual procedimento, preferência de dia/horário, nome ou telefone), pergunte de forma simples e direta, uma coisa de cada vez.',
   );
 
   // Uso obrigatório das ferramentas (function calling). Sem isto o modelo
   // costuma só *dizer* que agendou, sem realmente registrar nada.
-  lines.push("");
-  lines.push("Ferramentas — você DEVE usá-las de verdade, nunca apenas dizer que usou:");
+  lines.push('');
   lines.push(
-    "- Para falar de procedimentos, preços ou duração, chame `searchProcedures` (ou `suggestProcedures`) e responda com base no resultado. Nunca invente.",
+    'Ferramentas — você DEVE usá-las de verdade, nunca apenas dizer que usou:',
   );
   lines.push(
-    "- Assim que tiver o nome e o telefone do paciente, chame `captureLead` para registrar o contato.",
+    '- Para falar de procedimentos, preços ou duração, chame `searchProcedures` (ou `suggestProcedures`) e responda com base no resultado. Nunca invente.',
   );
   lines.push(
-    "- Quando o paciente confirmar que quer marcar, chame `bookAppointment` com o procedimento e a preferência de dia/horário. Só confirme o agendamento DEPOIS que a ferramenta retornar sucesso.",
+    '- Assim que tiver o nome e o telefone do paciente, chame `captureLead` para registrar o contato.',
   );
   lines.push(
-    "- Não afirme que registrou contato ou agendamento se você não chamou a ferramenta correspondente.",
+    '- Quando o paciente confirmar que quer marcar, chame `bookAppointment` com o procedimento e a preferência de dia/horário. Só confirme o agendamento DEPOIS que a ferramenta retornar sucesso.',
+  );
+  lines.push(
+    '- Não afirme que registrou contato ou agendamento se você não chamou a ferramenta correspondente.',
   );
 
-  return lines.join("\n");
+  return lines.join('\n');
 }

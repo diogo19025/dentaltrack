@@ -1,5 +1,5 @@
-import { createZodDto } from "nestjs-zod";
-import { createTagSchema, updateTagSchema } from "@dentaltrack/shared";
+import { createZodDto } from 'nestjs-zod';
+import { createTagSchema, updateTagSchema } from '@dentaltrack/shared';
 
 /** Corpo de POST /tags. */
 export class CreateTagDto extends createZodDto(createTagSchema) {}

@@ -1,14 +1,12 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   Bot,
-  Circle,
   Clock,
-  type LucideIcon,
   MessageCircle,
   Paperclip,
   RotateCw,
@@ -22,6 +20,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Tag } from "@/components/ui/tag";
 import { Textarea } from "@/components/ui/textarea";
 import { useConversationDetail } from "@/hooks/use-conversations";
+import { useSettings } from "@/hooks/use-settings";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -133,6 +132,8 @@ export default function ChatPage() {
 
   // Detalhe da conversa (status + tags detectadas) para o rail.
   const { data: detail } = useConversationDetail(conversationId);
+  // Identidade da clínica (header) + oferta ativa (card de sugestão), como no mock.
+  const { data: settings } = useSettings();
 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
@@ -158,7 +159,9 @@ export default function ChatPage() {
             <span className="absolute -bottom-px -right-px size-3 rounded-full border-2 border-card bg-success" />
           </div>
           <div className="flex-1">
-            <div className="text-[15px] font-semibold">Assistente · sua clínica</div>
+            <div className="text-[15px] font-semibold">
+              Assistente · {settings?.clinicName || "sua clínica"}
+            </div>
             <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
               <span className="size-1.5 rounded-full bg-success" /> Online · responde em segundos
             </div>
@@ -169,6 +172,8 @@ export default function ChatPage() {
         {/* Mensagens */}
         <div
           ref={scroller}
+          role="log"
+          aria-label="Mensagens da conversa"
           className="flex flex-1 flex-col gap-4 overflow-y-auto bg-background px-5 py-6"
         >
           {messages.map((m) => (
@@ -189,15 +194,15 @@ export default function ChatPage() {
           )}
         </div>
 
-        {/* Quick replies (só no estado inicial) */}
-        {messages.length <= 1 && (
+        {/* Quick replies (estado inicial; seguem visíveis durante o 1º "digitando") */}
+        {messages.length <= 2 && (
           <div className="flex flex-wrap gap-2 px-5 pb-3">
             {QUICK.map((q) => (
               <button
                 key={q}
                 type="button"
                 onClick={() => submit(q)}
-                className="anim-fade-up rounded-full bg-primary-tint px-[13px] py-2 text-[13px] font-medium text-primary transition-colors hover:bg-primary-tint-strong"
+                className="anim-fade-up rounded-full border border-transparent bg-primary-tint px-[13px] py-2 text-[13px] font-medium text-primary transition-colors outline-none hover:bg-primary-tint-strong focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
                 {q}
               </button>
@@ -217,11 +222,11 @@ export default function ChatPage() {
             <Button
               type="button"
               variant="ghost"
-              size="icon"
-              className="size-10 shrink-0 rounded-full text-muted-foreground"
+              size="icon-sm"
+              className="shrink-0"
               aria-label="Anexar"
             >
-              <Paperclip className="size-[18px]" />
+              <Paperclip />
             </Button>
             <Textarea
               value={input}
@@ -234,16 +239,16 @@ export default function ChatPage() {
               }}
               placeholder="Escreva sua mensagem…"
               rows={1}
-              className="max-h-[120px] min-h-[44px] flex-1 resize-none rounded-[22px] bg-card px-[14px] py-[11px] focus-visible:border-primary focus-visible:ring-primary-tint"
+              className="max-h-[120px] min-h-[44px] flex-1 resize-none rounded-full bg-card px-[14px] py-[11px]"
             />
             <Button
               type="submit"
               size="icon"
               disabled={!input.trim() || busy}
-              className="size-[44px] shrink-0 rounded-full"
+              className="shrink-0 rounded-full"
               aria-label="Enviar"
             >
-              <Send className="size-[17px]" />
+              <Send />
             </Button>
           </form>
           <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
@@ -258,23 +263,28 @@ export default function ChatPage() {
         <Card className="gap-0 p-[22px_24px]">
           <div className="mb-1 flex items-center gap-2">
             <TagIcon className="size-4 text-primary" />
-            <div className="text-base font-semibold tracking-[-0.01em]">Tags detectadas</div>
+            <div className="text-base font-semibold leading-[1.2] tracking-[-0.01em]">
+              Tags detectadas
+            </div>
           </div>
           <p className="mb-4 text-[12.5px] text-muted-foreground">
             Interesses classificados pela IA nesta conversa.
           </p>
           {detail && detail.tags.length > 0 ? (
-            <div className="flex flex-col gap-3.5">
+            <div className="flex flex-col gap-3">
               {detail.tags.map((t) => {
                 const pct = Math.round(t.confidence * 100);
                 return (
-                  <div key={t.id}>
+                  <div key={t.id} className="anim-fade-up">
                     <div className="mb-1.5 flex items-center justify-between">
                       <Tag name={t.name} color={t.color} />
                       <span className="tabular text-[12px] text-muted-foreground">{pct}%</span>
                     </div>
                     <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                      <div
+                        className="h-full rounded-full bg-primary [transition:width_.6s_cubic-bezier(.22,.61,.36,1)]"
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
                 );
@@ -287,9 +297,11 @@ export default function ChatPage() {
 
         {/* Resumo da conversa */}
         <Card className="gap-0 p-[22px_24px]">
-          <div className="mb-3.5 text-base font-semibold tracking-[-0.01em]">Resumo da conversa</div>
+          <div className="mb-3.5 text-base font-semibold leading-[1.2] tracking-[-0.01em]">
+            Resumo da conversa
+          </div>
           <SummaryRow
-            icon={Circle}
+            icon={DotIcon}
             label="Status"
             value={<StatusBadge status={detail?.status ?? "em_andamento"} />}
           />
@@ -310,7 +322,7 @@ export default function ChatPage() {
             icon={MessageCircle}
             label="Canal"
             value={
-              <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+              <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-[5px] text-xs font-medium text-muted-foreground">
                 Web
               </span>
             }
@@ -326,11 +338,12 @@ export default function ChatPage() {
                 Sugestão do agente
               </div>
               <div
-                className="mt-1 text-[12.5px] leading-relaxed"
+                className="mt-1 text-[12.5px] leading-[1.5]"
                 style={{ color: "var(--primary-active)", opacity: 0.85 }}
               >
-                Conduza o paciente para uma avaliação inicial sempre que houver interesse em um
-                procedimento.
+                {settings?.offerEnabled && settings.offerText
+                  ? `Paciente com interesse inicial — conduza para a ${settings.offerText.replace(/\.$/, "")}.`
+                  : "Conduza o paciente para uma avaliação inicial sempre que houver interesse em um procedimento."}
               </div>
             </div>
           </div>
@@ -344,11 +357,20 @@ export default function ChatPage() {
 function StatusAndamento() {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-xs font-medium"
       style={{ background: "var(--status-andamento-tint)", color: "var(--status-andamento)" }}
     >
       <span className="size-1.5 rounded-full bg-current" /> Em andamento
     </span>
+  );
+}
+
+/** Ponto preenchido (réplica do `IcDot` do handoff — o lucide `Circle` é um anel). */
+function DotIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="currentColor" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" />
+    </svg>
   );
 }
 
@@ -406,10 +428,18 @@ function TypingBubble() {
 }
 
 /** Linha do "Resumo da conversa" (ícone + label à esquerda, valor à direita). */
-function SummaryRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: ReactNode }) {
+function SummaryRow({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+  value: ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between">
-      <span className="flex items-center gap-2.5 text-[13.5px] text-muted-foreground">
+      <span className="flex items-center gap-[9px] text-[13.5px] text-muted-foreground">
         <Icon className="size-[15px]" />
         {label}
       </span>
