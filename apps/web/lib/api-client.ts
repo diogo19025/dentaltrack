@@ -23,9 +23,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   } = await supabase.auth.getSession();
 
   const headers = new Headers(init?.headers);
-  // FormData (upload de áudio) define o próprio Content-Type (boundary do multipart).
-  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-  if (!headers.has("Content-Type") && !isFormData) headers.set("Content-Type", "application/json");
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   if (session?.access_token) headers.set("Authorization", `Bearer ${session.access_token}`);
 
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });

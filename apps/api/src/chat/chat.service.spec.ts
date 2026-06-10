@@ -1,4 +1,8 @@
-import { NotFoundException } from '@nestjs/common';
+import {
+  NotFoundException,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { ServerResponse } from 'node:http';
 
@@ -9,16 +13,23 @@ jest.mock('../ai/generate-reply', () => {
   );
   return { ...actual, streamAssistantReply: jest.fn() };
 });
+// Mocka o STT (sem rede) — o motor real é testado em ai/transcribe.spec.ts.
+jest.mock('../ai/transcribe', () => ({ transcribeAudio: jest.fn() }));
 import {
+  AiUnavailableError,
   type StreamReplyOptions,
   streamAssistantReply,
 } from '../ai/generate-reply';
+import { transcribeAudio } from '../ai/transcribe';
 import { ChatService } from './chat.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const streamMock = streamAssistantReply as jest.MockedFunction<
   typeof streamAssistantReply
+>;
+const transcribeMock = transcribeAudio as jest.MockedFunction<
+  typeof transcribeAudio
 >;
 
 const CLINIC_ID = '00000000-0000-0000-0000-0000000c1141';
@@ -215,5 +226,88 @@ describe('ChatService.streamMessage', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(streamMock).not.toHaveBeenCalled();
     expect(conversationsMock.appendMessage).not.toHaveBeenCalled();
+  });
+
+  describe('entrada por áudio (speech-to-text)', () => {
+    const AUDIO_B64 = Buffer.from('audio-fake').toString('base64');
+    const TRANSCRIPT = 'Quero agendar uma avaliação';
+
+    it('transcreve (mediaType normalizado), persiste a transcrição como user e devolve X-Transcript', async () => {
+      transcribeMock.mockResolvedValueOnce(TRANSCRIPT);
+      conversationsMock.createConversation.mockResolvedValueOnce({
+        id: CONVERSATION_ID,
+      });
+      conversationsMock.getConversation.mockResolvedValueOnce({
+        messages: [{ role: 'user', content: TRANSCRIPT }],
+      });
+      const res = makeRes();
+
+      await service.streamMessage(
+        { audio: AUDIO_B64, audioType: 'audio/webm;codecs=opus' },
+        CLINIC_ID,
+        res,
+      );
+
+      expect(transcribeMock).toHaveBeenCalledWith(
+        Buffer.from('audio-fake'),
+        'audio/webm',
+      );
+      expect(conversationsMock.appendMessage).toHaveBeenNthCalledWith(
+        1,
+        CONVERSATION_ID,
+        'user',
+        TRANSCRIPT,
+        {},
+        CLINIC_ID,
+      );
+      // A IA recebe a transcrição como texto — o motor não conhece o áudio.
+      expect(streamMock).toHaveBeenCalledWith(
+        [{ role: 'user', content: TRANSCRIPT }],
+        expect.any(String),
+        expect.any(Object),
+        expect.any(Object),
+      );
+      expect(pipeMock).toHaveBeenCalledWith(
+        res,
+        expect.objectContaining({
+          headers: {
+            'X-Conversation-Id': CONVERSATION_ID,
+            'X-Transcript': encodeURIComponent(TRANSCRIPT),
+          },
+        }),
+      );
+    });
+
+    it('falha do STT → 503 (ServiceUnavailable), sem criar conversa nem persistir', async () => {
+      transcribeMock.mockRejectedValueOnce(
+        new AiUnavailableError(new Error('provider caiu')),
+      );
+
+      await expect(
+        service.streamMessage(
+          { audio: AUDIO_B64, audioType: 'audio/webm' },
+          CLINIC_ID,
+          makeRes(),
+        ),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+      expect(conversationsMock.createConversation).not.toHaveBeenCalled();
+      expect(conversationsMock.appendMessage).not.toHaveBeenCalled();
+      expect(streamMock).not.toHaveBeenCalled();
+    });
+
+    it('transcrição vazia (áudio ininteligível) → 422, sem criar conversa nem persistir', async () => {
+      transcribeMock.mockResolvedValueOnce('');
+
+      await expect(
+        service.streamMessage(
+          { audio: AUDIO_B64, audioType: 'audio/webm' },
+          CLINIC_ID,
+          makeRes(),
+        ),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(conversationsMock.createConversation).not.toHaveBeenCalled();
+      expect(conversationsMock.appendMessage).not.toHaveBeenCalled();
+      expect(streamMock).not.toHaveBeenCalled();
+    });
   });
 });

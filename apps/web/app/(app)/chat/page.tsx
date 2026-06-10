@@ -3,11 +3,10 @@
 import { type ComponentType, type ReactNode, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import {
   Bot,
   Clock,
-  Loader2,
   MessageCircle,
   Mic,
   Paperclip,
@@ -61,6 +60,14 @@ function messageText(m: UIMessage): string {
   return m.parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 }
 
+/** Parte de áudio (mensagem de voz) de uma UIMessage, se houver. */
+function audioPart(m: UIMessage): FileUIPart | undefined {
+  for (const p of m.parts) {
+    if (p.type === "file" && p.mediaType.startsWith("audio/")) return p;
+  }
+  return undefined;
+}
+
 /**
  * conversationId atual (server-managed). Mutável em escopo de módulo — a tela
  * de chat é única e o valor é resetado ao montar (useEffect). Fica fora do
@@ -69,9 +76,25 @@ function messageText(m: UIMessage): string {
 let currentConversationId: string | null = null;
 
 /**
+ * Transcrição do último turno por áudio (header `X-Transcript`, URI-encoded).
+ * Mesmo padrão do `currentConversationId`: módulo, fora do render. A
+ * reatribuição fica nesta função (e não no onFinish) por causa das regras do
+ * React Compiler (sem reassign de variável externa dentro do componente).
+ */
+let lastTranscript: string | null = null;
+
+/** Lê e zera a transcrição pendente do turno que acabou de terminar. */
+function consumeTranscript(): string | null {
+  const transcript = lastTranscript;
+  lastTranscript = null;
+  return transcript;
+}
+
+/**
  * Transporte do useChat → NestJS (criado uma vez): Bearer fresco por request,
- * contrato `{ message, conversationId }` (server-authoritative) e captura do
- * conversationId pelo header `X-Conversation-Id` da resposta.
+ * contrato server-authoritative — `{ message, conversationId }` para texto ou
+ * `{ audio, audioType, conversationId }` para mensagem de voz (o servidor
+ * transcreve) — e captura dos headers `X-Conversation-Id` / `X-Transcript`.
  */
 const chatTransport = new DefaultChatTransport<UIMessage>({
   api: `${API_URL}/chat`,
@@ -85,17 +108,27 @@ const chatTransport = new DefaultChatTransport<UIMessage>({
   },
   prepareSendMessagesRequest: ({ messages }) => {
     const last = messages[messages.length - 1];
+    const voice = last ? audioPart(last) : undefined;
     return {
-      body: {
-        message: last ? messageText(last) : "",
-        conversationId: currentConversationId ?? undefined,
-      },
+      body: voice
+        ? {
+            // Remove o prefixo "data:<mime>;base64," — a API recebe base64 puro.
+            audio: voice.url.slice(voice.url.indexOf(",") + 1),
+            audioType: voice.mediaType,
+            conversationId: currentConversationId ?? undefined,
+          }
+        : {
+            message: last ? messageText(last) : "",
+            conversationId: currentConversationId ?? undefined,
+          },
     };
   },
   fetch: async (url, init) => {
     const res = await fetch(url, init);
     const cid = res.headers.get("X-Conversation-Id");
     if (cid) currentConversationId = cid;
+    const transcript = res.headers.get("X-Transcript");
+    lastTranscript = transcript ? decodeURIComponent(transcript) : null;
     return res;
   },
 });
@@ -113,12 +146,14 @@ export default function ChatPage() {
   // `conversationId` já nasce null a cada montagem (key={pathname} no shell).
   useEffect(() => {
     currentConversationId = null;
+    lastTranscript = null;
     return () => {
       currentConversationId = null;
+      lastTranscript = null;
     };
   }, []);
 
-  const { messages, sendMessage, status, error, regenerate } = useChat({
+  const { messages, sendMessage, setMessages, status, error, regenerate } = useChat({
     transport: chatTransport,
     messages: [GREETING],
     onFinish: () => {
@@ -126,6 +161,21 @@ export default function ChatPage() {
       // auto-tagging roda no servidor *após* a resposta (chamada de IA), então
       // um 2º invalidate com folga cobre essa latência.
       if (currentConversationId) setConversationId(currentConversationId);
+      // Turno por áudio: anexa a transcrição (header X-Transcript) à bolha de
+      // voz — o paciente vê o que o bot entendeu.
+      const transcript = consumeTranscript();
+      if (transcript) {
+        setMessages((prev) => {
+          const idx = prev.findLastIndex((m) => m.role === "user" && audioPart(m));
+          if (idx < 0 || prev[idx].parts.some((p) => p.type === "text")) return prev;
+          const next = [...prev];
+          next[idx] = {
+            ...next[idx],
+            parts: [...next[idx].parts, { type: "text", text: transcript }],
+          };
+          return next;
+        });
+      }
       const invalidate = () =>
         void queryClient.invalidateQueries({ queryKey: ["conversations", "detail"] });
       invalidate();
@@ -134,11 +184,14 @@ export default function ChatPage() {
   });
   const busy = status === "submitted" || status === "streaming";
 
-  // Entrada por voz (speech-to-text): o áudio é transcrito no backend e o
-  // texto preenche o input para o paciente revisar antes de enviar.
-  const voice = useVoiceInput((text) =>
-    setInput((prev) => (prev ? `${prev} ${text}` : text)),
-  );
+  // Entrada por voz: o áudio gravado É a mensagem do turno — vai como file part
+  // no useChat (bolha com player) e como base64 no body; o servidor transcreve
+  // e o bot responde em texto.
+  const voice = useVoiceInput(({ dataUrl, mediaType }) => {
+    void sendMessage({
+      files: [{ type: "file", mediaType, url: dataUrl, filename: "mensagem-de-voz" }],
+    });
+  });
 
   // Detalhe da conversa (status + tags detectadas) para o rail.
   const { data: detail } = useConversationDetail(conversationId);
@@ -246,17 +299,19 @@ export default function ChatPage() {
                 if (voice.status === "recording") voice.stop();
                 else void voice.start();
               }}
-              disabled={voice.status === "transcribing"}
-              aria-label={voice.status === "recording" ? "Parar gravação" : "Gravar áudio"}
+              disabled={voice.status !== "recording" && busy}
+              aria-label={
+                voice.status === "recording"
+                  ? "Parar e enviar a mensagem de voz"
+                  : "Gravar mensagem de voz"
+              }
               className={cn(
                 "shrink-0",
                 voice.status === "recording" &&
                   "bg-[var(--destructive-tint)] text-destructive hover:bg-[var(--destructive-tint)] hover:text-destructive",
               )}
             >
-              {voice.status === "transcribing" ? (
-                <Loader2 className="animate-spin" />
-              ) : voice.status === "recording" ? (
+              {voice.status === "recording" ? (
                 <Square className="animate-pulse fill-current" />
               ) : (
                 <Mic />
@@ -291,12 +346,8 @@ export default function ChatPage() {
           >
             {voice.status === "recording" ? (
               <>
-                <Mic className="size-3 text-destructive" /> Gravando áudio… clique no quadrado
-                para parar e transcrever
-              </>
-            ) : voice.status === "transcribing" ? (
-              <>
-                <Loader2 className="size-3 animate-spin" /> Transcrevendo áudio…
+                <Mic className="size-3 text-destructive" /> Gravando… clique no quadrado para
+                enviar a mensagem de voz
               </>
             ) : voice.error ? (
               <span className="text-destructive">{voice.error}</span>
@@ -426,10 +477,15 @@ function DotIcon({ className }: { className?: string }) {
   );
 }
 
-/** Bolha de mensagem (usuário à direita = primary; bot à esquerda = card+borda). */
+/**
+ * Bolha de mensagem (usuário à direita = primary; bot à esquerda = card+borda).
+ * Mensagem de voz: player de áudio + a transcrição (o que o bot entendeu)
+ * quando ela chega no fim do turno.
+ */
 function Bubble({ m }: { m: UIMessage }) {
   const isUser = m.role === "user";
   const text = messageText(m);
+  const voice = audioPart(m);
   const isStreaming = m.parts.some((p) => p.type === "text" && p.state === "streaming");
 
   return (
@@ -447,12 +503,24 @@ function Bubble({ m }: { m: UIMessage }) {
             : "rounded-[16px_16px_16px_4px] border border-border bg-card text-foreground",
         )}
       >
-        {text}
-        {isStreaming && (
-          <span
-            className="ml-0.5 inline-block h-[15px] w-[7px] rounded-[2px] bg-primary align-[-2px]"
-            style={{ animation: "blink 1s infinite" }}
-          />
+        {voice && (
+          <span className="flex items-center gap-2">
+            <Mic className="size-4 shrink-0" aria-hidden="true" />
+            <audio controls src={voice.url} className="h-10 w-[230px] max-w-full" />
+          </span>
+        )}
+        {voice ? (
+          text && <span className="mt-1.5 block text-[13px] italic opacity-90">{text}</span>
+        ) : (
+          <>
+            {text}
+            {isStreaming && (
+              <span
+                className="ml-0.5 inline-block h-[15px] w-[7px] rounded-[2px] bg-primary align-[-2px]"
+                style={{ animation: "blink 1s infinite" }}
+              />
+            )}
+          </>
         )}
       </div>
     </div>

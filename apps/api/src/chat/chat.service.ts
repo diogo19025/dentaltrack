@@ -1,10 +1,21 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import type { ServerResponse } from 'node:http';
 import type { ChatRequest } from '@dentaltrack/shared';
-import { type ReplyMessage, streamAssistantReply } from '../ai/generate-reply';
+import {
+  AiUnavailableError,
+  type ReplyMessage,
+  streamAssistantReply,
+} from '../ai/generate-reply';
 import { buildSystemPrompt } from '../ai/prompt';
 import { tagConversation } from '../ai/tagging';
 import { buildChatTools } from '../ai/tools';
+import { transcribeAudio } from '../ai/transcribe';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -35,13 +46,17 @@ export class ChatService {
     clinicId: string,
     res: ServerResponse,
   ): Promise<void> {
+    // 0. Entrada por áudio? Transcreve ANTES de tocar o banco (falha de STT não
+    // deixa conversa vazia nem mensagem persistida) — erros viram HTTP pré-stream.
+    const { text: userText, transcript } = await this.resolveUserText(input);
+
     const conversationId = await this.resolveConversation(input, clinicId);
 
     // 1. Persiste a mensagem do paciente (antes do stream → retry mantém contexto).
     await this.conversations.appendMessage(
       conversationId,
       'user',
-      input.message,
+      userText,
       {},
       clinicId,
     );
@@ -100,12 +115,57 @@ export class ChatService {
       },
     });
 
-    // 4. Pipa como UI message stream; devolve o conversationId no header.
+    // 4. Pipa como UI message stream; devolve o conversationId (e, no turno por
+    // áudio, a transcrição — URI-encoded, headers são ISO-8859-1) nos headers.
     stream.pipeUIMessageStreamToResponse(res, {
-      headers: { 'X-Conversation-Id': conversationId },
+      headers: {
+        'X-Conversation-Id': conversationId,
+        ...(transcript
+          ? { 'X-Transcript': encodeURIComponent(transcript) }
+          : {}),
+      },
       onError: () =>
         'O assistente está temporariamente indisponível. Sua mensagem foi salva — tente novamente em instantes.',
     });
+  }
+
+  /**
+   * Resolve o texto do turno do paciente. Texto → passa direto; áudio (base64)
+   * → transcreve via `ai/transcribe` (speech-to-text) e usa a transcrição como
+   * mensagem — o restante do fluxo (histórico, tools, tagging) é idêntico, e o
+   * canal (web hoje, WhatsApp depois) não precisa conhecer o STT.
+   */
+  private async resolveUserText(
+    input: ChatRequest,
+  ): Promise<{ text: string; transcript?: string }> {
+    if (!input.audio) {
+      // O schema (XOR message/audio) garante `message` aqui.
+      return { text: input.message ?? '' };
+    }
+
+    // Normaliza "audio/webm;codecs=opus" → "audio/webm".
+    const mediaType = (input.audioType ?? '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    const audio = Buffer.from(input.audio, 'base64');
+
+    try {
+      const transcript = await transcribeAudio(audio, mediaType);
+      if (!transcript) {
+        throw new UnprocessableEntityException(
+          'Não foi possível entender o áudio. Tente gravar novamente.',
+        );
+      }
+      return { text: transcript, transcript };
+    } catch (err) {
+      if (err instanceof AiUnavailableError) {
+        throw new ServiceUnavailableException(
+          'A transcrição do áudio está temporariamente indisponível. Tente novamente em instantes.',
+        );
+      }
+      throw err;
+    }
   }
 
   /**

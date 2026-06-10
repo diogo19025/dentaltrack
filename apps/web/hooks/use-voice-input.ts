@@ -1,14 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { TranscriptionResponse } from "@dentaltrack/shared";
-import { ApiError, apiFetch } from "@/lib/api-client";
 
 /**
- * Entrada por voz no chat (speech-to-text): grava o microfone com o
- * MediaRecorder e envia o áudio para `POST /chat/transcribe` (multipart). O
- * texto transcrito volta pelo callback `onTranscript` — a tela decide o que
- * fazer (no chat: preencher o input para o paciente revisar e enviar).
+ * Entrada por voz no chat: grava o microfone com o MediaRecorder e entrega o
+ * áudio pronto (data URL base64 + MIME) pelo callback `onAudio`. A tela envia
+ * o áudio como a própria mensagem do turno (`POST /chat` com `audio`/`audioType`)
+ * — a transcrição acontece no servidor e o bot responde em texto.
  */
 
 /** Auto-stop da gravação — protege o free tier e o tamanho do upload. */
@@ -22,29 +20,36 @@ const MIME_CANDIDATES = [
   "audio/ogg;codecs=opus",
 ];
 
-export type VoiceInputStatus = "idle" | "recording" | "transcribing";
+export interface RecordedAudio {
+  /** Áudio como data URL (`data:audio/...;base64,...`) — pronto para tocar e enviar. */
+  dataUrl: string;
+  /** MIME normalizado (sem `;codecs=...`), ex.: `audio/webm`. */
+  mediaType: string;
+}
+
+export type VoiceInputStatus = "idle" | "recording";
 
 export interface VoiceInput {
   status: VoiceInputStatus;
-  /** Erro amigável da última tentativa (permissão, transcrição) — limpo ao regravar. */
+  /** Erro amigável da última tentativa (permissão/suporte) — limpo ao regravar. */
   error: string | null;
   /** Pede o microfone e começa a gravar. */
   start: () => Promise<void>;
-  /** Para a gravação e transcreve o áudio. */
+  /** Para a gravação e dispara `onAudio` com o áudio gravado. */
   stop: () => void;
 }
 
-function friendlyError(err: unknown): string {
-  if (err instanceof ApiError && err.status === 503) {
-    return "A transcrição está temporariamente indisponível. Tente novamente em instantes.";
-  }
-  if (err instanceof ApiError && err.status === 422) {
-    return "Não foi possível entender o áudio. Tente gravar novamente.";
-  }
-  return "Não foi possível transcrever o áudio. Tente novamente.";
+/** Blob → data URL (base64). */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o áudio."));
+    reader.readAsDataURL(blob);
+  });
 }
 
-export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput {
+export function useVoiceInput(onAudio: (audio: RecordedAudio) => void): VoiceInput {
   const [status, setStatus] = useState<VoiceInputStatus>("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -54,33 +59,10 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
 
   // Callback sempre fresca sem recriar start/stop (regra do React Compiler:
   // a sincronização do ref fica num efeito, não no render).
-  const onTranscriptRef = useRef(onTranscript);
+  const onAudioRef = useRef(onAudio);
   useEffect(() => {
-    onTranscriptRef.current = onTranscript;
+    onAudioRef.current = onAudio;
   });
-
-  const transcribe = useCallback(async (blob: Blob) => {
-    setStatus("transcribing");
-    try {
-      const ext = blob.type.includes("mp4")
-        ? "m4a"
-        : blob.type.includes("ogg")
-          ? "ogg"
-          : "webm";
-      const form = new FormData();
-      form.append("audio", blob, `gravacao.${ext}`);
-      const { text } = await apiFetch<TranscriptionResponse>("/chat/transcribe", {
-        method: "POST",
-        body: form,
-      });
-      if (unmountedRef.current) return;
-      if (text) onTranscriptRef.current(text);
-    } catch (err) {
-      if (!unmountedRef.current) setError(friendlyError(err));
-    } finally {
-      if (!unmountedRef.current) setStatus("idle");
-    }
-  }, []);
 
   const start = useCallback(async () => {
     if (recorderRef.current) return;
@@ -113,14 +95,22 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
         window.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-      const blob = new Blob(chunks, {
-        type: recorder.mimeType || mimeType || "audio/webm",
-      });
-      if (unmountedRef.current || blob.size === 0) {
-        if (!unmountedRef.current) setStatus("idle");
-        return;
-      }
-      void transcribe(blob);
+      if (!unmountedRef.current) setStatus("idle");
+
+      const type = recorder.mimeType || mimeType || "audio/webm";
+      const blob = new Blob(chunks, { type });
+      if (unmountedRef.current || blob.size === 0) return;
+
+      void blobToDataUrl(blob)
+        .then((dataUrl) => {
+          if (unmountedRef.current) return;
+          onAudioRef.current({ dataUrl, mediaType: type.split(";")[0].trim() });
+        })
+        .catch(() => {
+          if (!unmountedRef.current) {
+            setError("Não foi possível processar o áudio. Tente novamente.");
+          }
+        });
     };
 
     recorder.start();
@@ -129,7 +119,7 @@ export function useVoiceInput(onTranscript: (text: string) => void): VoiceInput 
     timerRef.current = window.setTimeout(() => {
       if (recorder.state === "recording") recorder.stop();
     }, MAX_RECORDING_MS);
-  }, [transcribe]);
+  }, []);
 
   const stop = useCallback(() => {
     const recorder = recorderRef.current;
