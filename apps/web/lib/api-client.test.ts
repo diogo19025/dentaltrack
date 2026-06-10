@@ -33,6 +33,20 @@ describe("apiFetch", () => {
     expect(headers.get("Content-Type")).toBe("application/json");
   });
 
+  it("body FormData (upload de áudio): não força Content-Type json", async () => {
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ text: "oi" }) });
+    const form = new FormData();
+    form.append("audio", new Blob(["x"], { type: "audio/webm" }), "gravacao.webm");
+
+    await apiFetch("/chat/transcribe", { method: "POST", body: form });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Headers;
+    expect(headers.get("Content-Type")).toBeNull();
+    expect(headers.get("Authorization")).toBe("Bearer jwt-123");
+    expect(init.body).toBe(form);
+  });
+
   it("sem sessão, não envia Authorization", async () => {
     getSession.mockResolvedValue({ data: { session: null } });
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({}) });

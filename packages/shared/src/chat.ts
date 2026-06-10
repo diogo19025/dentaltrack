@@ -15,6 +15,17 @@ export const chatRequestSchema = z.object({
 });
 export type ChatRequest = z.infer<typeof chatRequestSchema>;
 
+/**
+ * Resposta de POST /chat/transcribe (speech-to-text). O áudio sobe como
+ * multipart/form-data no campo `audio`; a API devolve o texto transcrito,
+ * que segue o fluxo normal do chat como mensagem do paciente.
+ */
+export const transcriptionResponseSchema = z.object({
+  /** Texto transcrito do áudio do paciente (PT-BR). */
+  text: z.string(),
+});
+export type TranscriptionResponse = z.infer<typeof transcriptionResponseSchema>;
+
 /** Mensagem de chat (espelha uma linha de `message`). */
 export const chatMessageSchema = z.object({
   id: z.string().uuid(),

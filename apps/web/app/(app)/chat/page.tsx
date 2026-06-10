@@ -7,11 +7,14 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   Bot,
   Clock,
+  Loader2,
   MessageCircle,
+  Mic,
   Paperclip,
   RotateCw,
   Send,
   Sparkles,
+  Square,
   Tag as TagIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +24,7 @@ import { Tag } from "@/components/ui/tag";
 import { Textarea } from "@/components/ui/textarea";
 import { useConversationDetail } from "@/hooks/use-conversations";
 import { useSettings } from "@/hooks/use-settings";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -130,6 +134,12 @@ export default function ChatPage() {
   });
   const busy = status === "submitted" || status === "streaming";
 
+  // Entrada por voz (speech-to-text): o áudio é transcrito no backend e o
+  // texto preenche o input para o paciente revisar antes de enviar.
+  const voice = useVoiceInput((text) =>
+    setInput((prev) => (prev ? `${prev} ${text}` : text)),
+  );
+
   // Detalhe da conversa (status + tags detectadas) para o rail.
   const { data: detail } = useConversationDetail(conversationId);
   // Identidade da clínica (header) + oferta ativa (card de sugestão), como no mock.
@@ -228,6 +238,30 @@ export default function ChatPage() {
             >
               <Paperclip />
             </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => {
+                if (voice.status === "recording") voice.stop();
+                else void voice.start();
+              }}
+              disabled={voice.status === "transcribing"}
+              aria-label={voice.status === "recording" ? "Parar gravação" : "Gravar áudio"}
+              className={cn(
+                "shrink-0",
+                voice.status === "recording" &&
+                  "bg-[var(--destructive-tint)] text-destructive hover:bg-[var(--destructive-tint)] hover:text-destructive",
+              )}
+            >
+              {voice.status === "transcribing" ? (
+                <Loader2 className="animate-spin" />
+              ) : voice.status === "recording" ? (
+                <Square className="animate-pulse fill-current" />
+              ) : (
+                <Mic />
+              )}
+            </Button>
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -251,8 +285,26 @@ export default function ChatPage() {
               <Send />
             </Button>
           </form>
-          <div className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
-            <Sparkles className="size-3" /> Respostas geradas por IA · canal Web
+          <div
+            aria-live="polite"
+            className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground"
+          >
+            {voice.status === "recording" ? (
+              <>
+                <Mic className="size-3 text-destructive" /> Gravando áudio… clique no quadrado
+                para parar e transcrever
+              </>
+            ) : voice.status === "transcribing" ? (
+              <>
+                <Loader2 className="size-3 animate-spin" /> Transcrevendo áudio…
+              </>
+            ) : voice.error ? (
+              <span className="text-destructive">{voice.error}</span>
+            ) : (
+              <>
+                <Sparkles className="size-3" /> Respostas geradas por IA · canal Web
+              </>
+            )}
           </div>
         </div>
       </Card>

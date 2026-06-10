@@ -26,6 +26,8 @@ export const envSchema = z.object({
   // Alternativa gratuita (Groq).
   GROQ_API_KEY: z.string().optional(),
   GROQ_MODEL: z.string().optional(),
+  // Modelo Whisper do speech-to-text quando LLM_PROVIDER=groq.
+  GROQ_TRANSCRIBE_MODEL: z.string().optional(),
   // Hardening do provider (timeout/retry).
   AI_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).optional(),
