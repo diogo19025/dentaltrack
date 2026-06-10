@@ -1,13 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   Channel,
   ConversationDetail,
   ConversationStatus,
   ConversationSummary,
   MessageRole,
-} from "@dentaltrack/shared";
-import { PrismaService } from "../prisma/prisma.service";
-import { canTransition } from "./conversation-status";
+} from '@dentaltrack/shared';
+import { PrismaService } from '../prisma/prisma.service';
+import { canTransition } from './conversation-status';
 
 /** Opções ao abrir uma conversa (lead e canal são opcionais; canal default = web). */
 export interface CreateConversationInput {
@@ -35,8 +39,8 @@ export class ConversationsService {
       data: {
         clinicId,
         leadId: input.leadId,
-        channel: input.channel ?? "web",
-        status: "em_andamento",
+        channel: input.channel ?? 'web',
+        status: 'em_andamento',
       },
     });
   }
@@ -88,7 +92,7 @@ export class ConversationsService {
     const conversation = await this.prisma.conversation.findFirst({
       where: { id: conversationId, ...(clinicId ? { clinicId } : {}) },
       include: {
-        messages: { orderBy: { createdAt: "asc" } },
+        messages: { orderBy: { createdAt: 'asc' } },
       },
     });
     if (!conversation) {
@@ -102,10 +106,16 @@ export class ConversationsService {
    * primeiro (por `lastMessageAt`, depois `createdAt`). Inclui lead, tags
    * detectadas e o procedimento do último agendamento.
    */
-  async listRecent(clinicId: string, limit = 8): Promise<ConversationSummary[]> {
+  async listRecent(
+    clinicId: string,
+    limit = 8,
+  ): Promise<ConversationSummary[]> {
     const convos = await this.prisma.conversation.findMany({
       where: { clinicId },
-      orderBy: [{ lastMessageAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }],
+      orderBy: [
+        { lastMessageAt: { sort: 'desc', nulls: 'last' } },
+        { createdAt: 'desc' },
+      ],
       take: limit,
       select: {
         id: true,
@@ -113,11 +123,11 @@ export class ConversationsService {
         lastMessageAt: true,
         lead: { select: { name: true } },
         conversationTags: {
-          orderBy: { confidence: "desc" },
+          orderBy: { confidence: 'desc' },
           select: { tag: { select: { name: true, color: true } } },
         },
         appointments: {
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           take: 1,
           select: { procedure: { select: { name: true } } },
         },
@@ -128,7 +138,10 @@ export class ConversationsService {
       id: c.id,
       leadName: c.lead?.name ?? null,
       procedure: c.appointments[0]?.procedure?.name ?? null,
-      tags: c.conversationTags.map((ct) => ({ name: ct.tag.name, color: ct.tag.color })),
+      tags: c.conversationTags.map((ct) => ({
+        name: ct.tag.name,
+        color: ct.tag.color,
+      })),
       status: c.status,
       lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
     }));
@@ -138,7 +151,10 @@ export class ConversationsService {
    * Detalhe da conversa (F3 · rail de tags do chat). Escopado por `clinicId`.
    * Retorna status, contagem de mensagens e as tags detectadas (com confiança).
    */
-  async getDetail(conversationId: string, clinicId: string): Promise<ConversationDetail> {
+  async getDetail(
+    conversationId: string,
+    clinicId: string,
+  ): Promise<ConversationDetail> {
     const convo = await this.prisma.conversation.findFirst({
       where: { id: conversationId, clinicId },
       select: {
@@ -148,7 +164,7 @@ export class ConversationsService {
         createdAt: true,
         _count: { select: { messages: true } },
         conversationTags: {
-          orderBy: { confidence: "desc" },
+          orderBy: { confidence: 'desc' },
           select: {
             confidence: true,
             tag: { select: { id: true, name: true, color: true } },
@@ -176,12 +192,12 @@ export class ConversationsService {
 
   /** Marca a conversa como `agendada` (conversão). Ver BE-1.7. */
   markAsScheduled(conversationId: string, clinicId?: string) {
-    return this.transition(conversationId, "agendada", clinicId);
+    return this.transition(conversationId, 'agendada', clinicId);
   }
 
   /** Marca a conversa como `abandonada` (inatividade). Sem cron ainda (BE-1.7). */
   markAsAbandoned(conversationId: string, clinicId?: string) {
-    return this.transition(conversationId, "abandonada", clinicId);
+    return this.transition(conversationId, 'abandonada', clinicId);
   }
 
   /**
@@ -201,7 +217,9 @@ export class ConversationsService {
       throw new NotFoundException(`Conversa ${conversationId} não encontrada.`);
     }
     if (conversation.status === to) {
-      return this.prisma.conversation.findUniqueOrThrow({ where: { id: conversation.id } });
+      return this.prisma.conversation.findUniqueOrThrow({
+        where: { id: conversation.id },
+      });
     }
     if (!canTransition(conversation.status, to)) {
       throw new BadRequestException(

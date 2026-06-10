@@ -1,12 +1,12 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable } from '@nestjs/common';
 import {
   type Kpi,
   type MetricsDto,
   type MetricsRange,
   RANGE_DAYS,
   type TopTag,
-} from "@dentaltrack/shared";
-import { PrismaService } from "../prisma/prisma.service";
+} from '@dentaltrack/shared';
+import { PrismaService } from '../prisma/prisma.service';
 
 /** Janela fixa das "Mensagens do bot" (requisito do produto — context.md §10). */
 const BOT_WINDOW_DAYS = 50;
@@ -15,7 +15,7 @@ const SPARK_POINTS = 12;
 
 /** Mensagem mínima usada nas análises de conversa. */
 interface ConvoLite {
-  status: "em_andamento" | "agendada" | "abandonada";
+  status: 'em_andamento' | 'agendada' | 'abandonada';
   createdAt: Date;
   messages: { role: string; createdAt: Date }[];
 }
@@ -27,7 +27,7 @@ interface WindowStats {
   started: number;
   engaged: number;
   scheduled: number;
-  byStatus: Record<"em_andamento" | "agendada" | "abandonada", number>;
+  byStatus: Record<'em_andamento' | 'agendada' | 'abandonada', number>;
 }
 
 /**
@@ -54,31 +54,44 @@ export class MetricsService {
       this.countAssistant(clinicId, since50, null),
       this.countAssistant(clinicId, prev50Since, since50),
       this.prisma.message.findMany({
-        where: { clinicId, role: { in: ["user", "assistant"] }, createdAt: { gte: since } },
+        where: {
+          clinicId,
+          role: { in: ['user', 'assistant'] },
+          createdAt: { gte: since },
+        },
         select: { role: true, createdAt: true },
       }),
       this.topTags(clinicId, since),
     ]);
 
     // Sparklines: tendência diária no período (decorativa — downsample p/ 12 pts).
-    const leadsSpark = downsample(bucketDaily(cur.leadDates, since, days), SPARK_POINTS);
+    const leadsSpark = downsample(
+      bucketDaily(cur.leadDates, since, days),
+      SPARK_POINTS,
+    );
     const botDaily = bucketDaily(
-      lineMsgs.filter((m) => m.role === "assistant").map((m) => m.createdAt),
+      lineMsgs.filter((m) => m.role === 'assistant').map((m) => m.createdAt),
       since,
       days,
     );
     const patientDaily = bucketDaily(
-      lineMsgs.filter((m) => m.role === "user").map((m) => m.createdAt),
+      lineMsgs.filter((m) => m.role === 'user').map((m) => m.createdAt),
       since,
       days,
     );
     const engagedSpark = downsample(
-      bucketDaily(cur.conversations.filter(isEngaged).map((c) => c.createdAt), since, days),
+      bucketDaily(
+        cur.conversations.filter(isEngaged).map((c) => c.createdAt),
+        since,
+        days,
+      ),
       SPARK_POINTS,
     );
     const scheduledSpark = downsample(
       bucketDaily(
-        cur.conversations.filter((c) => c.status === "agendada").map((c) => c.createdAt),
+        cur.conversations
+          .filter((c) => c.status === 'agendada')
+          .map((c) => c.createdAt),
         since,
         days,
       ),
@@ -88,10 +101,15 @@ export class MetricsService {
     const responseRate = cur.started > 0 ? cur.engaged / cur.started : 0;
     const prevResponseRate = prev.started > 0 ? prev.engaged / prev.started : 0;
     const conversionRate = cur.started > 0 ? cur.scheduled / cur.started : 0;
-    const prevConversionRate = prev.started > 0 ? prev.scheduled / prev.started : 0;
+    const prevConversionRate =
+      prev.started > 0 ? prev.scheduled / prev.started : 0;
 
-    const kpis: MetricsDto["kpis"] = {
-      leads: kpi(cur.leadDates.length, prev.leadDates.length, downsample(bucketDaily(cur.leadDates, since, days), SPARK_POINTS)),
+    const kpis: MetricsDto['kpis'] = {
+      leads: kpi(
+        cur.leadDates.length,
+        prev.leadDates.length,
+        downsample(bucketDaily(cur.leadDates, since, days), SPARK_POINTS),
+      ),
       botMessages: kpi(botMsgs, prevBot, downsample(botDaily, SPARK_POINTS)),
       responseRate: kpi(responseRate, prevResponseRate, engagedSpark),
       conversionRate: kpi(conversionRate, prevConversionRate, scheduledSpark),
@@ -101,18 +119,24 @@ export class MetricsService {
     // Evita recomputar o sparkline de leads (já calculado acima).
     kpis.leads.spark = leadsSpark;
 
-    const labels = Array.from({ length: days }, (_, i) => formatDay(addDays(since, i)));
+    const labels = Array.from({ length: days }, (_, i) =>
+      formatDay(addDays(since, i)),
+    );
 
     return {
       range,
       kpis,
       line: { labels, bot: botDaily, patient: patientDaily },
-      funnel: { started: cur.started, engaged: cur.engaged, scheduled: cur.scheduled },
+      funnel: {
+        started: cur.started,
+        engaged: cur.engaged,
+        scheduled: cur.scheduled,
+      },
       topTags,
       statusDistribution: [
-        { status: "em_andamento", value: cur.byStatus.em_andamento },
-        { status: "agendada", value: cur.byStatus.agendada },
-        { status: "abandonada", value: cur.byStatus.abandonada },
+        { status: 'em_andamento', value: cur.byStatus.em_andamento },
+        { status: 'agendada', value: cur.byStatus.agendada },
+        { status: 'abandonada', value: cur.byStatus.abandonada },
       ],
     };
   }
@@ -134,7 +158,10 @@ export class MetricsService {
         select: {
           status: true,
           createdAt: true,
-          messages: { select: { role: true, createdAt: true }, orderBy: { createdAt: "asc" } },
+          messages: {
+            select: { role: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+          },
         },
       }),
     ]);
@@ -145,7 +172,7 @@ export class MetricsService {
     let scheduled = 0;
     for (const c of convos) {
       byStatus[c.status] += 1;
-      if (c.status === "agendada") scheduled += 1;
+      if (c.status === 'agendada') scheduled += 1;
       if (isEngaged(c)) engaged += 1;
     }
 
@@ -160,11 +187,15 @@ export class MetricsService {
   }
 
   /** Conta mensagens do bot (role=assistant) numa janela. */
-  private countAssistant(clinicId: string, since: Date, until: Date | null): Promise<number> {
+  private countAssistant(
+    clinicId: string,
+    since: Date,
+    until: Date | null,
+  ): Promise<number> {
     return this.prisma.message.count({
       where: {
         clinicId,
-        role: "assistant",
+        role: 'assistant',
         createdAt: until ? { gte: since, lt: until } : { gte: since },
       },
     });
@@ -173,10 +204,10 @@ export class MetricsService {
   /** Top 5 tags por frequência (conversation_tag) no período, com a cor fixa. */
   private async topTags(clinicId: string, since: Date): Promise<TopTag[]> {
     const grouped = await this.prisma.conversationTag.groupBy({
-      by: ["tagId"],
+      by: ['tagId'],
       where: { clinicId, createdAt: { gte: since } },
       _count: { tagId: true },
-      orderBy: { _count: { tagId: "desc" } },
+      orderBy: { _count: { tagId: 'desc' } },
       take: 5,
     });
     if (grouped.length === 0) return [];
@@ -189,7 +220,9 @@ export class MetricsService {
     return grouped
       .map((g) => {
         const t = byId.get(g.tagId);
-        return t ? { name: t.name, color: t.color, value: g._count.tagId } : null;
+        return t
+          ? { name: t.name, color: t.color, value: g._count.tagId }
+          : null;
       })
       .filter((t): t is TopTag => t !== null);
   }
@@ -197,10 +230,12 @@ export class MetricsService {
 
 /** Uma conversa "engajou" se o paciente respondeu após a 1ª mensagem do bot. */
 function isEngaged(c: ConvoLite): boolean {
-  const firstAssistant = c.messages.find((m) => m.role === "assistant");
+  const firstAssistant = c.messages.find((m) => m.role === 'assistant');
   if (!firstAssistant) return false;
   return c.messages.some(
-    (m) => m.role === "user" && m.createdAt.getTime() > firstAssistant.createdAt.getTime(),
+    (m) =>
+      m.role === 'user' &&
+      m.createdAt.getTime() > firstAssistant.createdAt.getTime(),
   );
 }
 
@@ -210,7 +245,12 @@ function kpi(value: number, prev: number | null, spark: number[]): Kpi {
     return { value, delta: null, deltaDir: null, spark };
   }
   const change = Math.round(((value - prev) / prev) * 100);
-  return { value, delta: Math.abs(change), deltaDir: change >= 0 ? "up" : "down", spark };
+  return {
+    value,
+    delta: Math.abs(change),
+    deltaDir: change >= 0 ? 'up' : 'down',
+    spark,
+  };
 }
 
 /** Conta itens por dia numa janela de `days` dias a partir de `since`. */
@@ -251,5 +291,5 @@ function addDays(d: Date, n: number): Date {
 
 /** Rótulo curto do eixo X (dd/MM). */
 function formatDay(d: Date): string {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
 }

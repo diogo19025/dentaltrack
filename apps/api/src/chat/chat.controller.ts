@@ -1,9 +1,16 @@
-import { Body, Controller, HttpException, Post, Res, UseGuards } from "@nestjs/common";
-import type { Response } from "express";
-import { ClinicId } from "../auth/clinic-id.decorator";
-import { TenantGuard } from "../auth/tenant.guard";
-import { ChatService } from "./chat.service";
-import { ChatRequestDto } from "./dto";
+import {
+  Body,
+  Controller,
+  HttpException,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import { ClinicId } from '../auth/clinic-id.decorator';
+import { TenantGuard } from '../auth/tenant.guard';
+import { ChatService } from './chat.service';
+import { ChatRequestDto } from './dto';
 
 /**
  * POST /chat — turno de conversa com **streaming** (BE-1.6).
@@ -12,7 +19,7 @@ import { ChatRequestDto } from "./dto";
  * AI SDK (consumível pelo `useChat`); o `conversationId` volta no header
  * `X-Conversation-Id`.
  */
-@Controller("chat")
+@Controller('chat')
 @UseGuards(TenantGuard)
 export class ChatController {
   constructor(private readonly chat: ChatService) {}
@@ -35,7 +42,7 @@ export class ChatController {
       const payload =
         err instanceof HttpException
           ? err.getResponse()
-          : { statusCode: 500, message: "Erro interno." };
+          : { statusCode: 500, message: 'Erro interno.' };
       res.status(status).json(payload);
     }
   }

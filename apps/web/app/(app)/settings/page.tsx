@@ -134,12 +134,19 @@ export default function SettingsPage() {
       </PageHeader>
 
       <div className="mb-[22px] flex items-center gap-3">
-        <Segmented options={TAB_OPTIONS} value={tab} onChange={(v) => setTab(v as Tab)} />
+        <Segmented
+          aria-label="Seções das configurações"
+          options={TAB_OPTIONS}
+          value={tab}
+          onChange={(v) => setTab(v as Tab)}
+        />
         {isSettingsTab && update.isSuccess && !formState.isDirty && (
-          <span className="anim-fade text-[12.5px] text-success">Alterações salvas.</span>
+          <span role="status" className="anim-fade text-[12.5px] text-success">
+            Alterações salvas.
+          </span>
         )}
         {isSettingsTab && update.isError && (
-          <span className="text-[12.5px] text-destructive">
+          <span role="alert" className="text-[12.5px] text-destructive">
             Não foi possível salvar. Tente novamente.
           </span>
         )}
@@ -207,28 +214,32 @@ function SectionCard({
     <Card className="gap-0 p-[22px_24px]">
       <div className="mb-5">
         <div className="text-base font-semibold tracking-[-0.01em]">{title}</div>
-        {desc && <div className="mt-0.5 text-[13px] text-muted-foreground">{desc}</div>}
+        {desc && <div className="mt-[3px] text-[13px] text-muted-foreground">{desc}</div>}
       </div>
       {children}
     </Card>
   );
 }
 
-/** Campo rotulado (label em cima, hint embaixo). */
+/** Campo rotulado (label em cima, hint embaixo). `htmlFor` associa ao controle (a11y). */
 function Field({
   label,
   hint,
+  htmlFor,
   children,
 }: {
   label: string;
   hint?: string;
+  htmlFor?: string;
   children: ReactNode;
 }) {
   return (
     <div>
-      <Label className="mb-2 text-[13px] font-medium">{label}</Label>
+      <Label htmlFor={htmlFor} className="mb-[7px] text-[13px] font-medium">
+        {label}
+      </Label>
       {children}
-      {hint && <p className="mt-1.5 text-[12px] text-muted-foreground">{hint}</p>}
+      {hint && <p className="mt-[7px] text-[12px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
@@ -272,12 +283,12 @@ function IdentityFields({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
-          <Field label="Nome da clínica">
-            <Input {...register("clinicName")} placeholder="Nome da sua clínica" />
+          <Field label="Nome da clínica" htmlFor="set-clinic-name">
+            <Input id="set-clinic-name" {...register("clinicName")} placeholder="Nome da sua clínica" />
           </Field>
-          <Field label="Especialidade">
+          <Field label="Especialidade" htmlFor="set-specialty">
             <Select value={specialty || undefined} onValueChange={setSpecialty}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="set-specialty" className="w-full">
                 <SelectValue placeholder="Selecione…" />
               </SelectTrigger>
               <SelectContent>
@@ -297,15 +308,16 @@ function IdentityFields({
         desc="O tom de voz e a saudação inicial da conversa."
       >
         <Field label="Tom de voz">
-          <Segmented options={TONE_OPTIONS} value={tone} onChange={setTone} />
+          <Segmented aria-label="Tom de voz" options={TONE_OPTIONS} value={tone} onChange={setTone} />
         </Field>
         <div className="h-[18px]" />
-        <Field label="Nome do assistente" hint="Aparece no topo do chat e na apresentação.">
-          <Input {...register("assistantName")} placeholder="Ex.: Sofia" />
+        <Field label="Nome do assistente" hint="Aparece no topo do chat e na apresentação." htmlFor="set-assistant">
+          <Input id="set-assistant" {...register("assistantName")} placeholder="Ex.: Sofia" />
         </Field>
         <div className="h-[18px]" />
-        <Field label="Mensagem de saudação" hint="Primeira mensagem que o paciente recebe.">
+        <Field label="Mensagem de saudação" hint="Primeira mensagem que o paciente recebe." htmlFor="set-greeting">
           <Textarea
+            id="set-greeting"
             rows={3}
             {...register("greeting")}
             placeholder="Olá! Sou a assistente virtual da clínica…"
@@ -356,21 +368,26 @@ function OffersFields({
               </div>
             </div>
           </div>
-          <Switch checked={offerEnabled} onCheckedChange={setOfferEnabled} />
+          <Switch
+            checked={offerEnabled}
+            onCheckedChange={setOfferEnabled}
+            aria-label="Ativar oferta"
+          />
         </div>
-        <Field label="Texto da oferta" hint="Linguagem natural — o agente adapta ao contexto.">
+        <Field label="Texto da oferta" hint="Linguagem natural — o agente adapta ao contexto." htmlFor="set-offer-text">
           <Textarea
+            id="set-offer-text"
             rows={3}
             {...register("offerText")}
             placeholder="Ex.: Avaliação inicial gratuita neste mês para novos pacientes."
           />
         </Field>
         <div className="mt-[18px] grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
-          <Field label="Início da vigência">
-            <IconInput icon={Calendar} {...register("offerStartsOn")} placeholder="01/06/2026" />
+          <Field label="Início da vigência" htmlFor="set-offer-start">
+            <IconInput id="set-offer-start" icon={Calendar} {...register("offerStartsOn")} placeholder="01/06/2026" />
           </Field>
-          <Field label="Fim da vigência">
-            <IconInput icon={Calendar} {...register("offerEndsOn")} placeholder="30/06/2026" />
+          <Field label="Fim da vigência" htmlFor="set-offer-end">
+            <IconInput id="set-offer-end" icon={Calendar} {...register("offerEndsOn")} placeholder="30/06/2026" />
           </Field>
         </div>
       </SectionCard>
@@ -382,8 +399,10 @@ function OffersFields({
         <Field
           label="Diretrizes da clínica"
           hint="Ex.: 'sempre ofereça a avaliação antes de orçar', 'não passe valores fechados por mensagem'."
+          htmlFor="set-instructions"
         >
           <Textarea
+            id="set-instructions"
             rows={5}
             {...register("instructions")}
             placeholder="• Sempre ofereça a avaliação inicial antes de informar valores."
@@ -403,7 +422,7 @@ function OffersFields({
           {availability.map((slot, idx) => (
             <div
               key={slot.day}
-              className="flex items-center justify-between border-b border-border py-2.5 last:border-b-0"
+              className="flex items-center justify-between border-b border-border py-2.5"
             >
               <span className="text-sm font-medium">{slot.day}</span>
               <span className="flex items-center gap-3">
@@ -413,6 +432,7 @@ function OffersFields({
                   onCheckedChange={(open) =>
                     setAvailability(availability.map((s, i) => (i === idx ? { ...s, open } : s)))
                   }
+                  aria-label={`Atendimento em ${slot.day}`}
                 />
               </span>
             </div>
@@ -431,8 +451,8 @@ function IconInput({
 }: React.ComponentProps<"input"> & { icon: typeof Calendar }) {
   return (
     <div className="relative">
-      <Icon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      <Input className={cn("pl-9", className)} {...props} />
+      <Icon className="pointer-events-none absolute left-[13px] top-1/2 size-[17px] -translate-y-1/2 text-muted-foreground" />
+      <Input className={cn("pl-10", className)} {...props} />
     </div>
   );
 }
@@ -457,7 +477,7 @@ function BotPreview({
   const clinic = clinicName.trim() || "sua clínica";
   const greet =
     greeting.trim() ||
-    `Olá! Sou ${assistantName.trim() ? `a ${name}` : "o assistente"} da ${clinic}. Como posso ajudar com seu sorriso hoje?`;
+    `Olá! Sou ${assistantName.trim() ? `a ${name}, assistente` : "o assistente"} da ${clinic}. Como posso ajudar com seu sorriso hoje?`;
   const offer = offerText.trim();
   const toneLabel = TONE_OPTIONS.find((t) => t.value === tone)?.label.toLowerCase() ?? tone;
 
@@ -478,7 +498,8 @@ function BotPreview({
           <PreviewBubble>{greet}</PreviewBubble>
           {offerEnabled && offer && (
             <PreviewBubble>
-              Aproveite: <strong className="text-primary">{offer}</strong>
+              Aproveite: temos <strong className="text-primary">{offer}</strong> para novos
+              pacientes. Quer que eu já agende a sua?
             </PreviewBubble>
           )}
           <div className="max-w-[80%] self-end rounded-[14px_14px_4px_14px] bg-primary px-[13px] py-2.5 text-[13.5px] text-white">
@@ -486,7 +507,7 @@ function BotPreview({
           </div>
         </div>
       </Card>
-      <div className="mt-3 flex items-center justify-center gap-1.5 text-[12px] text-muted-foreground">
+      <div className="mt-3 flex items-center justify-center gap-[7px] text-[12px] text-muted-foreground">
         <RefreshCw className="size-[13px]" /> Atualiza conforme você edita
       </div>
     </div>

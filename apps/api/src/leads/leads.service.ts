@@ -1,6 +1,6 @@
-import { Injectable } from "@nestjs/common";
-import type { LeadDto, LeadsResponse, LeadTag } from "@dentaltrack/shared";
-import { PrismaService } from "../prisma/prisma.service";
+import { Injectable } from '@nestjs/common';
+import type { LeadDto, LeadsResponse, LeadTag } from '@dentaltrack/shared';
+import { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Leads capturados pelas conversas (F3 · GET /leads). Escopado por `clinicId`.
@@ -14,33 +14,38 @@ export class LeadsService {
   async list(clinicId: string): Promise<LeadsResponse> {
     const leads = await this.prisma.lead.findMany({
       where: { clinicId },
-      orderBy: { createdAt: "desc" },
+      orderBy: { createdAt: 'desc' },
       include: {
         conversations: {
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           select: {
             status: true,
             conversationTags: {
-              orderBy: { confidence: "desc" },
+              orderBy: { confidence: 'desc' },
               select: { tag: { select: { name: true, color: true } } },
             },
           },
         },
         appointments: {
-          orderBy: { createdAt: "desc" },
+          orderBy: { createdAt: 'desc' },
           take: 1,
           select: { procedure: { select: { name: true } } },
         },
       },
     });
 
-    const summary = { total: leads.length, agendada: 0, andamento: 0, abandonada: 0 };
+    const summary = {
+      total: leads.length,
+      agendada: 0,
+      andamento: 0,
+      abandonada: 0,
+    };
 
     const dtos: LeadDto[] = leads.map((lead) => {
       const status = lead.conversations[0]?.status ?? null;
-      if (status === "agendada") summary.agendada += 1;
-      else if (status === "em_andamento") summary.andamento += 1;
-      else if (status === "abandonada") summary.abandonada += 1;
+      if (status === 'agendada') summary.agendada += 1;
+      else if (status === 'em_andamento') summary.andamento += 1;
+      else if (status === 'abandonada') summary.abandonada += 1;
 
       // Tags distintas de todas as conversas do lead (ordem por confiança).
       const seen = new Set<string>();

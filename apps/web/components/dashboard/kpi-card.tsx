@@ -35,7 +35,7 @@ export function KpiCard({
         </span>
         {kpi.delta != null && (
           <span
-            className="tabular inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold"
+            className="tabular inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[12px] font-semibold"
             style={
               up
                 ? { background: "var(--success-tint)", color: "var(--success)" }
@@ -57,7 +57,7 @@ export function KpiCard({
       </div>
 
       {kpi.spark.length > 0 && (
-        <div className="-mt-0.5">
+        <div className="-mt-0.5" aria-hidden="true">
           <Sparkline data={kpi.spark} color={sparkColor} />
         </div>
       )}

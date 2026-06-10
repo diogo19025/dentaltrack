@@ -1,5 +1,5 @@
-import type { Request } from "express";
-import type { JWTPayload } from "jose";
+import type { Request } from 'express';
+import type { JWTPayload } from 'jose';
 
 /** Usuário autenticado (extraído do JWT do Supabase pelo SupabaseJwtGuard). */
 export interface AuthUser {

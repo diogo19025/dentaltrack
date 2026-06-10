@@ -1,8 +1,8 @@
-import { Test } from "@nestjs/testing";
-import { HealthController } from "./health.controller";
-import { PrismaService } from "../prisma/prisma.service";
+import { Test } from '@nestjs/testing';
+import { HealthController } from './health.controller';
+import { PrismaService } from '../prisma/prisma.service';
 
-describe("HealthController", () => {
+describe('HealthController', () => {
   let controller: HealthController;
   const prismaMock = { $queryRaw: jest.fn() };
 
@@ -18,14 +18,14 @@ describe("HealthController", () => {
   it('retorna status "ok" e db "up" quando o banco responde', async () => {
     prismaMock.$queryRaw.mockResolvedValueOnce([{ ok: 1 }]);
     const res = await controller.check();
-    expect(res.status).toBe("ok");
-    expect(res.db).toBe("up");
-    expect(typeof res.timestamp).toBe("string");
+    expect(res.status).toBe('ok');
+    expect(res.db).toBe('up');
+    expect(typeof res.timestamp).toBe('string');
   });
 
   it('retorna db "down" quando a query falha', async () => {
-    prismaMock.$queryRaw.mockRejectedValueOnce(new Error("sem conexão"));
+    prismaMock.$queryRaw.mockRejectedValueOnce(new Error('sem conexão'));
     const res = await controller.check();
-    expect(res.db).toBe("down");
+    expect(res.db).toBe('down');
   });
 });

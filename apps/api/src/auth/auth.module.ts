@@ -1,7 +1,7 @@
-import { Module } from "@nestjs/common";
-import { APP_GUARD } from "@nestjs/core";
-import { SupabaseJwtGuard } from "./supabase-jwt.guard";
-import { TenantGuard } from "./tenant.guard";
+import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { SupabaseJwtGuard } from './supabase-jwt.guard';
+import { TenantGuard } from './tenant.guard';
 
 /**
  * Auth global: o SupabaseJwtGuard protege todas as rotas (menos @Public).

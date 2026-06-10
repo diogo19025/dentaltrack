@@ -24,9 +24,9 @@ export function Funnel({ data }: { data: FunnelData }) {
                 {s.value.toLocaleString("pt-BR")} <span className="opacity-65">· {pct}%</span>
               </span>
             </div>
-            <div className="h-8 overflow-hidden rounded-lg bg-muted">
+            <div className="h-8 overflow-hidden rounded-[8px] bg-muted">
               <div
-                className="bar-grow h-full rounded-lg"
+                className="bar-grow h-full rounded-[8px]"
                 style={{
                   width: `${pct}%`,
                   background:

@@ -459,3 +459,93 @@ coerentes) para o dashboard/leads renderizarem com volume. Idempotente; **não**
 aplicada + smoke contra o Supabase real). Com isso, os **4 pilares** do MVP (chatbot · dashboard ·
 configurações · tags) estão funcionais ponta a ponta. Próximo: **F4** — QA, conferência de
 fidelidade 1:1 das 5 telas, testes FE/E2E (Vitest/Playwright) e deploy em produção.
+
+---
+
+## Fase 4 — QA, fidelidade & polish (2026-06-09)
+
+> Leva da **F4** (QA-4.1…4.5, sem o F0.8/CI — decisão do dono). Incremental, com o pipeline
+> verde a cada etapa. Pendências da fase: **executar o deploy** (runbook pronto) e a **1ª rodada
+> ao vivo do E2E** (pré-requisito único no Supabase).
+
+### QA-4.1 — Vitest no web (47 testes)
+Setup do **Vitest** em `apps/web` (`vitest.config.ts`: jsdom + `@vitejs/plugin-react` + alias `@/`;
+`vitest.setup.ts` com jest-dom e cleanup) e **11 suites / 47 testes** nos caminhos críticos:
+`lib/format` (timeAgo/formatCaptured/initials com fake timers), `lib/tags` (mapa fixo do design),
+`lib/api-client` (Bearer/Content-Type, `ApiError`, fallback de statusText), hooks com TanStack
+Query mockando o `api-client` (`use-settings` GET+PATCH atualizando o cache; `use-metrics` por
+range), e componentes `StatusBadge`, `Tag`, `Segmented` (interação), `Funnel`/`HBars` (escala e
+percentuais) e `KpiCard` (delta up/down, sparkline mockado). Script `test` no web → o
+`turbo test` roda **Jest (API) + Vitest (web)** juntos.
+
+### QA-4.2 — Provider mock + Playwright E2E (5 fluxos)
+- **Provider `mock` da IA** (`ai/mock-model.ts`, `LLM_PROVIDER=mock`): `MockLanguageModelV3` do
+  AI SDK com roteiro determinístico — mensagem comum → texto fixo em **streaming**; pedido de
+  agendamento → chama **de verdade** as tools `captureLead` + `bookAppointment` (lead +
+  appointment no banco ⇒ conversão) e confirma no passo seguinte. `doGenerate` devolve tags
+  vazias (auto-tagging). **+4 testes Jest (API: 82)**. Nunca usar em produção (documentado).
+- **Playwright** em `apps/web` (`pnpm --filter @dentaltrack/web e2e`): sobe **api em modo mock**
+  (:3101) + **next dev** (:3100) em portas dedicadas (não colide com o `pnpm dev`); usuário e2e
+  dedicado no Supabase real (clínica própria via onboarding — dados isolados da demo);
+  `auth.setup` salva a sessão (cookies) p/ os specs. **5 specs**: login (guard + erro + sucesso),
+  chat (streaming + conversão com status `Agendada` no rail), dashboard (KPIs + troca de período),
+  leads (cards, busca, CSV) e settings (editar → salvar → persistir + 4 abas).
+- **Pré-requisito (uma vez, a desbloquear):** o projeto Supabase exige confirmação de e-mail e o
+  `SUPABASE_SERVICE_ROLE_KEY` está vazio no `.env` → preencher a service key (criação automática)
+  **ou** confirmar o usuário `dentaltrack.e2e.tests@gmail.com` no dashboard. O runner falha com
+  essas instruções até lá (decisão do dono: deixar para depois da demo).
+
+### QA-4.3 — Conferência de fidelidade 1:1 (auditoria + correções)
+Auditoria mock×impl das 5 telas + shell + motion (3 agentes em paralelo, achados com evidência
+arquivo:linha). **Causa-raiz dominante:** os primitivos shadcn não tinham sido re-medidos para o
+`.btn`/`.input` do handoff. Corrigido:
+- **Primitivos** — `Button` (40px/16px, hover **escurece** `--primary-hover`, secundário = card
+  branco + borda forte + sombra, press translateY+scale, disabled 55%, icon 40/34px),
+  `Input`/`Select` (42px, padding 13px, fundo card, placeholder `#9aabab`, hover borda forte, foco
+  halo `--primary-tint`), `Textarea` (96px, 11/13px, lh 1.55, `rows` volta a valer), `Switch`
+  (42×24, thumb 18px branco c/ sombra e overshoot), `Skeleton` (**shimmer** do design, não pulse),
+  `Tooltip` (raio 7, 6/9px, offset 8, sem seta).
+- **Tema** — sombras clínicas mapeadas no `@theme` (antes `shadow-*` usava as pretas default do
+  Tailwind) + `--color-primary-hover/active`.
+- **Charts** — linhas/sparkline **lineares** (não monotone) com dots em todo ponto; sparkline
+  210×34 fixo; donut com anel de 16px e pontas arredondadas; funil raio 8.
+- **Telas** — login (lh do título, chevron 16, sem underline), chat (header com o **nome real da
+  clínica**, sugestão cita a **oferta ativa**, send 40px, clipe 34px, `IcDot` preenchido,
+  quick replies até a 1ª resposta, cápsula `rounded-full`, barras de confiança animadas), shell
+  (`LayoutDashboard`, sino secondary 34px, busca 42px), leads (footer "filtrados de todos",
+  ícone 13px), settings (bolha de oferta do preview com o enquadramento do mock,
+  micro-espaçamentos 7px/3px, divisória em todas as linhas de disponibilidade).
+- **Adaptações intencionais mantidas** (dados reais/UX): tooltip+eixos do gráfico de linha, empty
+  states, paginação funcional, badge dinâmico de leads, glifos lucide (`Bot`/`Sparkles`),
+  saudação genérica do chat (a persona real chega no streaming), "Painel da clínica" no rodapé
+  da sidebar.
+
+### QA-4.4 — A11y AA + estados
+`lang="pt-BR"` ✓ e grids responsivos ✓ já existiam. Adicionado: **labels↔campos** em todas as
+configurações e nos dialogs de catálogo (`htmlFor`/`id`), `Segmented` com padrão de **tablist**
+(setas movem a seleção, tabindex rotativo, `aria-label` por uso), **`role="log"`** na área de
+mensagens do chat (anúncio de respostas em SR), `role="alert"/"status"` nos erros/sucessos
+(login, settings, dialogs), `aria-label` em switches (oferta/disponibilidade) e na busca do
+topbar, `aria-pressed` nos toggles de tag/cor, `aria-current` + focus ring na navegação,
+focus-visible nas quick replies, skeletons e sparklines `aria-hidden`. `prefers-reduced-motion`
+já era 1:1 (auditado).
+
+### QA-4.5 — README + runbook de deploy (prepare-only, por decisão)
+**`README.md`** na raiz (produto, stack, estrutura, setup local, qualidade, deploy, docs).
+**`DEPLOY.md`** virou runbook: checklist pré-deploy + passos Vercel/Render + **smoke pós-deploy**.
+**`render.yaml`** corrigido: faltavam as envs de IA (`LLM_PROVIDER`, `GOOGLE_GENERATIVE_AI_API_KEY`
++ fallback) — sem elas o bot subiria mudo em produção. A **execução** do deploy fica para depois
+da apresentação (decisão do dono — feito em conjunto).
+
+### Qualidade / validação
+- **API**: 82 testes (16 suites) · typecheck + build verdes.
+- **Web**: 47 testes (11 suites) · typecheck + lint (0 warnings) + `next build` verdes ·
+  `turbo build` 3/3.
+- **E2E**: suite completa; falha **controlada** no setup com instruções de desbloqueio enquanto o
+  pré-requisito do usuário e2e não for atendido.
+
+### Pendências da F4 (deferidas, com motivo)
+- **Executar o deploy** (QA-4.5) — requer as contas/keys do dono; runbook pronto.
+- **1ª rodada ao vivo do E2E** (QA-4.2) — pré-requisito único no Supabase (acima).
+- **F0.8 (CI)** — explicitamente fora desta leva.
+- **Upload de logo** — segue visual (pendência herdada da F2).

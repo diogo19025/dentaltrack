@@ -65,7 +65,12 @@ export default function DashboardPage() {
         title="Dashboard"
         subtitle="Visão geral do atendimento e da conversão da sua clínica."
       >
-        <Segmented options={RANGE_OPTIONS} value={range} onChange={(v) => setRange(v as MetricsRange)} />
+        <Segmented
+          aria-label="Período do dashboard"
+          options={RANGE_OPTIONS}
+          value={range}
+          onChange={(v) => setRange(v as MetricsRange)}
+        />
         <Button variant="secondary">
           <Download className="size-4" /> Exportar
         </Button>

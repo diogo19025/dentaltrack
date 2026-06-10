@@ -41,13 +41,13 @@ export function Topbar() {
 
       <div className="relative hidden w-[260px] sm:block">
         <Search className="pointer-events-none absolute left-[13px] top-1/2 size-[17px] -translate-y-1/2 text-muted-foreground" />
-        <Input placeholder="Buscar conversas, leads…" className="h-10 pl-10" />
+        <Input aria-label="Buscar conversas e leads" placeholder="Buscar conversas, leads…" className="pl-10" />
       </div>
 
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="relative inline-flex">
-            <Button variant="outline" size="icon" aria-label="Notificações">
+            <Button variant="secondary" size="icon-sm" aria-label="Notificações">
               <Bell />
             </Button>
             <span
@@ -61,7 +61,7 @@ export function Topbar() {
 
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button size="icon" aria-label="Iniciar conversa de teste">
+          <Button size="icon-sm" aria-label="Iniciar conversa de teste">
             <Plus />
           </Button>
         </TooltipTrigger>

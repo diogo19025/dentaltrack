@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  ChevronRight,
-  LayoutGrid,
+  LayoutDashboard,
   LogOut,
   MessageCircle,
   Settings,
@@ -23,7 +22,7 @@ import { cn } from "@/lib/utils";
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
 const NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutGrid },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/settings", label: "Configurações", icon: Settings },
@@ -82,8 +81,9 @@ export function Sidebar({
               <Link
                 key={item.href}
                 href={item.href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-[11px] rounded-md px-[11px] py-[10px] text-sm transition-colors",
+                  "flex items-center gap-[11px] rounded-md px-[11px] py-[10px] text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                   active
                     ? "bg-primary-tint font-semibold text-primary"
                     : "font-medium text-secondary-foreground hover:bg-accent",
@@ -135,7 +135,6 @@ export function Sidebar({
             style={{ border: "1px solid var(--primary-tint-strong)" }}
           >
             Configurar
-            <ChevronRight className="size-3.5" />
           </Link>
         </div>
       </div>
@@ -153,7 +152,7 @@ export function Sidebar({
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={logout} aria-label="Sair">
+              <Button variant="ghost" size="icon-sm" onClick={logout} aria-label="Sair">
                 <LogOut />
               </Button>
             </TooltipTrigger>

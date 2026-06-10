@@ -1,9 +1,9 @@
-import { Controller, Get } from "@nestjs/common";
-import type { HealthResponse } from "@dentaltrack/shared";
-import { Public } from "../auth/public.decorator";
-import { PrismaService } from "../prisma/prisma.service";
+import { Controller, Get } from '@nestjs/common';
+import type { HealthResponse } from '@dentaltrack/shared';
+import { Public } from '../auth/public.decorator';
+import { PrismaService } from '../prisma/prisma.service';
 
-@Controller("health")
+@Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -11,14 +11,14 @@ export class HealthController {
   @Public()
   @Get()
   async check(): Promise<HealthResponse> {
-    let db: HealthResponse["db"] = "up";
+    let db: HealthResponse['db'] = 'up';
     try {
       await this.prisma.$queryRaw`SELECT 1`;
     } catch {
-      db = "down";
+      db = 'down';
     }
     return {
-      status: "ok",
+      status: 'ok',
       db,
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),

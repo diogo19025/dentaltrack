@@ -1,6 +1,6 @@
-import { type ToolSet, dynamicTool, jsonSchema } from "ai";
-import type { ConversationsService } from "../conversations/conversations.service";
-import type { PrismaService } from "../prisma/prisma.service";
+import { type ToolSet, dynamicTool, jsonSchema } from 'ai';
+import type { ConversationsService } from '../conversations/conversations.service';
+import type { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Tools do agente (BE-1.4) — function calling via Vercel AI SDK.
@@ -39,15 +39,19 @@ interface BookInput {
 
 /** Formata centavos em BRL (ex.: 150000 → "R$ 1.500"). */
 function brl(cents: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
     maximumFractionDigits: 0,
   }).format(cents / 100);
 }
 
-function priceLabel(min: number | null, max: number | null): string | undefined {
-  if (min != null && max != null) return min === max ? brl(min) : `${brl(min)} a ${brl(max)}`;
+function priceLabel(
+  min: number | null,
+  max: number | null,
+): string | undefined {
+  if (min != null && max != null)
+    return min === max ? brl(min) : `${brl(min)} a ${brl(max)}`;
   if (min != null) return `a partir de ${brl(min)}`;
   if (max != null) return `até ${brl(max)}`;
   return undefined;
@@ -87,13 +91,13 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
         ...(q
           ? {
               OR: [
-                { name: { contains: q, mode: "insensitive" } },
-                { description: { contains: q, mode: "insensitive" } },
+                { name: { contains: q, mode: 'insensitive' } },
+                { description: { contains: q, mode: 'insensitive' } },
               ],
             }
           : {}),
       },
-      orderBy: { name: "asc" },
+      orderBy: { name: 'asc' },
       take,
       include: { tags: { select: { name: true } } },
     });
@@ -123,8 +127,12 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
     let byTags: ReturnType<typeof toView>[] = [];
     if (matchedTagIds.length > 0) {
       const rows: ProcedureRow[] = await prisma.procedure.findMany({
-        where: { clinicId, active: true, tags: { some: { id: { in: matchedTagIds } } } },
-        orderBy: { name: "asc" },
+        where: {
+          clinicId,
+          active: true,
+          tags: { some: { id: { in: matchedTagIds } } },
+        },
+        orderBy: { name: 'asc' },
         take: 5,
         include: { tags: { select: { name: true } } },
       });
@@ -133,11 +141,13 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
     // Tags primeiro (mais específico), depois a busca textual; dedup por id.
     const seen = new Set<string>();
-    const combined = [...byTags, ...(await findProcedures(interesse))].filter((p) =>
-      seen.has(p.id) ? false : (seen.add(p.id), true),
+    const combined = [...byTags, ...(await findProcedures(interesse))].filter(
+      (p) => (seen.has(p.id) ? false : (seen.add(p.id), true)),
     );
     // Fallback: nada casou → mostra o catálogo geral (comportamento anterior).
-    return combined.length > 0 ? combined.slice(0, 5) : findProcedures(undefined);
+    return combined.length > 0
+      ? combined.slice(0, 5)
+      : findProcedures(undefined);
   }
 
   // Tipar como Record<string, unknown> evita o tsc comparar cada tool contra os
@@ -147,9 +157,11 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
       description:
         "Busca procedimentos no catálogo da clínica por um termo (ex.: 'implante', 'clareamento'). Use para responder sobre descrição, preço e duração. Não invente procedimentos fora do catálogo.",
       inputSchema: jsonSchema<SearchInput>({
-        type: "object",
-        properties: { query: { type: "string", description: "Termo de busca." } },
-        required: ["query"],
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Termo de busca.' },
+        },
+        required: ['query'],
         additionalProperties: false,
       }),
       execute: async (input) => {
@@ -163,11 +175,14 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
       description:
         "Sugere procedimentos do catálogo com base no interesse/sintoma relatado pelo paciente (ex.: 'dente amarelo', 'dor'). Retorna opções pertinentes para recomendar.",
       inputSchema: jsonSchema<SuggestInput>({
-        type: "object",
+        type: 'object',
         properties: {
-          interesse: { type: "string", description: "O que o paciente quer/relata." },
+          interesse: {
+            type: 'string',
+            description: 'O que o paciente quer/relata.',
+          },
         },
-        required: ["interesse"],
+        required: ['interesse'],
         additionalProperties: false,
       }),
       execute: async (input) => {
@@ -179,15 +194,18 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
     captureLead: dynamicTool({
       description:
-        "Registra (ou atualiza) os dados de contato do paciente quando ele demonstrar interesse. Chame assim que tiver o nome e, de preferência, o telefone.",
+        'Registra (ou atualiza) os dados de contato do paciente quando ele demonstrar interesse. Chame assim que tiver o nome e, de preferência, o telefone.',
       inputSchema: jsonSchema<CaptureLeadInput>({
-        type: "object",
+        type: 'object',
         properties: {
-          nome: { type: "string", description: "Nome do paciente." },
-          telefone: { type: "string", description: "Telefone/WhatsApp, se informado." },
-          email: { type: "string", description: "E-mail, se informado." },
+          nome: { type: 'string', description: 'Nome do paciente.' },
+          telefone: {
+            type: 'string',
+            description: 'Telefone/WhatsApp, se informado.',
+          },
+          email: { type: 'string', description: 'E-mail, se informado.' },
         },
-        required: ["nome"],
+        required: ['nome'],
         additionalProperties: false,
       }),
       execute: async (input) => {
@@ -202,32 +220,47 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
           });
           return { ok: true, leadId };
         } catch {
-          return { ok: false, erro: "Não foi possível registrar o contato agora." };
+          return {
+            ok: false,
+            erro: 'Não foi possível registrar o contato agora.',
+          };
         }
       },
     }),
 
     bookAppointment: dynamicTool({
       description:
-        "Registra um pedido de agendamento (a conversão). Use quando o paciente confirmar que quer marcar. Garanta antes nome e telefone. Informe o procedimento e a preferência de dia/horário em texto livre.",
+        'Registra um pedido de agendamento (a conversão). Use quando o paciente confirmar que quer marcar. Garanta antes nome e telefone. Informe o procedimento e a preferência de dia/horário em texto livre.',
       inputSchema: jsonSchema<BookInput>({
-        type: "object",
+        type: 'object',
         properties: {
-          nome: { type: "string", description: "Nome do paciente (se ainda não capturado)." },
-          telefone: { type: "string", description: "Telefone do paciente." },
-          procedimento: { type: "string", description: "Procedimento desejado." },
+          nome: {
+            type: 'string',
+            description: 'Nome do paciente (se ainda não capturado).',
+          },
+          telefone: { type: 'string', description: 'Telefone do paciente.' },
+          procedimento: {
+            type: 'string',
+            description: 'Procedimento desejado.',
+          },
           preferencia: {
-            type: "string",
-            description: "Preferência de dia/horário em texto livre.",
+            type: 'string',
+            description: 'Preferência de dia/horário em texto livre.',
           },
         },
         additionalProperties: false,
       }),
       execute: async (input) => {
-        const { nome, telefone, procedimento, preferencia } = input as BookInput;
+        const { nome, telefone, procedimento, preferencia } =
+          input as BookInput;
         try {
           const leadId = nome
-            ? await upsertLead(prisma, { clinicId, conversationId, nome, telefone })
+            ? await upsertLead(prisma, {
+                clinicId,
+                conversationId,
+                nome,
+                telefone,
+              })
             : ((
                 await prisma.conversation.findFirst({
                   where: { id: conversationId, clinicId },
@@ -235,7 +268,9 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
                 })
               )?.leadId ?? null);
 
-          const procedure = procedimento ? (await findProcedures(procedimento, 1))[0] : undefined;
+          const procedure = procedimento
+            ? (await findProcedures(procedimento, 1))[0]
+            : undefined;
 
           const appointment = await prisma.appointment.create({
             data: {
@@ -257,7 +292,10 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
           return { ok: true, appointmentId: appointment.id };
         } catch {
-          return { ok: false, erro: "Não foi possível registrar o agendamento agora." };
+          return {
+            ok: false,
+            erro: 'Não foi possível registrar o agendamento agora.',
+          };
         }
       },
     }),
@@ -301,7 +339,7 @@ async function upsertLead(
       name: args.nome,
       phone: args.telefone ?? null,
       email: args.email ?? null,
-      source: "web",
+      source: 'web',
     },
     select: { id: true },
   });
