@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { conversationStatusSchema } from "./enums";
+import { channelSchema, conversationStatusSchema } from "./enums";
 import { tagColorSchema } from "./tags";
 
 /**
@@ -15,6 +15,23 @@ export const leadTagSchema = z.object({
 });
 export type LeadTag = z.infer<typeof leadTagSchema>;
 
+/**
+ * Temperatura do lead — chance de conversão derivada do comportamento na
+ * conversa (agendamento, engajamento, tags, recência, abandono). Calculada
+ * on-read pelo backend (`leads/lead-scoring.ts`), sem persistência.
+ */
+export const LEAD_TEMPERATURES = ["quente", "medio", "fraco"] as const;
+export const leadTemperatureSchema = z.enum(LEAD_TEMPERATURES);
+export type LeadTemperature = (typeof LEAD_TEMPERATURES)[number];
+
+/** Contagem de leads por temperatura (seção do dashboard). */
+export const leadTemperatureSummarySchema = z.object({
+  quente: z.number(),
+  medio: z.number(),
+  fraco: z.number(),
+});
+export type LeadTemperatureSummary = z.infer<typeof leadTemperatureSummarySchema>;
+
 /** Um lead na listagem. `status` = status da conversa mais recente do lead. */
 export const leadSchema = z.object({
   id: z.string().uuid(),
@@ -28,6 +45,9 @@ export const leadSchema = z.object({
   source: z.string(),
   /** ISO 8601. */
   createdAt: z.string(),
+  /** Score de conversão 0–100 (inteiro), base da temperatura. */
+  score: z.number(),
+  temperature: leadTemperatureSchema,
 });
 export type LeadDto = z.infer<typeof leadSchema>;
 
@@ -44,5 +64,41 @@ export type LeadsSummary = z.infer<typeof leadsSummarySchema>;
 export const leadsResponseSchema = z.object({
   leads: z.array(leadSchema),
   summary: leadsSummarySchema,
+  temperatures: leadTemperatureSummarySchema,
 });
 export type LeadsResponse = z.infer<typeof leadsResponseSchema>;
+
+/**
+ * Conversa de um lead no detalhe (GET /leads/:id). Carrega o `id` e o
+ * `channel` — referência para abrir a conversa direto no canal quando o
+ * adaptador WhatsApp existir (pós-MVP).
+ */
+export const leadConversationSchema = z.object({
+  id: z.string().uuid(),
+  channel: channelSchema,
+  status: conversationStatusSchema,
+  messageCount: z.number(),
+  /** ISO 8601 (null se a conversa não tem mensagens). */
+  lastMessageAt: z.string().nullable(),
+  /** ISO 8601. */
+  createdAt: z.string(),
+  tags: z.array(leadTagSchema),
+});
+export type LeadConversation = z.infer<typeof leadConversationSchema>;
+
+/** Pedido de agendamento do lead (evento de conversão). */
+export const leadAppointmentSchema = z.object({
+  id: z.string().uuid(),
+  procedure: z.string().nullable(),
+  preferredTime: z.string().nullable(),
+  /** ISO 8601. */
+  createdAt: z.string(),
+});
+export type LeadAppointment = z.infer<typeof leadAppointmentSchema>;
+
+/** Resposta de GET /leads/:id — lead expandido com conversas e agendamentos. */
+export const leadDetailSchema = leadSchema.extend({
+  conversations: z.array(leadConversationSchema),
+  appointments: z.array(leadAppointmentSchema),
+});
+export type LeadDetail = z.infer<typeof leadDetailSchema>;
