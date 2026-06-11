@@ -1,6 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { LeadDto } from "@dentaltrack/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { LeadTemperatureSection } from "./lead-temperature";
 
 /** Fabrica um LeadDto completo (componente é puro por props — sem mock de hooks). */
@@ -115,6 +115,29 @@ describe("LeadTemperatureSection", () => {
     expect(screen.getByRole("link", { name: /ver todos/i })).toHaveAttribute(
       "href",
       "/leads",
+    );
+  });
+
+  it("clicar num lead chama onLeadClick com o lead (abre o painel de detalhe)", () => {
+    const onLeadClick = vi.fn();
+    render(
+      <LeadTemperatureSection
+        isLoading={false}
+        onLeadClick={onLeadClick}
+        leads={[
+          makeLead({ name: "Ana", score: 80, temperature: "quente" }),
+          makeLead({ name: "Caio", score: 40, temperature: "medio" }),
+        ]}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: /ana/i });
+    expect(row).toHaveAttribute("aria-haspopup", "dialog");
+    fireEvent.click(row);
+
+    expect(onLeadClick).toHaveBeenCalledTimes(1);
+    expect(onLeadClick).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Ana", temperature: "quente" }),
     );
   });
 });

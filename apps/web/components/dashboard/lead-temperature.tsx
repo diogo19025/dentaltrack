@@ -1,52 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import type { LeadDto, LeadTemperature } from "@dentaltrack/shared";
+import type { LeadDto } from "@dentaltrack/shared";
 import { ChevronRight } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { initials } from "@/lib/format";
+import { TEMPERATURE_META, TEMPERATURE_ORDER } from "@/lib/lead-temperature";
 
 /**
  * Seção "Temperatura dos leads" do dashboard (FE-3.7) — fora do handoff,
  * seguindo o design system. Três colunas (quente/médio/fraco) com o top 3 de
- * cada faixa por score (GET /leads · `lead-scoring.ts`). Tints existentes do
- * tema como metáfora quente→frio: rose / amber / blue.
+ * cada faixa por score (GET /leads · `lead-scoring.ts`). Clicar num lead abre
+ * o painel de detalhe (FE-3.8) via `onLeadClick`.
  */
 
 const TOP_PER_BUCKET = 3;
 
-const BUCKETS: ReadonlyArray<{
-  key: LeadTemperature;
-  label: string;
-  hint: string;
-  bg: string;
-  fg: string;
-}> = [
-  {
-    key: "quente",
-    label: "Leads quentes",
-    hint: "Alta chance de conversão",
-    bg: "var(--tag-rose-bg)",
-    fg: "var(--tag-rose-fg)",
-  },
-  {
-    key: "medio",
-    label: "Leads médios",
-    hint: "Vale acompanhar de perto",
-    bg: "var(--tag-amber-bg)",
-    fg: "var(--tag-amber-fg)",
-  },
-  {
-    key: "fraco",
-    label: "Leads fracos",
-    hint: "Baixo engajamento até aqui",
-    bg: "var(--tag-blue-bg)",
-    fg: "var(--tag-blue-fg)",
-  },
-] as const;
+const BUCKETS = TEMPERATURE_ORDER.map((key) => ({
+  key,
+  ...TEMPERATURE_META[key],
+}));
 
 /** Score desc; desempate por captura mais recente (ISO compara lexicográfico). */
 const byScoreDesc = (a: LeadDto, b: LeadDto) =>
@@ -55,9 +31,11 @@ const byScoreDesc = (a: LeadDto, b: LeadDto) =>
 export function LeadTemperatureSection({
   leads,
   isLoading,
+  onLeadClick,
 }: {
   leads: LeadDto[] | undefined;
   isLoading: boolean;
+  onLeadClick?: (lead: LeadDto) => void;
 }) {
   return (
     <Card className="anim-fade-up gap-0 p-[22px_24px]">
@@ -119,37 +97,44 @@ export function LeadTemperatureSection({
                   <ul role="list" className="mt-3 flex flex-col gap-3">
                     {top.map((lead) => (
                       <li key={lead.id}>
-                        <div className="flex items-center gap-2.5">
-                          <Avatar className="size-8">
-                            <AvatarFallback className="bg-secondary text-[12px] font-semibold text-muted-foreground">
-                              {initials(lead.name, "L")}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-[13.5px] font-medium">
-                              {lead.name ?? "Lead"}
-                            </div>
-                            <div className="truncate text-[12px] text-muted-foreground">
-                              {lead.interest ?? "—"}
-                            </div>
-                          </div>
-                          <span
-                            className="tabular text-[13px] font-semibold"
-                            style={{ color: bucket.fg }}
-                          >
-                            {lead.score}
-                          </span>
-                        </div>
-                        <div
-                          className="mt-1.5 h-1 overflow-hidden rounded-full"
-                          style={{ background: "var(--muted)" }}
-                          aria-hidden="true"
+                        <button
+                          type="button"
+                          aria-haspopup="dialog"
+                          onClick={() => onLeadClick?.(lead)}
+                          className="-m-1.5 w-[calc(100%+12px)] rounded-[10px] p-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                         >
+                          <div className="flex items-center gap-2.5">
+                            <Avatar className="size-8">
+                              <AvatarFallback className="bg-secondary text-[12px] font-semibold text-muted-foreground">
+                                {initials(lead.name, "L")}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[13.5px] font-medium">
+                                {lead.name ?? "Lead"}
+                              </div>
+                              <div className="truncate text-[12px] text-muted-foreground">
+                                {lead.interest ?? "—"}
+                              </div>
+                            </div>
+                            <span
+                              className="tabular text-[13px] font-semibold"
+                              style={{ color: bucket.fg }}
+                            >
+                              {lead.score}
+                            </span>
+                          </div>
                           <div
-                            className="h-full rounded-full"
-                            style={{ width: `${lead.score}%`, background: bucket.fg }}
-                          />
-                        </div>
+                            className="mt-1.5 h-1 overflow-hidden rounded-full"
+                            style={{ background: "var(--muted)" }}
+                            aria-hidden="true"
+                          >
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${lead.score}%`, background: bucket.fg }}
+                            />
+                          </div>
+                        </button>
                       </li>
                     ))}
                   </ul>

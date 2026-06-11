@@ -18,6 +18,7 @@ import { Funnel } from "@/components/charts/funnel";
 import { HBars } from "@/components/charts/h-bars";
 import { LineChart } from "@/components/charts/line-chart";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
 import { LeadTemperatureSection } from "@/components/dashboard/lead-temperature";
 import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -61,6 +62,7 @@ export default function DashboardPage() {
   const { data, isLoading } = useMetrics(range);
   const { data: recent } = useRecentConversations(6);
   const { data: leadsData, isLoading: leadsLoading } = useLeads();
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   return (
     <>
@@ -177,10 +179,20 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* Temperatura dos leads */}
+          {/* Temperatura dos leads — clique abre o painel de detalhe */}
           <div className="mb-[18px]">
-            <LeadTemperatureSection leads={leadsData?.leads} isLoading={leadsLoading} />
+            <LeadTemperatureSection
+              leads={leadsData?.leads}
+              isLoading={leadsLoading}
+              onLeadClick={(lead) => setSelectedLeadId(lead.id)}
+            />
           </div>
+          <LeadDetailDialog
+            leadId={selectedLeadId}
+            onOpenChange={(open) => {
+              if (!open) setSelectedLeadId(null);
+            }}
+          />
 
           {/* Conversas recentes */}
           <Card className="anim-fade-up gap-0 overflow-hidden p-0">

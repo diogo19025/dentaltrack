@@ -1,3 +1,4 @@
+import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PrismaService } from '../prisma/prisma.service';
 import { LeadsService } from './leads.service';
@@ -10,7 +11,7 @@ const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
 describe('LeadsService', () => {
   let service: LeadsService;
-  const prismaMock = { lead: { findMany: jest.fn() } };
+  const prismaMock = { lead: { findMany: jest.fn(), findFirst: jest.fn() } };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -228,5 +229,84 @@ describe('LeadsService', () => {
     expect(res.leads[0].tags).toEqual([{ name: 'implante', color: 'teal' }]);
     expect(res.leads[0]).toMatchObject({ score: 78, temperature: 'quente' });
     expect(res.temperatures).toEqual({ quente: 1, medio: 0, fraco: 0 });
+  });
+
+  describe('detail (GET /leads/:id)', () => {
+    const LEAD_ID = '00000000-0000-0000-0000-00000000a010';
+
+    it('expande conversas (canal/contagens/tags) e agendamentos, com o mesmo score do list', async () => {
+      const capturedAt = new Date('2026-06-09T10:00:00.000Z');
+      prismaMock.lead.findFirst.mockResolvedValueOnce({
+        id: LEAD_ID,
+        name: 'João',
+        phone: '(11) 90000-0000',
+        email: 'joao@exemplo.com',
+        source: 'web',
+        createdAt: capturedAt,
+        conversations: [
+          {
+            id: '00000000-0000-0000-0000-00000000c001',
+            channel: 'web',
+            status: 'agendada',
+            lastMessageAt: hoursAgo(2),
+            createdAt: hoursAgo(3),
+            conversationTags: [
+              { confidence: 0.9, tag: { name: 'implante', color: 'teal' } },
+            ],
+            // 5 do paciente (score) + 4 do bot → 9 exibidas no painel.
+            messages: [
+              ...Array.from({ length: 5 }, () => ({ role: 'user' })),
+              ...Array.from({ length: 4 }, () => ({ role: 'assistant' })),
+            ],
+          },
+        ],
+        appointments: [
+          {
+            id: '00000000-0000-0000-0000-00000000e001',
+            preferredTime: 'quinta de manhã',
+            createdAt: hoursAgo(2),
+            procedure: { name: 'Implante dentário' },
+          },
+        ],
+      });
+
+      const res = await service.detail(CLINIC, LEAD_ID);
+
+      expect(prismaMock.lead.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: LEAD_ID, clinicId: CLINIC } }),
+      );
+      // Agendado recente: 30 + 21.875 + 10.8 + 15 → 78 (idem list()).
+      expect(res).toMatchObject({
+        name: 'João',
+        interest: 'Implante dentário',
+        status: 'agendada',
+        score: 78,
+        temperature: 'quente',
+      });
+      expect(res.conversations).toEqual([
+        expect.objectContaining({
+          id: '00000000-0000-0000-0000-00000000c001',
+          channel: 'web',
+          status: 'agendada',
+          messageCount: 9,
+          lastMessageAt: hoursAgo(2).toISOString(),
+          tags: [{ name: 'implante', color: 'teal' }],
+        }),
+      ]);
+      expect(res.appointments).toEqual([
+        expect.objectContaining({
+          procedure: 'Implante dentário',
+          preferredTime: 'quinta de manhã',
+        }),
+      ]);
+    });
+
+    it('lança 404 quando o lead não existe ou é de outra clínica', async () => {
+      prismaMock.lead.findFirst.mockResolvedValueOnce(null);
+
+      await expect(service.detail(CLINIC, LEAD_ID)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+    });
   });
 });
