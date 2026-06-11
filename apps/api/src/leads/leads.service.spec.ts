@@ -4,12 +4,17 @@ import { LeadsService } from './leads.service';
 
 const CLINIC = '00000000-0000-0000-0000-0000000c1141';
 
+/** Relógio fixo → recência (score) determinística. */
+const NOW = new Date('2026-06-11T12:00:00.000Z');
+const hoursAgo = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
+
 describe('LeadsService', () => {
   let service: LeadsService;
   const prismaMock = { lead: { findMany: jest.fn() } };
 
   beforeEach(async () => {
     jest.clearAllMocks();
+    jest.useFakeTimers().setSystemTime(NOW);
     const moduleRef = await Test.createTestingModule({
       providers: [
         LeadsService,
@@ -17,6 +22,10 @@ describe('LeadsService', () => {
       ],
     }).compile();
     service = moduleRef.get(LeadsService);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('deriva interesse (procedimento), tags distintas e status da conversa mais recente', async () => {
@@ -32,10 +41,12 @@ describe('LeadsService', () => {
         conversations: [
           {
             status: 'agendada',
+            lastMessageAt: hoursAgo(2),
             conversationTags: [
-              { tag: { name: 'implante', color: 'teal' } },
-              { tag: { name: 'implante', color: 'teal' } }, // duplicada → dedupe
+              { confidence: 0.9, tag: { name: 'implante', color: 'teal' } },
+              { confidence: 0.7, tag: { name: 'implante', color: 'teal' } }, // duplicada → dedupe
             ],
+            _count: { messages: 5 },
           },
         ],
         appointments: [{ procedure: { name: 'Implante dentário' } }],
@@ -47,7 +58,14 @@ describe('LeadsService', () => {
         email: null,
         source: 'web',
         createdAt,
-        conversations: [{ status: 'em_andamento', conversationTags: [] }],
+        conversations: [
+          {
+            status: 'em_andamento',
+            lastMessageAt: hoursAgo(1),
+            conversationTags: [],
+            _count: { messages: 1 },
+          },
+        ],
         appointments: [],
       },
     ]);
@@ -86,9 +104,11 @@ describe('LeadsService', () => {
         conversations: [
           {
             status: 'abandonada',
+            lastMessageAt: hoursAgo(240),
             conversationTags: [
-              { tag: { name: 'clareamento', color: 'amber' } },
+              { confidence: 0.8, tag: { name: 'clareamento', color: 'amber' } },
             ],
+            _count: { messages: 4 },
           },
         ],
         appointments: [],
@@ -98,5 +118,115 @@ describe('LeadsService', () => {
     const res = await service.list(CLINIC);
     expect(res.leads[0].interest).toBe('clareamento');
     expect(res.summary.abandonada).toBe(1);
+  });
+
+  it('calcula score/temperatura por lead e a contagem por faixa no response', async () => {
+    prismaMock.lead.findMany.mockResolvedValueOnce([
+      {
+        // Agendado recente: 30 + 21.875 (5 msgs) + 10.8 (tag 0.9) + 15 (<24h) → 78
+        id: '00000000-0000-0000-0000-00000000a004',
+        name: 'João',
+        phone: null,
+        email: null,
+        source: 'web',
+        createdAt: NOW,
+        conversations: [
+          {
+            status: 'agendada',
+            lastMessageAt: hoursAgo(2),
+            conversationTags: [
+              { confidence: 0.9, tag: { name: 'implante', color: 'teal' } },
+            ],
+            _count: { messages: 5 },
+          },
+        ],
+        appointments: [{ procedure: { name: 'Implante dentário' } }],
+      },
+      {
+        // Recém-chegado: 4.375 (1 msg) + 15 (<24h) → 19
+        id: '00000000-0000-0000-0000-00000000a005',
+        name: 'Maria',
+        phone: null,
+        email: null,
+        source: 'web',
+        createdAt: NOW,
+        conversations: [
+          {
+            status: 'em_andamento',
+            lastMessageAt: hoursAgo(1),
+            conversationTags: [],
+            _count: { messages: 1 },
+          },
+        ],
+        appointments: [],
+      },
+      {
+        // Abandonado antigo: 17.5 (4 msgs) + 9.6 (tag 0.8) + 0 − 20 → 7
+        id: '00000000-0000-0000-0000-00000000a006',
+        name: 'Ana',
+        phone: null,
+        email: null,
+        source: 'web',
+        createdAt: NOW,
+        conversations: [
+          {
+            status: 'abandonada',
+            lastMessageAt: hoursAgo(240),
+            conversationTags: [
+              { confidence: 0.8, tag: { name: 'clareamento', color: 'amber' } },
+            ],
+            _count: { messages: 4 },
+          },
+        ],
+        appointments: [],
+      },
+    ]);
+
+    const res = await service.list(CLINIC);
+
+    expect(res.leads[0]).toMatchObject({ score: 78, temperature: 'quente' });
+    expect(res.leads[1]).toMatchObject({ score: 19, temperature: 'fraco' });
+    expect(res.leads[2]).toMatchObject({ score: 7, temperature: 'fraco' });
+    expect(res.temperatures).toEqual({ quente: 1, medio: 0, fraco: 2 });
+  });
+
+  it('agrega sinais entre conversas: agendamento via status, msgs somadas e maior confiança por tag', async () => {
+    prismaMock.lead.findMany.mockResolvedValueOnce([
+      {
+        // Sem appointment, mas com conversa `agendada` → conta como conversão.
+        // 30 + 21.875 (2+3 msgs) + 10.8 (implante max 0.9) + 15 (<24h) → 78
+        id: '00000000-0000-0000-0000-00000000a007',
+        name: 'Carlos',
+        phone: null,
+        email: null,
+        source: 'web',
+        createdAt: NOW,
+        conversations: [
+          {
+            status: 'em_andamento',
+            lastMessageAt: hoursAgo(3),
+            conversationTags: [
+              { confidence: 0.5, tag: { name: 'implante', color: 'teal' } },
+            ],
+            _count: { messages: 2 },
+          },
+          {
+            status: 'agendada',
+            lastMessageAt: hoursAgo(80),
+            conversationTags: [
+              { confidence: 0.9, tag: { name: 'implante', color: 'teal' } },
+            ],
+            _count: { messages: 3 },
+          },
+        ],
+        appointments: [],
+      },
+    ]);
+
+    const res = await service.list(CLINIC);
+
+    expect(res.leads[0].tags).toEqual([{ name: 'implante', color: 'teal' }]);
+    expect(res.leads[0]).toMatchObject({ score: 78, temperature: 'quente' });
+    expect(res.temperatures).toEqual({ quente: 1, medio: 0, fraco: 0 });
   });
 });

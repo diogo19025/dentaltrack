@@ -18,6 +18,7 @@ import { Funnel } from "@/components/charts/funnel";
 import { HBars } from "@/components/charts/h-bars";
 import { LineChart } from "@/components/charts/line-chart";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { LeadTemperatureSection } from "@/components/dashboard/lead-temperature";
 import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tag } from "@/components/ui/tag";
 import { useRecentConversations } from "@/hooks/use-conversations";
+import { useLeads } from "@/hooks/use-leads";
 import { useMetrics } from "@/hooks/use-metrics";
 import { initials, timeAgo } from "@/lib/format";
 
@@ -58,6 +60,7 @@ export default function DashboardPage() {
   const [range, setRange] = useState<MetricsRange>("50d");
   const { data, isLoading } = useMetrics(range);
   const { data: recent } = useRecentConversations(6);
+  const { data: leadsData, isLoading: leadsLoading } = useLeads();
 
   return (
     <>
@@ -174,6 +177,11 @@ export default function DashboardPage() {
             </Card>
           </div>
 
+          {/* Temperatura dos leads */}
+          <div className="mb-[18px]">
+            <LeadTemperatureSection leads={leadsData?.leads} isLoading={leadsLoading} />
+          </div>
+
           {/* Conversas recentes */}
           <Card className="anim-fade-up gap-0 overflow-hidden p-0">
             <div className="flex items-start justify-between gap-3 p-[22px_24px] pb-4">
@@ -285,6 +293,7 @@ function DashboardSkeleton() {
         <Skeleton className="h-[220px] w-full" />
         <Skeleton className="h-[220px] w-full" />
       </div>
+      <Skeleton className="mb-[18px] h-[240px] w-full" />
       <Skeleton className="h-[280px] w-full" />
     </>
   );

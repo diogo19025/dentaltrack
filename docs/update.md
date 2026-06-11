@@ -549,3 +549,65 @@ da apresentação (decisão do dono — feito em conjunto).
 - **1ª rodada ao vivo do E2E** (QA-4.2) — pré-requisito único no Supabase (acima).
 - **F0.8 (CI)** — explicitamente fora desta leva.
 - **Upload de logo** — segue visual (pendência herdada da F2).
+
+---
+
+## Temperatura de leads no dashboard (2026-06-11)
+
+> O dashboard ganha a seção **"Temperatura dos leads"**: cada lead recebe um **score 0–100**
+> derivado do comportamento na conversa e cai numa faixa **quente / médio / fraco**, para o dono
+> priorizar quem tem mais chance de agendar. Cálculo no backend (channel-agnostic, multi-tenant
+> por `clinicId`), exposto pelo `GET /leads` existente — **sem migration e sem endpoint novo**.
+
+### BE — Score de temperatura (BE-3.5)
+**O quê.** `leads/lead-scoring.ts` — função pura `scoreLead(signals, now)` — e o
+`LeadsService.list()` enriquecido para montar os sinais por lead **na mesma query** que já
+existia (`lastMessageAt`, `confidence` das tags e `_count` de mensagens `role='user'` — count
+filtrado do Prisma 7) e devolver `score`/`temperature` por lead + `temperatures` (contagem por
+faixa) no response. Modelo **aditivo com pesos nomeados** (constantes no topo do arquivo):
+**conversão** +30 (appointment ou conversa `agendada`) · **engajamento** até +35 (linear,
+saturando em 8 msgs do paciente) · **interesse** +12 × confiança por tag distinta (maior
+confiança de cada; teto +20) · **recência** +15 (<24h) / +10 (<72h) / +5 (<7d) · **abandono**
+−20 (conversa mais recente `abandonada` sem nunca ter agendado). `score = clamp(round(soma),
+0, 100)`; faixas: ≥60 **quente** · ≥30 **médio** · senão **fraco**.
+
+**Por quê / decisão.** Uma heurística transparente e barata (sem chamada de IA, sem latência
+extra) já entrega a priorização que o dono precisa — e os pesos nomeados ficam fáceis de
+recalibrar. **Função pura** = determinística e testável (o `now` é injetado; um único
+`new Date()` por request mantém os scores consistentes entre leads). **Cálculo on-read, sem
+migration:** recência e abandono mudam com o passar do tempo, então persistir o score o deixaria
+stale na hora — calcular na leitura mantém sempre fresco e o contrato segue **aditivo**
+(`score`, `temperature`, `temperatures`; o `summary` e a página /leads não mudam). Se o volume
+um dia pedir, dá para materializar via cron sem trocar o contrato.
+
+### FE — Seção "Temperatura dos leads" no Dashboard (FE-3.7)
+`components/dashboard/lead-temperature.tsx`, renderizada entre Funil+TopTags e Conversas
+recentes. **Fora do handoff**, seguindo o precedente das abas de Procedimentos/Tags: **só
+tokens e componentes existentes** (Card/Button/Avatar/Skeleton, `.tabular`, `.anim-fade-up`,
+`--muted`). Três colunas (quentes/médios/fracos) usando os tints **rose/amber/blue do tema**
+como metáfora quente→frio — nenhuma cor literal nova. Cabeçalho de coluna com dot + contagem em
+pílula + hint; **top 3 por faixa** (score desc, desempate por captura mais recente) com avatar
+(`initials`), interesse, score e barra fina de progresso (mesmo padrão visual da barra de
+confiança do rail do chat); rodapé "+N outros"; estados de loading (skeletons), faixa vazia
+("Nenhum lead nesta faixa.") e sem leads (mesma copy da página /leads). A11y: contagem legível
+via `aria-label` por coluna, listas `role=list`, barras decorativas `aria-hidden` e faixa
+nomeada por texto (não só por cor). Componente **puro por props** (padrão `KpiCard`), alimentado
+pelo `useLeads()` já existente — a página do Dashboard só adiciona a seção (1:1 do handoff
+intacto nas demais).
+
+### Qualidade / validação
+- **API**: **104 testes** (18 suites; **+13**): `lead-scoring.spec.ts` (11 — casos de sanidade
+  dos pesos com `now` fixo, limiares exatos 59/60 e 29/30, clamps 0/100, abandono não penaliza
+  quem agendou, recência nula) e `leads.service.spec.ts` (+2 — score/temperatura no DTO,
+  `temperatures` no response e sinais agregados entre conversas com maior confiança por tag;
+  fake timers). `typecheck` + build verdes.
+- **Web**: **53 testes** (12 suites; **+6**): `lead-temperature.test.tsx` (grupos e contagens,
+  ordenação + limite 3 + "+N outros", faixa vazia, skeletons no loading, empty state geral,
+  link "Ver todos" → /leads). `typecheck` + `lint` (0 warnings) + `next build` verdes ·
+  `turbo build` 3/3.
+
+### Aceite ✅
+`GET /leads` devolve `score`/`temperature` por lead e `temperatures` no response **sem quebrar o
+contrato existente** (campos aditivos; /leads intacta); Dashboard exibe a seção nova entre
+Funil+TopTags e Conversas recentes, com loading/vazio tratados e sem tocar nas seções 1:1 do
+handoff. Sem migration, sem endpoint novo, multi-tenant preservado.
