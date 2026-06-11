@@ -716,3 +716,21 @@ painel (`useLeadDetail`, TanStack Query, `enabled` só com id).
 Clique no lead → painel com as informações expandidas e atalho de contato; conversas com
 `id`/`channel` prontas para o deep-link do canal no pós-MVP; contrato aditivo (rota nova, nada
 existente mudou); telas 1:1 do handoff intactas.
+
+---
+
+## OpenAI GPT como provider primário (2026-06-11)
+
+**O quê.** O provider padrão do chatbot deixou de ser o Gemini (free tier) e passou a ser a **OpenAI (API paga)** — `@ai-sdk/openai` (^3.0.69) adicionado em `apps/api`. Mudanças:
+
+- `ai/model.ts`: `LlmProvider` ganhou `'openai'` (em `SUPPORTED` e `DEFAULT_MODEL`); default `gpt-4o-mini`, sobrescrevível por `OPENAI_MODEL`; `getProvider()` agora cai em `openai` quando `LLM_PROVIDER` não está setado.
+- `ai/transcribe.ts`: STT via Whisper da OpenAI (`experimental_transcribe` + `openai.transcription('whisper-1')`, sobrescrevível por `OPENAI_TRANSCRIBE_MODEL`) — mesmo hardening (timeout/retry/fallback) dos demais.
+- `config/env.validation.ts`: enums `LLM_PROVIDER`/`LLM_FALLBACK_PROVIDER` com `openai` (default `openai`) + `OPENAI_API_KEY`/`OPENAI_MODEL`/`OPENAI_TRANSCRIBE_MODEL`.
+- `.env.example`/`.env`: seção OpenAI documentada; Gemini/Groq permanecem como fallback.
+- Provider `mock` (E2E/testes) intacto; chat/tools/tagging não mudaram (provider-agnostic).
+
+**Por quê.** Qualidade/estabilidade de produção e API sem treino com dados — pré-requisito de LGPD antes de PII real. O free tier do Gemini segue disponível como fallback via env.
+
+**Validação.** `typecheck` verde · **107 testes** (Jest) passando, incluindo novo caso de STT openai em `transcribe.spec.ts`.
+
+**Pendência manual.** Colar a chave em `apps/api/.env` → `OPENAI_API_KEY=` (https://platform.openai.com/api-keys).

@@ -12,6 +12,9 @@ jest.mock('ai', () => ({
 jest.mock('@ai-sdk/groq', () => ({
   groq: { transcription: jest.fn((id: string) => `groq:${id}`) },
 }));
+jest.mock('@ai-sdk/openai', () => ({
+  openai: { transcription: jest.fn((id: string) => `openai:${id}`) },
+}));
 
 import { experimental_transcribe, generateText } from 'ai';
 import { getFallbackProvider, getProvider } from './model';
@@ -66,6 +69,22 @@ describe('transcribeAudio', () => {
     );
     expect(args.maxRetries).toBeDefined();
     expect(args.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('openai: transcreve via Whisper (experimental_transcribe), sem generateText', async () => {
+    providerMock.mockReturnValue('openai');
+    transcribeMock.mockResolvedValueOnce({ text: ' olá doutor ' } as never);
+
+    const text = await transcribeAudio(AUDIO, 'audio/webm');
+
+    expect(text).toBe('olá doutor');
+    expect(generateTextMock).not.toHaveBeenCalled();
+    const args = transcribeMock.mock.calls[0][0] as {
+      model: unknown;
+      audio: unknown;
+    };
+    expect(args.model).toBe('openai:whisper-1');
+    expect(args.audio).toBe(AUDIO);
   });
 
   it('groq: transcreve via Whisper (experimental_transcribe), sem generateText', async () => {

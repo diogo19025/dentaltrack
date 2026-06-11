@@ -1,4 +1,5 @@
 import { groq } from '@ai-sdk/groq';
+import { openai } from '@ai-sdk/openai';
 import { experimental_transcribe as transcribe, generateText } from 'ai';
 import { AiUnavailableError } from './generate-reply';
 import {
@@ -15,6 +16,7 @@ import {
  * primário, uma tentativa no fallback e `AiUnavailableError` padronizado.
  *
  * Por provider:
+ * - openai → Whisper via `experimental_transcribe` (modelo dedicado de STT);
  * - google → Gemini é multimodal: o áudio vai como file part num `generateText`;
  * - groq → Whisper via `experimental_transcribe` (modelo dedicado de STT);
  * - mock → transcript fixo determinístico (E2E/testes, nunca produção).
@@ -28,6 +30,10 @@ const MAX_RETRIES = Number(process.env.AI_MAX_RETRIES ?? 2);
 /** Modelo Whisper usado no provider groq (sobrescrevível por env). */
 const GROQ_TRANSCRIBE_MODEL =
   process.env.GROQ_TRANSCRIBE_MODEL ?? 'whisper-large-v3-turbo';
+
+/** Modelo Whisper usado no provider openai (sobrescrevível por env). */
+const OPENAI_TRANSCRIBE_MODEL =
+  process.env.OPENAI_TRANSCRIBE_MODEL ?? 'whisper-1';
 
 /** Transcript determinístico do provider mock — contém "agendar" para acionar o roteiro de conversão do mock model. */
 export const MOCK_TRANSCRIPT = 'Quero agendar uma consulta de avaliação.';
@@ -50,6 +56,16 @@ async function callProvider(
   mediaType: string,
 ): Promise<string> {
   if (provider === 'mock') return MOCK_TRANSCRIPT;
+
+  if (provider === 'openai') {
+    const result = await transcribe({
+      model: openai.transcription(OPENAI_TRANSCRIBE_MODEL),
+      audio,
+      maxRetries: MAX_RETRIES,
+      abortSignal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    return result.text.trim();
+  }
 
   if (provider === 'groq') {
     const result = await transcribe({

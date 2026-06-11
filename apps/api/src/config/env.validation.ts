@@ -15,12 +15,17 @@ export const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
 
   // ─── IA (BE-1.5 / BE-1.8) ───
-  // Provider do LLM. MVP gratuito: google (Gemini) | groq.
-  // "mock" é determinístico/offline (QA-4.2) — só para E2E/testes.
-  LLM_PROVIDER: z.enum(['google', 'groq', 'mock']).default('google'),
+  // Provider do LLM. Padrão: openai (GPT, API paga); google (Gemini) e groq
+  // seguem como alternativas. "mock" é determinístico/offline (QA-4.2) — só para E2E/testes.
+  LLM_PROVIDER: z.enum(['openai', 'google', 'groq', 'mock']).default('openai'),
   // Fallback opcional se o provider primário falhar (hardening).
-  LLM_FALLBACK_PROVIDER: z.enum(['google', 'groq']).optional(),
-  // Chave do Gemini (free tier) — provider padrão do MVP.
+  LLM_FALLBACK_PROVIDER: z.enum(['openai', 'google', 'groq']).optional(),
+  // Chave da OpenAI (API paga) — provider padrão.
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().optional(),
+  // Modelo Whisper do speech-to-text quando LLM_PROVIDER=openai.
+  OPENAI_TRANSCRIBE_MODEL: z.string().optional(),
+  // Chave do Gemini (free tier) — fallback/alternativa.
   GOOGLE_GENERATIVE_AI_API_KEY: z.string().optional(),
   GOOGLE_MODEL: z.string().optional(),
   // Alternativa gratuita (Groq).

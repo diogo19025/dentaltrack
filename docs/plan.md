@@ -31,8 +31,8 @@
 |---|---|---|
 | Framework | **NestJS** (Node.js + TS) | Modular, testável, ideal para API dedicada. |
 | Motor de IA | **Vercel AI SDK v6** | `streamText`, *tool calling*, `generateObject` (tags) — roda em Node/NestJS. |
-| **LLM (MVP)** | **Google Gemini — free tier** (`@ai-sdk/google`); **Groq** (`@ai-sdk/groq`) como alt. | API **gratuita** p/ testar; ambos com function calling + structured output. |
-| Abstração de modelo | factory **`getModel()`** lendo `LLM_PROVIDER` | Trocar p/ **Claude/OpenAI** na produção = 1 env, sem reescrever tools. |
+| **LLM** | **OpenAI GPT — API paga** (`@ai-sdk/openai`, default `gpt-4o-mini`); **Gemini** (`@ai-sdk/google`) e **Groq** (`@ai-sdk/groq`) como fallback/alternativa. | Qualidade/estabilidade de produção; todos com function calling + structured output. |
+| Abstração de modelo | factory **`getModel()`** lendo `LLM_PROVIDER` | Trocar de provider (openai/google/groq) = 1 env, sem reescrever tools. |
 | ORM | **Prisma** | Migrations + tipos contra Supabase Postgres; integra via `PrismaModule`. |
 | Banco | **Supabase Postgres** (gerenciado) | Postgres + ecossistema Supabase. |
 | Auth/Tenant | **Supabase Auth**: guard valida JWT (JWKS/secret) + escopo `clinicId` | Auth pronta; multi-tenant na camada de serviço (RLS como defesa extra). |
@@ -131,7 +131,7 @@ dentaltrack/
 | BE-1.2 | Módulo **conversations** | `ConversationsService`: create/append/get (sempre por `clinicId`) | Coberto por teste (Jest). |
 | BE-1.3 | **Prompt builder** (`ai/prompt.ts`) | Monta system prompt a partir de `clinic_settings` (nome, persona, ofertas, instruções) + catálogo | Prompt reflete config da clínica. |
 | BE-1.4 | **Tools** (`ai/tools.ts`, Zod) | `searchProcedures`, `suggestProcedures`, `captureLead`, `bookAppointment` | Cada tool lê/escreve via Prisma e retorna resultado. |
-| BE-1.5 | **Provider de IA** (`ai/model.ts`) | factory `getModel()` → Gemini free (`@ai-sdk/google`) / Groq; swappable por `LLM_PROVIDER` | Troca de modelo por env, sem tocar nas tools. |
+| BE-1.5 | **Provider de IA** (`ai/model.ts`) | factory `getModel()` → OpenAI GPT (`@ai-sdk/openai`, padrão) / Gemini / Groq; swappable por `LLM_PROVIDER` | Troca de modelo por env, sem tocar nas tools. |
 | BE-1.6 | **Endpoint** `POST /chat` (SSE) | `streamText` + tools; **pipe do stream do AI SDK** p/ a resposta Node; persiste msgs; atualiza `status` | Stream responde e grava tudo. |
 | BE-1.7 | **Máquina de status** | `em_andamento` → `agendada` (on `bookAppointment`) / `abandonada` (cron) | Transições corretas em teste. |
 | BE-1.8 | Resiliência | timeout/retry/fallback do provedor + tratamento de rate-limit do free tier | Falha de IA não derruba a request. |
@@ -298,8 +298,9 @@ bookAppointment(lead, proc, preferencia) → cria appointment ⇒ status='agenda
 |---|---|
 | `DATABASE_URL` | Supabase Postgres (Prisma). |
 | `SUPABASE_URL` · `SUPABASE_SERVICE_ROLE_KEY` · `SUPABASE_JWT_SECRET` | Validação de JWT no guard / acesso admin. |
-| `LLM_PROVIDER` | `google` (Gemini) \| `groq` \| `anthropic` \| `openai`. |
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini (free tier) — provider padrão do MVP. |
+| `LLM_PROVIDER` | `openai` (GPT, padrão) \| `google` (Gemini) \| `groq` \| `mock` (E2E/testes). |
+| `OPENAI_API_KEY` | OpenAI GPT (API paga) — provider padrão. `OPENAI_MODEL` opcional (default `gpt-4o-mini`). |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini (free tier) — fallback/alternativa. |
 | `GROQ_API_KEY` | Alternativa gratuita (Groq). |
 | `AI_TAG_MIN_CONFIDENCE` · `ABANDON_AFTER_HOURS` | Opcionais (F3): limiar do auto-tagging (default 0.6) · horas de inatividade até `abandonada` (default 24). |
 

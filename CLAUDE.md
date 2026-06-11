@@ -37,7 +37,7 @@
 ## Stack (decidida — não trocar sem motivo)
 
 - **Monorepo** pnpm + Turborepo: `apps/api` (**NestJS**), `apps/web` (**Next.js 16** App Router), `packages/shared` (**Zod** + tipos compartilhados).
-- **IA:** Vercel **AI SDK v6** + **Google Gemini (free tier)** no MVP; trocável por Claude/OpenAI via factory `getModel()` (`LLM_PROVIDER`).
+- **IA:** Vercel **AI SDK v6** + **OpenAI GPT (API paga, default `gpt-4o-mini`)** como provider primário; **Gemini (free tier)** e **Groq** como fallback/alternativa via factory `getModel()` (`LLM_PROVIDER`).
 - **Dados & Auth:** **Supabase** (Postgres gerenciado + Supabase Auth).
 - **ORM:** Prisma · **Cron:** `@nestjs/schedule` · **UI:** Tailwind v4 + shadcn/ui + Recharts + lucide-react, fontes **Geist/Geist Mono**, **tema light-only** · **Dados no front:** TanStack Query.
 - **Deploy:** web → **Vercel** · api → **Railway/Render/Fly** · Supabase gerenciado.

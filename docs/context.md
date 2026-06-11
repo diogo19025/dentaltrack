@@ -117,7 +117,7 @@ Classificação automática de **interesse/perfil** por conversa.
 | **Observabilidade** | Logs de conversa, custo de tokens por conversa, erros do agente rastreáveis. |
 | **Resiliência** | Falha do provedor de IA não derruba o app; mensagem de fallback ao usuário. |
 | **Acessibilidade & UX** | Responsivo, **tema light-only** (teal clínico), AA de contraste, foco visível, estados de loading/erro/vazio, `prefers-reduced-motion`. |
-| **Custo** | IA **gratuita no MVP** (Gemini/Groq via AI SDK); modelo **trocável** por env para equilibrar custo/qualidade na produção. |
+| **Custo** | IA paga (OpenAI `gpt-4o-mini`, baixo custo) via AI SDK; modelo **trocável** por env (Gemini/Groq como fallback gratuito) para equilibrar custo/qualidade. |
 
 ---
 
@@ -128,7 +128,7 @@ Classificação automática de **interesse/perfil** por conversa.
 
 - **Frontend (`apps/web`):** Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · shadcn/ui · Recharts · lucide-react · React Hook Form + Zod · TanStack Query · fontes **Geist** · **tema light-only** (réplica 1:1 do design — ver `plan.md §6`).
 - **Backend (`apps/api`):** **NestJS** + TypeScript · **Vercel AI SDK v6** (motor do agente) · **Prisma** (ORM) · `@nestjs/schedule` (cron).
-- **IA (MVP):** **API gratuita** — **Google Gemini** (free tier) como provider primário, **Groq** como alternativa; abstraídos pelo AI SDK e **trocáveis** por Claude/OpenAI na produção sem reescrita.
+- **IA:** **OpenAI GPT (API paga)** como provider primário (default `gpt-4o-mini`); **Google Gemini** (free tier) e **Groq** como fallback/alternativa; abstraídos pelo AI SDK e **trocáveis** por env (`LLM_PROVIDER`) sem reescrita.
 - **Dados & Auth:** **Supabase** — Postgres gerenciado + **Supabase Auth** (multi-tenant por `clinic_id`).
 - **Infra:** Frontend na **Vercel**; Backend NestJS em **Railway/Render/Fly.io** (Node long-running); Supabase gerenciado.
 - **Qualidade:** Jest + Supertest (API) · Vitest + Playwright (web) · ESLint · Prettier.
@@ -162,7 +162,7 @@ flowchart LR
   Ctrl --> Guard
   Ctrl --> Engine
   Engine -->|tools| Tools["searchProcedures · suggest · captureLead · bookAppointment · tagConversation"]
-  Engine -->|LLM grátis| LLM["AI SDK → Gemini (free) / Groq · swappable p/ Claude/OpenAI"]
+  Engine -->|LLM| LLM["AI SDK → OpenAI GPT (padrão) · Gemini/Groq como fallback (swap por env)"]
   Engine --> DB[("Supabase Postgres")]
   Jobs -->|agrega métricas diárias| DB
   AuthFE --- Supa["Supabase Auth"]
@@ -251,9 +251,9 @@ erDiagram
 | **Provedor WhatsApp** | Cloud API oficial (Meta) × Evolution/Z-API (popular no BR). | Decidir na Fase Pós-MVP 1; motor já isola o canal. |
 | **Agendamento "real"** | MVP registra *pedido*, não slot sincronizado. | Validar com clínicas se basta no MVP. |
 | **Qualidade do auto-tagging** | Falsos positivos em tags. | Pré-filtro por keyword + confiança mínima + revisão manual no painel. |
-| **IA gratuita (MVP)** | Free tiers (Gemini/Groq) têm **rate-limit** e alguns **usam dados para treino**. | OK para testar com dados fictícios; provider abstraído pelo AI SDK; **migrar p/ tier pago (sem treino)** antes de PII real. |
-| **Custo / swap de modelo** | Qualidade × custo ao sair do free tier. | Factory `getModel()` troca Gemini→Claude/OpenAI por env, sem reescrever tools. |
-| **LGPD** | PII de leads + uso de dados por free tiers de IA. | Minimizar coleta; consentimento/retenção no roadmap; modelo pago **sem-treino** antes de produção real. |
+| **IA paga (OpenAI)** | Custo por token; fallback gratuito (Gemini/Groq) tem **rate-limit** e alguns **usam dados para treino**. | Padrão `gpt-4o-mini` (baixo custo, **sem treino** com dados da API); fallback gratuito só para contingência; monitorar consumo. |
+| **Custo / swap de modelo** | Qualidade × custo por provider. | Factory `getModel()` troca openai↔google↔groq por env, sem reescrever tools. |
+| **LGPD** | PII de leads + uso de dados por free tiers de IA. | Minimizar coleta; consentimento/retenção no roadmap; provider padrão (OpenAI API) **não treina** com dados por padrão. |
 
 ---
 
