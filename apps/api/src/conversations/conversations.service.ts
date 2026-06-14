@@ -17,7 +17,16 @@ import { canTransition } from './conversation-status';
 export interface CreateConversationInput {
   leadId?: string;
   channel?: Channel;
+  /** Identidade do contato em canais sem login (WhatsApp = telefone/JID). */
+  contactPhone?: string;
 }
+
+/**
+ * Janela (horas) em que uma conversa de WhatsApp ainda em andamento é reusada
+ * para o mesmo contato. Fora dela (ou se a última já foi agendada/abandonada),
+ * abre-se uma nova conversa. Default 24h.
+ */
+const SESSION_WINDOW_HOURS = Number(process.env.WHATSAPP_SESSION_HOURS ?? 24);
 
 /** Opções ao anexar uma mensagem (ex.: contagem de tokens do provedor de IA). */
 export interface AppendMessageInput {
@@ -40,9 +49,44 @@ export class ConversationsService {
         clinicId,
         leadId: input.leadId,
         channel: input.channel ?? 'web',
+        contactPhone: input.contactPhone ?? null,
         status: 'em_andamento',
       },
     });
+  }
+
+  /**
+   * Resolve a conversa de um contato sem login (WhatsApp): a identidade é o
+   * **telefone/JID**, não um `conversationId` vindo do cliente. Reusa a conversa
+   * `em_andamento` mais recente do contato dentro da janela de sessão; fora dela
+   * (ou se a última já foi `agendada`/`abandonada`) abre uma nova. Escopado por
+   * `clinicId` + `channel`. Mantém o motor channel-agnostic — só o adapter chama.
+   */
+  async resolveByPhone(
+    clinicId: string,
+    channel: Channel,
+    contactPhone: string,
+    sessionWindowHours = SESSION_WINDOW_HOURS,
+  ): Promise<{ id: string }> {
+    const since = new Date(Date.now() - sessionWindowHours * 3_600_000);
+    const existing = await this.prisma.conversation.findFirst({
+      where: {
+        clinicId,
+        channel,
+        contactPhone,
+        status: 'em_andamento',
+        lastMessageAt: { gte: since },
+      },
+      orderBy: { lastMessageAt: 'desc' },
+      select: { id: true },
+    });
+    if (existing) return existing;
+
+    const created = await this.createConversation(clinicId, {
+      channel,
+      contactPhone,
+    });
+    return { id: created.id };
   }
 
   /**

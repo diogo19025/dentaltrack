@@ -77,6 +77,9 @@ model ClinicSettings {
   offerEndsOn   String?  @map("offer_ends_on")
   /// Linhas de disponibilidade [{ day, hours, open }] — ver @dentaltrack/shared.
   availability  Json?
+  /// Nome da instância Evolution que atende esta clínica no WhatsApp (WA-1).
+  /// Resolve `instância → clínica` no webhook (sem JWT). Único por instância.
+  whatsappInstance String? @unique @map("whatsapp_instance")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -130,6 +133,9 @@ model Conversation {
   clinicId      String             @map("clinic_id") @db.Uuid
   leadId        String?            @map("lead_id") @db.Uuid
   channel       Channel            @default(web)
+  /// Identidade do contato no canal sem login (WhatsApp = número/JID). NULL no
+  /// web (identidade = sessão). Base do lookup `(clinica, canal, telefone)`.
+  contactPhone  String?            @map("contact_phone")
   status        ConversationStatus @default(em_andamento)
   lastMessageAt DateTime?          @map("last_message_at")
   createdAt     DateTime           @default(now()) @map("created_at")
@@ -144,6 +150,7 @@ model Conversation {
   @@index([clinicId])
   @@index([clinicId, status])
   @@index([leadId])
+  @@index([clinicId, channel, contactPhone])
   @@map("conversation")
 }
 

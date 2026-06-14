@@ -52,17 +52,24 @@
 
 ## NÃO faça
 
-- **Não implementar a integração WhatsApp ainda** — é plano futuro (ver abaixo).
 - **Não usar a API oficial da Meta** — a decisão é Evolution/Baileys (não-oficial).
 - **Não voltar à stack antiga:** sem Next.js monolito, sem Neon, sem Clerk, sem Drizzle, sem AI Gateway/Claude pago.
 - **Não "reinterpretar" o visual nem adicionar dark mode** — o front-end segue o design hi-fi (`docs/design_handoff_dentaltrack/`) pixel-perfect.
 
-## Futuro (registrado — NÃO é para agora): integração WhatsApp
+## Integração WhatsApp (Evolution/Baileys) — EM IMPLEMENTAÇÃO (MVP 1 número/1 clínica)
 
-- **Provedor:** **Evolution API (Baileys, não-oficial e gratuito)** — **sem a API da Meta**.
-- **Bot 100% automático** (sem caixa de entrada humana). **Notifica a clínica pelo painel web** quando há lead quente / agendamento.
-- **Como funciona:** um _adapter_ novo (webhook recebe a mensagem → chama o **mesmo `ChatEngine`** → envia a resposta via Evolution). Engine, tools e tagging **não mudam**. Sem streaming token-a-token (envia mensagem completa); identidade do lead = número de telefone.
-- **Cuidado principal:** **higiene anti-banimento** (número dedicado, rate-limit, delays, opt-in/opt-out) + reconexão de sessão Baileys.
+> **Provedor:** Evolution API (Baileys, não-oficial e gratuito) — **sem a API da Meta**.
+> Runbook completo (subir Docker, parear QR, testar): [`docs/WHATSAPP.md`](docs/WHATSAPP.md).
+
+- **Adapter implementado (código + testes, 2026-06-13):**
+  - **WA-1** schema — `ClinicSettings.whatsappInstance` (instância→clínica) + `Conversation.contactPhone` (identidade = telefone). Migration `f5_whatsapp` (**criada; aplicar com `db:deploy`**).
+  - **WA-2** núcleo channel-agnostic — `ConversationsService.resolveByPhone` (sessão por telefone, janela `WHATSAPP_SESSION_HOURS`) + `ChatService.processInboundMessage` (mesmo motor, **sem streaming**, com fallback de provider; reaproveita STT p/ áudio/PTT).
+  - **WA-3** `WhatsappModule` — `WhatsappController` (`@Public POST /whatsapp/webhook`), `WhatsappService` (resolve clínica, dedupe, opt-out, chama o motor) e `EvolutionService` (saída: `sendText`/mídia).
+  - **WA-4** higiene anti-ban — delay "digitando", dedupe por `messageId`, filtro grupo/status/`fromMe`, ack 200 + processamento assíncrono, fallback amigável em `AiUnavailableError`.
+  - **WA-0** infra dev — `docker-compose.evolution.yml` (Evolution + Postgres + Redis) + `.env.evolution.example`.
+- **`channel='whatsapp'`** entra nas mesmas tabelas → dashboard, leads e tagging funcionam sem mudança. Bot 100% automático; notifica pelo painel (lead-scoring).
+- **Pendente (precisa do número/chip ao vivo):** aplicar a migration, subir a Evolution, **parear o QR**, setar `whatsapp_instance` na clínica e validar E2E. Ver `docs/WHATSAPP.md`.
+- **Próxima etapa (pós-validação):** multi-instância com pareamento por QR na tela de Configurações (schema já suporta) + opt-out persistido.
 
 ## Ambiente
 

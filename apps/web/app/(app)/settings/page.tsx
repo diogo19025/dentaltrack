@@ -73,6 +73,7 @@ const BLANK: ClinicSettingsDto = {
   offerStartsOn: "",
   offerEndsOn: "",
   availability: DEFAULT_AVAILABILITY,
+  whatsappInstance: "",
 };
 
 export default function SettingsPage() {

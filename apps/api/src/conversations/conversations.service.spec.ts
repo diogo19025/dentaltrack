@@ -43,6 +43,7 @@ describe('ConversationsService', () => {
           clinicId: CLINIC_ID,
           leadId: undefined,
           channel: 'web',
+          contactPhone: null,
           status: 'em_andamento',
         },
       });
@@ -55,12 +56,55 @@ describe('ConversationsService', () => {
       await service.createConversation(CLINIC_ID, {
         channel: 'whatsapp',
         leadId: 'lead-1',
+        contactPhone: '5511999998888',
       });
       expect(prismaMock.conversation.create).toHaveBeenCalledWith({
         data: {
           clinicId: CLINIC_ID,
           leadId: 'lead-1',
           channel: 'whatsapp',
+          contactPhone: '5511999998888',
+          status: 'em_andamento',
+        },
+      });
+    });
+  });
+
+  describe('resolveByPhone', () => {
+    const PHONE = '5511999998888';
+
+    it('reusa a conversa em_andamento mais recente do contato (dentro da janela)', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({
+        id: CONVERSATION_ID,
+      });
+
+      const res = await service.resolveByPhone(CLINIC_ID, 'whatsapp', PHONE);
+
+      expect(res).toEqual({ id: CONVERSATION_ID });
+      const where = prismaMock.conversation.findFirst.mock.calls[0][0].where;
+      expect(where).toMatchObject({
+        clinicId: CLINIC_ID,
+        channel: 'whatsapp',
+        contactPhone: PHONE,
+        status: 'em_andamento',
+      });
+      expect(where.lastMessageAt.gte).toBeInstanceOf(Date);
+      expect(prismaMock.conversation.create).not.toHaveBeenCalled();
+    });
+
+    it('abre uma nova conversa quando não há sessão ativa para o contato', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce(null);
+      prismaMock.conversation.create.mockResolvedValueOnce({ id: 'new-convo' });
+
+      const res = await service.resolveByPhone(CLINIC_ID, 'whatsapp', PHONE);
+
+      expect(res).toEqual({ id: 'new-convo' });
+      expect(prismaMock.conversation.create).toHaveBeenCalledWith({
+        data: {
+          clinicId: CLINIC_ID,
+          leadId: undefined,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
           status: 'em_andamento',
         },
       });

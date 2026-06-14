@@ -1,0 +1,169 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { AiUnavailableError } from '../ai/generate-reply';
+import { ChatService } from '../chat/chat.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { EvolutionService } from './evolution.service';
+import {
+  type EvolutionWebhookPayload,
+  type ParsedInbound,
+  parseInboundMessage,
+} from './webhook.types';
+
+/** Janela (ms) de deduplicação de `messageId` — a Evolution pode reentregar. */
+const DEDUPE_TTL_MS = 5 * 60_000;
+
+/** Palavras que sinalizam descadastro (opt-out mínimo, WA-4). */
+const OPT_OUT_WORDS = new Set([
+  'sair',
+  'parar',
+  'stop',
+  'cancelar',
+  'descadastrar',
+]);
+
+/** Resposta quando a IA está indisponível (mantém o paciente informado). */
+const AI_FALLBACK =
+  'Estou com uma instabilidade no momento e já volto a responder. Sua mensagem foi registrada. 🙏';
+
+/** Confirmação de opt-out (não persiste lista de bloqueio no MVP — ver WA-4). */
+const OPT_OUT_REPLY =
+  'Tudo bem, não enviarei mais mensagens automáticas. Se precisar, é só chamar de novo.';
+
+/**
+ * Orquestra o canal WhatsApp (WA-3). Recebe o webhook já bruto da Evolution,
+ * resolve a clínica pela instância, deduplica, roda o **mesmo** `ChatService`
+ * (non-streaming) e devolve a resposta pela Evolution. Channel-agnostic: o motor
+ * não muda — este serviço é só o adaptador de borda.
+ */
+@Injectable()
+export class WhatsappService {
+  private readonly logger = new Logger(WhatsappService.name);
+  /** messageId → timestamp de processamento (dedupe best-effort, em memória). */
+  private readonly processed = new Map<string, number>();
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly chat: ChatService,
+    private readonly evolution: EvolutionService,
+  ) {}
+
+  /**
+   * Processa um evento do webhook. **Nunca lança** (o controller já respondeu
+   * 200 e isto roda em background): falhas são logadas e seguem.
+   */
+  async handleWebhook(payload: EvolutionWebhookPayload): Promise<void> {
+    try {
+      const inbound = parseInboundMessage(payload);
+      if (!inbound) return;
+      if (this.isDuplicate(inbound.messageId)) return;
+
+      const clinicId = await this.resolveClinicId(inbound.instance);
+      if (!clinicId) {
+        this.logger.warn(
+          `Instância "${inbound.instance}" sem clínica mapeada — ignorando.`,
+        );
+        return;
+      }
+
+      // Opt-out mínimo: confirma e não roda o bot neste turno.
+      if (inbound.text && OPT_OUT_WORDS.has(inbound.text.toLowerCase())) {
+        await this.safeSend(inbound.instance, inbound.phone, OPT_OUT_REPLY);
+        return;
+      }
+
+      const turn = await this.buildTurn(inbound);
+      if (!turn) return; // tipo não suportado / mídia indisponível
+
+      const { reply } = await this.chat.processInboundMessage({
+        clinicId,
+        channel: 'whatsapp',
+        contactPhone: inbound.phone,
+        ...turn,
+      });
+
+      if (reply) {
+        await this.evolution.sendText(inbound.instance, inbound.phone, reply);
+      }
+    } catch (err) {
+      await this.handleError(err, payload);
+    }
+  }
+
+  /**
+   * Monta a entrada do turno (texto OU áudio). Para áudio, usa o base64 do
+   * webhook ou o busca na Evolution (getBase64FromMediaMessage).
+   */
+  private async buildTurn(
+    inbound: ParsedInbound,
+  ): Promise<{ message?: string; audio?: string; audioType?: string } | null> {
+    if (inbound.text) return { message: inbound.text };
+
+    if (inbound.audio) {
+      const base64 =
+        inbound.audio.base64 ??
+        (await this.evolution.getMediaBase64(
+          inbound.instance,
+          inbound.audio.key,
+        ));
+      if (!base64) {
+        this.logger.warn(
+          `Áudio sem base64 (instância ${inbound.instance}) — ignorando.`,
+        );
+        return null;
+      }
+      return { audio: base64, audioType: inbound.audio.mimeType };
+    }
+
+    return null;
+  }
+
+  /** Resolve a clínica dona da instância Evolution (WA-1). */
+  private async resolveClinicId(instance: string): Promise<string | null> {
+    const settings = await this.prisma.clinicSettings.findUnique({
+      where: { whatsappInstance: instance },
+      select: { clinicId: true },
+    });
+    return settings?.clinicId ?? null;
+  }
+
+  /** Dedupe best-effort por messageId, com limpeza preguiçosa da janela. */
+  private isDuplicate(messageId: string): boolean {
+    const now = Date.now();
+    for (const [id, ts] of this.processed) {
+      if (now - ts > DEDUPE_TTL_MS) this.processed.delete(id);
+    }
+    if (this.processed.has(messageId)) return true;
+    this.processed.set(messageId, now);
+    return false;
+  }
+
+  /** Trata erros do processamento: IA indisponível → fallback amigável. */
+  private async handleError(
+    err: unknown,
+    payload: EvolutionWebhookPayload,
+  ): Promise<void> {
+    const detail = err instanceof Error ? err.message : String(err);
+    this.logger.error(`Falha ao processar webhook do WhatsApp: ${detail}`);
+
+    if (err instanceof AiUnavailableError) {
+      const inbound = parseInboundMessage(payload);
+      if (inbound) {
+        await this.safeSend(inbound.instance, inbound.phone, AI_FALLBACK);
+      }
+    }
+  }
+
+  /** Envia sem propagar erro (usado em caminhos de fallback). */
+  private async safeSend(
+    instance: string,
+    phone: string,
+    text: string,
+  ): Promise<void> {
+    try {
+      await this.evolution.sendText(instance, phone, text);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Falha ao enviar mensagem ao ${phone}: ${detail}`);
+    }
+  }
+}

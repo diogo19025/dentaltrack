@@ -13,6 +13,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
 import { SettingsModule } from './settings/settings.module';
 import { TagsModule } from './tags/tags.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { TagsModule } from './tags/tags.module';
     MetricsModule,
     LeadsModule,
     JobsModule,
+    WhatsappModule,
   ],
 })
 export class AppModule {}

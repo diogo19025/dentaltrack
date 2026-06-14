@@ -88,6 +88,7 @@ export class SettingsService {
       offerStartsOn: settings?.offerStartsOn ?? '',
       offerEndsOn: settings?.offerEndsOn ?? '',
       availability: this.normalizeAvailability(settings?.availability),
+      whatsappInstance: settings?.whatsappInstance ?? '',
     };
   }
 

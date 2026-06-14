@@ -45,6 +45,8 @@ export const clinicSettingsSchema = z.object({
   offerStartsOn: z.string(),
   offerEndsOn: z.string(),
   availability: z.array(availabilitySlotSchema),
+  /** Instância Evolution que atende a clínica no WhatsApp (WA-1). Vazio = sem WhatsApp. */
+  whatsappInstance: z.string(),
 });
 export type ClinicSettingsDto = z.infer<typeof clinicSettingsSchema>;
 
@@ -65,5 +67,6 @@ export const updateSettingsSchema = z.object({
   offerStartsOn: z.string().trim().max(40).optional(),
   offerEndsOn: z.string().trim().max(40).optional(),
   availability: z.array(availabilitySlotSchema).max(14).optional(),
+  whatsappInstance: z.string().trim().max(120).optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
