@@ -17,6 +17,7 @@ import { Donut } from "@/components/charts/donut";
 import { Funnel } from "@/components/charts/funnel";
 import { HBars } from "@/components/charts/h-bars";
 import { LineChart } from "@/components/charts/line-chart";
+import { ConversationDetailDialog } from "@/components/dashboard/conversation-detail-dialog";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
 import { LeadTemperatureSection } from "@/components/dashboard/lead-temperature";
@@ -63,6 +64,7 @@ export default function DashboardPage() {
   const { data: recent } = useRecentConversations(6);
   const { data: leadsData, isLoading: leadsLoading } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
 
   return (
     <>
@@ -223,7 +225,20 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     {recent.map((c) => (
-                      <tr key={c.id} className="cursor-pointer">
+                      <tr
+                        key={c.id}
+                        className="cursor-pointer"
+                        role="button"
+                        tabIndex={0}
+                        aria-haspopup="dialog"
+                        onClick={() => setSelectedConversationId(c.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setSelectedConversationId(c.id);
+                          }
+                        }}
+                      >
                         <td>
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8">
@@ -265,6 +280,12 @@ export default function DashboardPage() {
               )}
             </div>
           </Card>
+          <ConversationDetailDialog
+            conversationId={selectedConversationId}
+            onOpenChange={(open) => {
+              if (!open) setSelectedConversationId(null);
+            }}
+          />
         </>
       )}
     </>

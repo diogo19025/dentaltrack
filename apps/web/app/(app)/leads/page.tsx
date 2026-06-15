@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { LeadDto } from "@dentaltrack/shared";
 import { Calendar, Clock, Download, Filter, Inbox, MoreHorizontal, Phone, Search, Users } from "lucide-react";
+import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
 import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ export default function LeadsPage() {
   const [filter, setFilter] = useState<StatusFilter>("todos");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
 
   const leads = useMemo(() => data?.leads ?? [], [data]);
   const summary = data?.summary ?? { total: 0, agendada: 0, andamento: 0, abandonada: 0 };
@@ -134,7 +136,20 @@ export default function LeadsPage() {
               </thead>
               <tbody>
                 {pageItems.map((l) => (
-                  <tr key={l.id} className="cursor-pointer">
+                  <tr
+                    key={l.id}
+                    className="cursor-pointer"
+                    role="button"
+                    tabIndex={0}
+                    aria-haspopup="dialog"
+                    onClick={() => setSelectedLeadId(l.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedLeadId(l.id);
+                      }
+                    }}
+                  >
                     <td>
                       <div className="flex items-center gap-[11px]">
                         <Avatar className="size-[34px]">
@@ -179,7 +194,12 @@ export default function LeadsPage() {
                       </span>
                     </td>
                     <td className="text-right">
-                      <Button variant="ghost" size="icon-sm" aria-label="Ações">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Ações"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <MoreHorizontal className="size-4" />
                       </Button>
                     </td>
@@ -218,6 +238,13 @@ export default function LeadsPage() {
           </div>
         )}
       </Card>
+
+      <LeadDetailDialog
+        leadId={selectedLeadId}
+        onOpenChange={(open) => {
+          if (!open) setSelectedLeadId(null);
+        }}
+      />
     </>
   );
 }
