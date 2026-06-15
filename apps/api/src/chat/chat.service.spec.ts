@@ -63,6 +63,7 @@ describe('ChatService.streamMessage', () => {
     appendMessage: jest.fn(),
     getConversation: jest.fn(),
     resolveByPhone: jest.fn(),
+    ensureContactLead: jest.fn(),
   };
   const prismaMock = {
     conversation: { findFirst: jest.fn() },
@@ -337,6 +338,7 @@ describe('ChatService.streamMessage', () => {
         clinicId: CLINIC_ID,
         channel: 'whatsapp',
         contactPhone: PHONE,
+        contactName: 'João',
         message: 'Quero agendar',
       });
 
@@ -345,6 +347,12 @@ describe('ChatService.streamMessage', () => {
         CLINIC_ID,
         'whatsapp',
         PHONE,
+      );
+      // Captura automática do lead pelo contato do canal (telefone + pushName).
+      expect(conversationsMock.ensureContactLead).toHaveBeenCalledWith(
+        CONVERSATION_ID,
+        CLINIC_ID,
+        { phone: PHONE, name: 'João', source: 'whatsapp' },
       );
       // user persistido antes de gerar.
       expect(conversationsMock.appendMessage).toHaveBeenNthCalledWith(

@@ -33,6 +33,8 @@ export interface InboundMessage extends TurnInput {
   clinicId: string;
   channel: Channel;
   contactPhone: string;
+  /** Nome de perfil do contato no canal (WhatsApp = pushName), se disponível. */
+  contactName?: string;
 }
 
 /** Resultado de um turno non-streaming (WhatsApp e afins). */
@@ -137,6 +139,27 @@ export class ChatService {
       input.contactPhone,
     );
 
+    // 1b. Captura automática do lead pelo contato do canal: o telefone está
+    // sempre disponível e o nome de perfil (pushName) quando houver. Best-effort
+    // — não bloqueia a resposta se o banco falhar. Backfill que não sobrescreve
+    // dados já capturados (a tool da IA tem prioridade sobre o nome de perfil).
+    try {
+      await this.conversations.ensureContactLead(
+        conversationId,
+        input.clinicId,
+        {
+          phone: input.contactPhone,
+          name: input.contactName,
+          source: input.channel,
+        },
+      );
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Falha na captura automática do lead (conversa ${conversationId}): ${detail}`,
+      );
+    }
+
     // 2. Persiste a mensagem do paciente antes de gerar (retry mantém contexto).
     await this.conversations.appendMessage(
       conversationId,
@@ -168,7 +191,11 @@ export class ChatService {
   private async prepareTurn(
     conversationId: string,
     clinicId: string,
-  ): Promise<{ systemPrompt: string; history: ReplyMessage[]; tools: ReturnType<typeof buildChatTools> }> {
+  ): Promise<{
+    systemPrompt: string;
+    history: ReplyMessage[];
+    tools: ReturnType<typeof buildChatTools>;
+  }> {
     const systemPrompt = await this.buildPrompt(clinicId);
     const convo = await this.conversations.getConversation(
       conversationId,

@@ -40,6 +40,22 @@ export interface AppendMessageInput {
 }
 
 /**
+ * Normaliza o nome de perfil do contato. Descarta vazios e o caso em que o
+ * pushName é só o próprio número (contas sem nome) — não é um nome útil.
+ */
+function sanitizeContactName(
+  name: string | undefined,
+  phone: string,
+): string | undefined {
+  const trimmed = name?.trim();
+  if (!trimmed) return undefined;
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length > 0 && digits === phone.replace(/\D/g, ''))
+    return undefined;
+  return trimmed;
+}
+
+/**
  * Serviço de conversas (BE-1.2). Channel-agnostic — não conhece o canal.
  * Multi-tenant: toda operação é escopada por `clinicId` (derivado da conversa
  * quando não é informado), conforme docs/plan.md §2 e docs/context.md §6.
@@ -93,6 +109,88 @@ export class ConversationsService {
       contactPhone,
     });
     return { id: created.id };
+  }
+
+  /**
+   * Captura/vincula automaticamente o lead de um contato identificado por
+   * telefone (WhatsApp): o telefone está sempre disponível e o nome de perfil
+   * (pushName) quando houver. Idempotente e seguro de chamar a cada turno:
+   *  1. conversa já tem lead → backfill do que estiver faltando (não sobrescreve);
+   *  2. sem lead, mas existe lead com o mesmo telefone na clínica → reusa (dedupe)
+   *     e vincula a conversa a ele;
+   *  3. caso contrário → cria o lead a partir do contato e vincula.
+   * O nome de perfil que é só o próprio número é descartado (não é um nome útil).
+   */
+  async ensureContactLead(
+    conversationId: string,
+    clinicId: string,
+    contact: { phone: string; name?: string; source?: string },
+  ): Promise<void> {
+    const convo = await this.prisma.conversation.findFirst({
+      where: { id: conversationId, clinicId },
+      select: { leadId: true },
+    });
+    if (!convo) return;
+
+    const name = sanitizeContactName(contact.name, contact.phone);
+    const phone = contact.phone || null;
+
+    // 1. Já existe um lead vinculado → só preenche o que falta.
+    if (convo.leadId) {
+      await this.backfillLead(convo.leadId, { phone, name });
+      return;
+    }
+
+    // 2. Dedupe por telefone: mesmo número = mesmo lead entre sessões.
+    const existing = phone
+      ? await this.prisma.lead.findFirst({
+          where: { clinicId, phone },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        })
+      : null;
+    if (existing) {
+      await this.backfillLead(existing.id, { phone, name });
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { leadId: existing.id },
+      });
+      return;
+    }
+
+    // 3. Cria o lead a partir do contato e vincula à conversa.
+    const lead = await this.prisma.lead.create({
+      data: {
+        clinicId,
+        name: name ?? null,
+        phone,
+        source: contact.source ?? 'web',
+      },
+      select: { id: true },
+    });
+    await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { leadId: lead.id },
+    });
+  }
+
+  /** Preenche nome/telefone de um lead apenas quando ainda estão vazios. */
+  private async backfillLead(
+    leadId: string,
+    fields: { phone: string | null; name?: string },
+  ): Promise<void> {
+    const lead = await this.prisma.lead.findUnique({
+      where: { id: leadId },
+      select: { name: true, phone: true },
+    });
+    if (!lead) return;
+
+    const data: { name?: string; phone?: string } = {};
+    if (!lead.phone && fields.phone) data.phone = fields.phone;
+    if (!lead.name && fields.name) data.name = fields.name;
+    if (Object.keys(data).length === 0) return;
+
+    await this.prisma.lead.update({ where: { id: leadId }, data });
   }
 
   /**

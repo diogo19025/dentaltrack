@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tag } from "@/components/ui/tag";
 import { useLeadDetail } from "@/hooks/use-leads";
-import { formatCaptured, initials, timeAgo } from "@/lib/format";
+import { formatCaptured, initials, sourceLabel, timeAgo } from "@/lib/format";
 import { TEMPERATURE_META } from "@/lib/lead-temperature";
 import { whatsappUrl } from "@/lib/whatsapp";
 
@@ -87,7 +87,7 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
             </DialogTitle>
             <DialogDescription className="mt-[3px] text-[13px]">
               Capturado {formatCaptured(detail.createdAt)} ·{" "}
-              {detail.source === "web" ? "Web" : detail.source}
+              {sourceLabel(detail.source)}
             </DialogDescription>
           </div>
           <span

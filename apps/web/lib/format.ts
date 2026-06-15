@@ -27,6 +27,13 @@ export function formatCaptured(iso: string): string {
   return date.toLocaleDateString("pt-BR");
 }
 
+/** Rótulo amigável da origem do lead/conversa ("Web", "WhatsApp", …). */
+export function sourceLabel(source: string): string {
+  if (source === "web") return "Web";
+  if (source === "whatsapp") return "WhatsApp";
+  return source;
+}
+
 /** Iniciais (até 2) de um nome, com fallback quando vazio. */
 export function initials(name: string | null | undefined, fallback = "?"): string {
   if (!name) return fallback;

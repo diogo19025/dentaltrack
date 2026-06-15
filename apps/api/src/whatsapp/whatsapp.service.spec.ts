@@ -62,6 +62,7 @@ describe('WhatsappService', () => {
       clinicId: CLINIC_ID,
       channel: 'whatsapp',
       contactPhone: '5511999998888',
+      contactName: 'João',
       message: 'Quero agendar',
     });
     expect(evolutionMock.sendText).toHaveBeenCalledWith(

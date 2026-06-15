@@ -18,6 +18,12 @@ describe('ConversationsService', () => {
     message: {
       create: jest.fn(),
     },
+    lead: {
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
     $transaction: jest.fn(),
   };
 
@@ -258,6 +264,96 @@ describe('ConversationsService', () => {
       await expect(
         service.getConversation(CONVERSATION_ID),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('ensureContactLead', () => {
+    const PHONE = '558387504242';
+    const LEAD_ID = '33333333-3333-3333-3333-333333333333';
+
+    it('sem lead e sem outro do mesmo telefone: cria o lead e vincula a conversa', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: null });
+      prismaMock.lead.findFirst.mockResolvedValueOnce(null); // dedupe: nenhum
+      prismaMock.lead.create.mockResolvedValueOnce({ id: LEAD_ID });
+
+      await service.ensureContactLead(CONVERSATION_ID, CLINIC_ID, {
+        phone: PHONE,
+        name: 'João',
+        source: 'whatsapp',
+      });
+
+      expect(prismaMock.lead.create).toHaveBeenCalledWith({
+        data: { clinicId: CLINIC_ID, name: 'João', phone: PHONE, source: 'whatsapp' },
+        select: { id: true },
+      });
+      expect(prismaMock.conversation.update).toHaveBeenCalledWith({
+        where: { id: CONVERSATION_ID },
+        data: { leadId: LEAD_ID },
+      });
+    });
+
+    it('dedupe: reusa o lead existente do mesmo telefone e vincula (sem criar)', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: null });
+      prismaMock.lead.findFirst.mockResolvedValueOnce({ id: LEAD_ID });
+      prismaMock.lead.findUnique.mockResolvedValueOnce({ name: 'João', phone: PHONE });
+
+      await service.ensureContactLead(CONVERSATION_ID, CLINIC_ID, {
+        phone: PHONE,
+        name: 'João',
+        source: 'whatsapp',
+      });
+
+      expect(prismaMock.lead.create).not.toHaveBeenCalled();
+      expect(prismaMock.conversation.update).toHaveBeenCalledWith({
+        where: { id: CONVERSATION_ID },
+        data: { leadId: LEAD_ID },
+      });
+    });
+
+    it('backfill: lead vinculado sem telefone recebe o telefone, mas não sobrescreve o nome', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: LEAD_ID });
+      prismaMock.lead.findUnique.mockResolvedValueOnce({ name: 'Maria', phone: null });
+
+      await service.ensureContactLead(CONVERSATION_ID, CLINIC_ID, {
+        phone: PHONE,
+        name: 'João',
+        source: 'whatsapp',
+      });
+
+      expect(prismaMock.lead.update).toHaveBeenCalledWith({
+        where: { id: LEAD_ID },
+        data: { phone: PHONE },
+      });
+      expect(prismaMock.lead.create).not.toHaveBeenCalled();
+    });
+
+    it('nome de perfil igual ao próprio número é descartado (não vira nome)', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: null });
+      prismaMock.lead.findFirst.mockResolvedValueOnce(null);
+      prismaMock.lead.create.mockResolvedValueOnce({ id: LEAD_ID });
+
+      await service.ensureContactLead(CONVERSATION_ID, CLINIC_ID, {
+        phone: PHONE,
+        name: '+55 83 8750-4242',
+        source: 'whatsapp',
+      });
+
+      expect(prismaMock.lead.create).toHaveBeenCalledWith({
+        data: { clinicId: CLINIC_ID, name: null, phone: PHONE, source: 'whatsapp' },
+        select: { id: true },
+      });
+    });
+
+    it('conversa inexistente: no-op (não cria nem atualiza lead)', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce(null);
+
+      await service.ensureContactLead(CONVERSATION_ID, CLINIC_ID, {
+        phone: PHONE,
+        source: 'whatsapp',
+      });
+
+      expect(prismaMock.lead.create).not.toHaveBeenCalled();
+      expect(prismaMock.lead.update).not.toHaveBeenCalled();
     });
   });
 });

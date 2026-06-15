@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tag } from "@/components/ui/tag";
 import { useLeads } from "@/hooks/use-leads";
-import { formatCaptured, initials } from "@/lib/format";
+import { formatCaptured, initials, sourceLabel } from "@/lib/format";
 
 /**
  * Leads (FE-3.6) — réplica 1:1 de `screen_leads.jsx`: 4 cards-resumo + tabela
@@ -185,7 +185,7 @@ export default function LeadsPage() {
                     </td>
                     <td>
                       <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-[5px] text-[12px] font-medium text-muted-foreground">
-                        {l.source === "web" ? "Web" : l.source}
+                        {sourceLabel(l.source)}
                       </span>
                     </td>
                     <td className="text-right">

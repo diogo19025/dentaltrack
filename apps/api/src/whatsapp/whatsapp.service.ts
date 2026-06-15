@@ -78,6 +78,7 @@ export class WhatsappService {
         clinicId,
         channel: 'whatsapp',
         contactPhone: inbound.phone,
+        contactName: inbound.pushName,
         ...turn,
       });
 
