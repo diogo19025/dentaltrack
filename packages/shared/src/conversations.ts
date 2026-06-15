@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chatMessageSchema } from "./chat";
 import { channelSchema, conversationStatusSchema } from "./enums";
 import { tagColorSchema } from "./tags";
 
@@ -29,7 +30,10 @@ export const conversationSummarySchema = z.object({
 });
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
 
-/** Detalhe de uma conversa (rail do chat — tags ao vivo). */
+/**
+ * Detalhe de uma conversa. Alimenta o rail de tags do chat (tags ao vivo) e o
+ * painel "ver mais" das Conversas recentes do dashboard (histórico de mensagens).
+ */
 export const conversationDetailSchema = z.object({
   id: z.string().uuid(),
   status: conversationStatusSchema,
@@ -37,5 +41,7 @@ export const conversationDetailSchema = z.object({
   createdAt: z.string(),
   messageCount: z.number(),
   tags: z.array(detectedTagSchema),
+  /** Histórico (ordem cronológica) — paciente × bot. Ver `GET /conversations/:id`. */
+  messages: z.array(chatMessageSchema),
 });
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;

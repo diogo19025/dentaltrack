@@ -214,6 +214,10 @@ export class ConversationsService {
             tag: { select: { id: true, name: true, color: true } },
           },
         },
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, role: true, content: true, createdAt: true },
+        },
       },
     });
     if (!convo) {
@@ -230,6 +234,12 @@ export class ConversationsService {
         name: ct.tag.name,
         color: ct.tag.color,
         confidence: ct.confidence,
+      })),
+      messages: convo.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        createdAt: m.createdAt.toISOString(),
       })),
     };
   }

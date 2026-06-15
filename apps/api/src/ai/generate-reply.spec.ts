@@ -1,4 +1,4 @@
-jest.mock('./model', () => ({
+tejest.mock('./model', () => ({
   getModel: jest.fn((p?: string) => `model:${p ?? 'google'}`),
   getProvider: jest.fn(() => 'google'),
   getFallbackProvider: jest.fn(() => undefined),
