@@ -36,3 +36,6 @@ Thumbs.db
 
 # Deploy
 .vercel
+
+# WhatsApp (QR gerado no pareamento da Evolution — efêmero, nunca versionar)
+qr.png

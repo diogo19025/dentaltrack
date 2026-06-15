@@ -734,3 +734,87 @@ existente mudou); telas 1:1 do handoff intactas.
 **Validação.** `typecheck` verde · **107 testes** (Jest) passando, incluindo novo caso de STT openai em `transcribe.spec.ts`.
 
 **Pendência manual.** Colar a chave em `apps/api/.env` → `OPENAI_API_KEY=` (https://platform.openai.com/api-keys).
+
+---
+
+## Canal WhatsApp via Evolution/Baileys (2026-06-14)
+
+> Primeira integração de canal **fora do web**, validada **ao vivo** com um número
+> dedicado (WhatsApp Business). Não-oficial (Evolution API / Baileys), **sem a API
+> da Meta**. O motor do agente **não mudou** — o WhatsApp é só um _adapter_ de borda.
+> Runbook completo: [`docs/WHATSAPP.md`](./WHATSAPP.md).
+
+**Visão geral.** Uma mensagem chega no número → a Evolution posta no webhook da API
+→ a clínica é resolvida pela **instância** → roda o **mesmo** `ChatService`
+(non-streaming) → a resposta volta pela Evolution. `channel='whatsapp'` entra nas
+mesmas tabelas, então dashboard, leads e tagging funcionam sem mudança.
+
+### WA-1 — Schema: instância↔clínica + identidade por telefone
+**O quê.** `ClinicSettings.whatsappInstance` (`@unique` — resolve *instância Evolution
+→ clínica* no webhook, sem JWT) e `Conversation.contactPhone` (+ índice
+`(clinicId, channel, contactPhone)`). Migration `20260611120000_f5_whatsapp`. Campo
+`whatsappInstance` espelhado no schema Zod de settings (`packages/shared`), no
+`SettingsService` e no `BLANK` da tela `/settings`.
+**Por quê.** No web a identidade é a sessão logada; no WhatsApp é o **telefone**.
+Sem o mapa instância→clínica, o webhook (público) não saberia de qual clínica é a mensagem.
+
+### WA-2 — Núcleo non-streaming (channel-agnostic)
+**O quê.** `ConversationsService.resolveByPhone(clinicId, channel, phone)` — reusa a
+conversa `em_andamento` mais recente do contato dentro da janela `WHATSAPP_SESSION_HOURS`
+(default 24h) ou abre nova. No `ChatService`, extraí os helpers compartilhados
+(`prepareTurn`, `persistAssistantReply`) e adicionei **`processInboundMessage()`**:
+mesmo motor do web, mas resolve a conversa por telefone, gera com
+`generateAssistantReply` (timeout/retry + **fallback de provider**, sem streaming) e
+**retorna o texto**; reusa o STT existente para áudio/PTT. O caminho web (streaming)
+ficou intacto.
+**Por quê.** WhatsApp não tem streaming token-a-token; precisava de um caminho que
+devolve a resposta inteira, sem duplicar prompt/tools/persistência/tagging.
+
+### WA-3 — `WhatsappModule` (adapter de borda)
+**O quê.** `webhook.types.ts` (parser defensivo do payload Evolution: normaliza evento,
+filtra `fromMe`/grupos/status, extrai texto ou áudio), `EvolutionService` (saída:
+`sendText` com delay "digitando", `getMediaBase64`), `WhatsappService` (resolve clínica,
+dedupe, opt-out, chama o motor, envia a resposta) e `WhatsappController`
+(`@Public POST /whatsapp/webhook`, valida `x-evolution-token` opcional, **ack 200
+imediato** + processamento assíncrono). `ChatModule` passou a exportar `ChatService`.
+**Por quê.** Isolar tudo que é específico do canal numa borda fina — o webhook é a
+única peça nova; engine/tools/tagging permanecem.
+
+### WA-4 — Higiene anti-banimento & resiliência
+**O quê.** Dedupe por `messageId` (a Evolution reentrega), filtro de grupo/status/`fromMe`,
+delay "digitando" proporcional ao texto antes de enviar, opt-out por palavra-chave
+(`sair`/`parar`…), ack rápido + processamento em background, e fallback amigável quando a
+IA cai (`AiUnavailableError`). `WhatsappService.handleWebhook` **nunca lança**.
+
+### WA-0 — Infra de desenvolvimento
+**O quê.** `docker-compose.evolution.yml` (Evolution + Postgres + Redis dedicados,
+separados do Supabase) + `.env.evolution.example`. Envs novas no `env.validation`:
+`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_TOKEN` (opcional),
+`WHATSAPP_SESSION_HOURS`. `qr.png` adicionado ao `.gitignore`.
+
+### Validação ao vivo (e percalços resolvidos)
+- **Imagem correta:** o namespace `atendai/evolution-api` está **parado na 2.2.3**
+  (Baileys velho → `Connection Failure`, QR nunca gerava). Migramos para
+  **`evoapicloud/evolution-api:v2.3.7`** (mantido), que conecta no WhatsApp atual.
+- **Webhook na v2.3.x exige `enabled: true`** — o `create` não setava; resolvido com
+  `POST /webhook/set/{instance}` (`enabled:true`, `byEvents:false`, `base64:true`,
+  evento `MESSAGES_UPSERT`).
+- **Pareamento:** QR via `instance/connect` (salvo como `qr.png`) escaneado no
+  WhatsApp Business; sessão persistida no volume (reconecta sozinha no `up`).
+- **Mapa clínica↔instância:** `clinic_settings.whatsapp_instance = 'dentaltrack'`
+  (upsert no Supabase).
+- **Teste E2E real:** mensagem de outro número → bot respondeu com a persona da clínica;
+  conversa/lead/tags registrados com `canal = whatsapp`.
+
+### Qualidade / validação
+`typecheck` (api + web) verde · **130 testes** (Jest) passando — +18 do WhatsApp
+(`webhook.types.spec.ts` 11 casos do parser, `whatsapp.service.spec.ts` 8 casos de
+roteamento/dedupe/opt-out/áudio/fallback) e +6 do WA-2 (`processInboundMessage` +
+`resolveByPhone`). Web: 64 testes (Vitest) verdes.
+
+### Pendências / próximos passos
+- **Multi-instância**: hoje é 1 número/1 clínica (mapeado à mão). O schema já suporta
+  vários; próxima etapa é pareamento por QR na tela de Configurações.
+- **Opt-out** confirma por palavra-chave, mas **não persiste** lista de bloqueio ainda.
+- **Deploy**: a Evolution precisa de host acessível pelo webhook (em produção, trocar
+  `host.docker.internal` pela URL pública da API).

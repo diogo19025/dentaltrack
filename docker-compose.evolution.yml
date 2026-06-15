@@ -1,0 +1,77 @@
+# Evolution API (Baileys — WhatsApp não-oficial) para desenvolvimento local (WA-0).
+# Sobe a Evolution + Postgres + Redis próprios (separados do Supabase do app).
+# Uso:
+#   1. copie .env.evolution.example -> .env.evolution e defina EVOLUTION_API_KEY
+#   2. docker compose -f docker-compose.evolution.yml --env-file .env.evolution up -d
+# Depois siga docs/WHATSAPP.md (criar instância + parear QR).
+
+services:
+  evolution-api:
+    # Namespace atual e mantido (o antigo `atendai/...` travou na 2.2.3, com
+    # Baileys velho → "Connection Failure" sem QR). Ver docs/WHATSAPP.md.
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: dentaltrack-evolution
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      # Chave global (header `apikey`). Use a MESMA em EVOLUTION_API_KEY da API.
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      # Persistência das sessões/instâncias no Postgres do container.
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: dentaltrack
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      # Cache/sessão no Redis (recomendado p/ estabilidade da sessão Baileys).
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: dentaltrack
+      CACHE_LOCAL_ENABLED: "false"
+      # Nome do "aparelho" que aparece no WhatsApp do paciente.
+      CONFIG_SESSION_PHONE_CLIENT: DentalTrack
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      # Versão do "WhatsApp Web" (Baileys). Em branco = deixa a imagem decidir
+      # (recomendado com a imagem :latest). Só preencha WA_VERSION no .env.evolution
+      # se precisar forçar uma versão específica (ver docs/WHATSAPP.md).
+      CONFIG_SESSION_PHONE_VERSION: ${WA_VERSION:-}
+      # Nível de log. ERROR/WARN/INFO já mostram conexão e QR; adicione
+      # VERBOSE,WEBHOOKS (e LOG_BAILEYS=debug) se precisar depurar o pareamento.
+      LOG_LEVEL: "ERROR,WARN,INFO"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - evolution_instances:/evolution/instances
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: dentaltrack-evolution-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: evolution
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evolution"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: dentaltrack-evolution-redis
+    restart: unless-stopped
+    volumes:
+      - evolution_redis:/data
+
+volumes:
+  evolution_instances:
+  evolution_pg:
+  evolution_redis:

@@ -6,17 +6,22 @@ import {
 import { Test } from '@nestjs/testing';
 import type { ServerResponse } from 'node:http';
 
-// Mocka só a geração streaming (sem rede); o resto do generate-reply é real.
+// Mocka as gerações (sem rede); o resto do generate-reply é real.
 jest.mock('../ai/generate-reply', () => {
   const actual = jest.requireActual<typeof import('../ai/generate-reply')>(
     '../ai/generate-reply',
   );
-  return { ...actual, streamAssistantReply: jest.fn() };
+  return {
+    ...actual,
+    streamAssistantReply: jest.fn(),
+    generateAssistantReply: jest.fn(),
+  };
 });
 // Mocka o STT (sem rede) — o motor real é testado em ai/transcribe.spec.ts.
 jest.mock('../ai/transcribe', () => ({ transcribeAudio: jest.fn() }));
 import {
   AiUnavailableError,
+  generateAssistantReply,
   type StreamReplyOptions,
   streamAssistantReply,
 } from '../ai/generate-reply';
@@ -27,6 +32,9 @@ import { PrismaService } from '../prisma/prisma.service';
 
 const streamMock = streamAssistantReply as jest.MockedFunction<
   typeof streamAssistantReply
+>;
+const generateMock = generateAssistantReply as jest.MockedFunction<
+  typeof generateAssistantReply
 >;
 const transcribeMock = transcribeAudio as jest.MockedFunction<
   typeof transcribeAudio
@@ -54,6 +62,7 @@ describe('ChatService.streamMessage', () => {
     createConversation: jest.fn(),
     appendMessage: jest.fn(),
     getConversation: jest.fn(),
+    resolveByPhone: jest.fn(),
   };
   const prismaMock = {
     conversation: { findFirst: jest.fn() },
@@ -308,6 +317,126 @@ describe('ChatService.streamMessage', () => {
       expect(conversationsMock.createConversation).not.toHaveBeenCalled();
       expect(conversationsMock.appendMessage).not.toHaveBeenCalled();
       expect(streamMock).not.toHaveBeenCalled();
+    });
+  });
+
+  // WA-2: núcleo non-streaming usado pelo adapter WhatsApp (identidade = telefone).
+  describe('processInboundMessage (non-streaming)', () => {
+    const PHONE = '5511999998888';
+
+    it('resolve a conversa pelo telefone, persiste user, gera resposta e a retorna', async () => {
+      conversationsMock.resolveByPhone.mockResolvedValueOnce({
+        id: CONVERSATION_ID,
+      });
+      conversationsMock.getConversation.mockResolvedValueOnce({
+        messages: [{ role: 'user', content: 'Quero agendar' }],
+      });
+      generateMock.mockResolvedValueOnce({ text: 'Claro!', tokens: 12 });
+
+      const result = await service.processInboundMessage({
+        clinicId: CLINIC_ID,
+        channel: 'whatsapp',
+        contactPhone: PHONE,
+        message: 'Quero agendar',
+      });
+
+      // Identidade pelo telefone (não por conversationId do cliente).
+      expect(conversationsMock.resolveByPhone).toHaveBeenCalledWith(
+        CLINIC_ID,
+        'whatsapp',
+        PHONE,
+      );
+      // user persistido antes de gerar.
+      expect(conversationsMock.appendMessage).toHaveBeenNthCalledWith(
+        1,
+        CONVERSATION_ID,
+        'user',
+        'Quero agendar',
+        {},
+        CLINIC_ID,
+      );
+      // Geração non-streaming com histórico + system da clínica + tools.
+      expect(generateMock).toHaveBeenCalledWith(
+        [{ role: 'user', content: 'Quero agendar' }],
+        expect.stringContaining('Clínica Demo'),
+        expect.objectContaining({
+          captureLead: expect.anything(),
+          bookAppointment: expect.anything(),
+        }),
+      );
+      // Resposta do bot persistida.
+      expect(conversationsMock.appendMessage).toHaveBeenNthCalledWith(
+        2,
+        CONVERSATION_ID,
+        'assistant',
+        'Claro!',
+        { tokens: 12 },
+        CLINIC_ID,
+      );
+      expect(streamMock).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        conversationId: CONVERSATION_ID,
+        reply: 'Claro!',
+        transcript: undefined,
+      });
+    });
+
+    it('transcreve áudio e devolve a transcrição junto da resposta', async () => {
+      const TRANSCRIPT = 'Tenho dor de dente';
+      transcribeMock.mockResolvedValueOnce(TRANSCRIPT);
+      conversationsMock.resolveByPhone.mockResolvedValueOnce({
+        id: CONVERSATION_ID,
+      });
+      conversationsMock.getConversation.mockResolvedValueOnce({
+        messages: [{ role: 'user', content: TRANSCRIPT }],
+      });
+      generateMock.mockResolvedValueOnce({ text: 'Sinto muito!', tokens: 5 });
+
+      const result = await service.processInboundMessage({
+        clinicId: CLINIC_ID,
+        channel: 'whatsapp',
+        contactPhone: PHONE,
+        audio: Buffer.from('ptt').toString('base64'),
+        audioType: 'audio/ogg;codecs=opus',
+      });
+
+      expect(transcribeMock).toHaveBeenCalledWith(
+        Buffer.from('ptt'),
+        'audio/ogg',
+      );
+      expect(conversationsMock.appendMessage).toHaveBeenNthCalledWith(
+        1,
+        CONVERSATION_ID,
+        'user',
+        TRANSCRIPT,
+        {},
+        CLINIC_ID,
+      );
+      expect(result.reply).toBe('Sinto muito!');
+      expect(result.transcript).toBe(TRANSCRIPT);
+    });
+
+    it('IA indisponível propaga AiUnavailableError (adapter decide o fallback)', async () => {
+      conversationsMock.resolveByPhone.mockResolvedValueOnce({
+        id: CONVERSATION_ID,
+      });
+      conversationsMock.getConversation.mockResolvedValueOnce({
+        messages: [{ role: 'user', content: 'Oi' }],
+      });
+      generateMock.mockRejectedValueOnce(
+        new AiUnavailableError(new Error('rate limit')),
+      );
+
+      await expect(
+        service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          message: 'Oi',
+        }),
+      ).rejects.toBeInstanceOf(AiUnavailableError);
+      // user já persistido; assistant não.
+      expect(conversationsMock.appendMessage).toHaveBeenCalledTimes(1);
     });
   });
 });
