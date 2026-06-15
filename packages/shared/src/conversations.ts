@@ -40,8 +40,13 @@ export const conversationDetailSchema = z.object({
   channel: channelSchema,
   createdAt: z.string(),
   messageCount: z.number(),
+  /** Telefone do contato (WhatsApp = número do paciente; web = telefone do lead, se houver). */
+  contactPhone: z.string().nullable(),
   tags: z.array(detectedTagSchema),
-  /** Histórico (ordem cronológica) — paciente × bot. Ver `GET /conversations/:id`. */
+  /**
+   * Últimas idas e voltas (ordem cronológica) — paciente × bot, limitadas no
+   * servidor. `messageCount` mantém o total para sinalizar truncamento.
+   */
   messages: z.array(chatMessageSchema),
 });
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;

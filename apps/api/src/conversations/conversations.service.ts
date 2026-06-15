@@ -28,6 +28,12 @@ export interface CreateConversationInput {
  */
 const SESSION_WINDOW_HOURS = Number(process.env.WHATSAPP_SESSION_HOURS ?? 24);
 
+/**
+ * Quantas mensagens o detalhe da conversa retorna (as mais recentes). 20 ≈ 10
+ * idas e voltas paciente×bot — o suficiente para o painel "ver mais" do dashboard.
+ */
+const DETAIL_THREAD_LIMIT = 20;
+
 /** Opções ao anexar uma mensagem (ex.: contagem de tokens do provedor de IA). */
 export interface AppendMessageInput {
   tokens?: number;
@@ -206,6 +212,8 @@ export class ConversationsService {
         status: true,
         channel: true,
         createdAt: true,
+        contactPhone: true,
+        lead: { select: { phone: true } },
         _count: { select: { messages: true } },
         conversationTags: {
           orderBy: { confidence: 'desc' },
@@ -214,8 +222,12 @@ export class ConversationsService {
             tag: { select: { id: true, name: true, color: true } },
           },
         },
+        // Últimas N mensagens (paciente × bot) — buscadas em ordem decrescente e
+        // revertidas abaixo para exibição cronológica. ~10 idas e voltas.
         messages: {
-          orderBy: { createdAt: 'asc' },
+          where: { role: { not: 'system' } },
+          orderBy: { createdAt: 'desc' },
+          take: DETAIL_THREAD_LIMIT,
           select: { id: true, role: true, content: true, createdAt: true },
         },
       },
@@ -229,18 +241,21 @@ export class ConversationsService {
       channel: convo.channel,
       createdAt: convo.createdAt.toISOString(),
       messageCount: convo._count.messages,
+      contactPhone: convo.contactPhone ?? convo.lead?.phone ?? null,
       tags: convo.conversationTags.map((ct) => ({
         id: ct.tag.id,
         name: ct.tag.name,
         color: ct.tag.color,
         confidence: ct.confidence,
       })),
-      messages: convo.messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        createdAt: m.createdAt.toISOString(),
-      })),
+      messages: convo.messages
+        .map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt.toISOString(),
+        }))
+        .reverse(),
     };
   }
 

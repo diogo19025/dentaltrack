@@ -1,8 +1,9 @@
 "use client";
 
 import type { ChatMessageDto, ConversationDetail } from "@dentaltrack/shared";
-import { Bot, User } from "lucide-react";
+import { Bot, MessageCircle, User } from "lucide-react";
 import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +17,7 @@ import { Tag } from "@/components/ui/tag";
 import { useConversationDetail } from "@/hooks/use-conversations";
 import { formatCaptured } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { whatsappUrl } from "@/lib/whatsapp";
 
 /**
  * Painel "ver mais" de uma conversa, aberto ao clicar numa linha de "Conversas
@@ -66,6 +68,8 @@ export function ConversationDetailDialog({
 /** Conteúdo puro do painel (testável sem rede). */
 export function ConversationDetailContent({ detail }: { detail: ConversationDetail }) {
   const thread = detail.messages.filter((m) => m.role !== "system");
+  const wa = whatsappUrl(detail.contactPhone);
+  const truncated = detail.messageCount > thread.length;
 
   return (
     <>
@@ -92,21 +96,40 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
         <Field label="Mensagens">
           <span className="tabular">{detail.messageCount}</span>
         </Field>
-        {detail.tags.length > 0 && (
-          <div className="col-span-full">
-            <Field label="Tags detectadas">
+        <div className="col-span-full">
+          <Field label="Tags detectadas">
+            {detail.tags.length > 0 ? (
               <span className="flex flex-wrap gap-1.5">
                 {detail.tags.map((t) => (
                   <Tag key={t.id} name={t.name} color={t.color} />
                 ))}
               </span>
-            </Field>
-          </div>
-        )}
+            ) : (
+              <span className="text-muted-foreground">Nenhuma tag detectada ainda.</span>
+            )}
+          </Field>
+        </div>
       </div>
 
+      {wa ? (
+        <Button asChild className="w-full">
+          <a href={wa} target="_blank" rel="noreferrer">
+            <MessageCircle className="size-4" /> Abrir conversa no WhatsApp
+          </a>
+        </Button>
+      ) : (
+        <p className="text-[12.5px] text-muted-foreground">
+          Sem telefone do contato — não dá para abrir esta conversa direto no WhatsApp.
+        </p>
+      )}
+
       <div>
-        <SectionLabel>Histórico ({thread.length})</SectionLabel>
+        <SectionLabel>Últimas mensagens ({thread.length})</SectionLabel>
+        {truncated && (
+          <p className="mt-1 text-[12.5px] text-muted-foreground">
+            Mostrando as últimas {thread.length} de {detail.messageCount} mensagens.
+          </p>
+        )}
         {thread.length === 0 ? (
           <p className="mt-2 text-[13px] text-muted-foreground">
             Nenhuma mensagem registrada nesta conversa.
