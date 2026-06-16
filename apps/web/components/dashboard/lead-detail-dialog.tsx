@@ -146,13 +146,12 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
         ) : (
           <ul role="list" className="mt-2 flex flex-col gap-2">
             {detail.conversations.map((convo) => (
-              <li key={convo.id} className="rounded-[10px] border border-border p-3">
-                <div className="flex items-center gap-2">
+              <li key={convo.id} className="w-fit max-w-full rounded-[10px] border border-border p-3">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-[5px] text-[12px] font-medium text-muted-foreground">
                     {convo.channel === "web" ? "Web" : "WhatsApp"}
                   </span>
                   <StatusBadge status={convo.status} />
-                  <span className="flex-1" />
                   <span className="tabular text-[12px] text-muted-foreground">
                     {timeAgo(convo.lastMessageAt)}
                   </span>
