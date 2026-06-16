@@ -124,7 +124,7 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
       </div>
 
       {wa ? (
-        <Button asChild className="w-full">
+        <Button asChild className="w-fit justify-self-start">
           <a href={wa} target="_blank" rel="noreferrer">
             <MessageCircle className="size-4" /> Conversar no WhatsApp
           </a>
@@ -146,18 +146,17 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
         ) : (
           <ul role="list" className="mt-2 flex flex-col gap-2">
             {detail.conversations.map((convo) => (
-              <li key={convo.id} className="rounded-[10px] border border-border p-3">
-                <div className="flex items-center gap-2">
+              <li key={convo.id} className="w-fit min-w-[300px] max-w-full rounded-[12px] border border-border px-5 py-4 pr-8">
+                <div className="flex flex-wrap items-center gap-3">
                   <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-[5px] text-[12px] font-medium text-muted-foreground">
                     {convo.channel === "web" ? "Web" : "WhatsApp"}
                   </span>
                   <StatusBadge status={convo.status} />
-                  <span className="flex-1" />
                   <span className="tabular text-[12px] text-muted-foreground">
                     {timeAgo(convo.lastMessageAt)}
                   </span>
                 </div>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <div className="mt-3 flex flex-wrap items-center gap-2.5">
                   <span className="tabular text-[12px] text-muted-foreground">
                     {convo.messageCount} {convo.messageCount === 1 ? "mensagem" : "mensagens"}
                   </span>
