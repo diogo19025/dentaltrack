@@ -112,7 +112,7 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
       </div>
 
       {wa ? (
-        <Button asChild className="justify-self-start">
+        <Button asChild className="w-fit justify-self-start">
           <a href={wa} target="_blank" rel="noreferrer">
             <MessageCircle className="size-4" /> Abrir conversa no WhatsApp
           </a>

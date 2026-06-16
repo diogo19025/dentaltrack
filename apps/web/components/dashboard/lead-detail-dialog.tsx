@@ -124,7 +124,7 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
       </div>
 
       {wa ? (
-        <Button asChild className="justify-self-start">
+        <Button asChild className="w-fit justify-self-start">
           <a href={wa} target="_blank" rel="noreferrer">
             <MessageCircle className="size-4" /> Conversar no WhatsApp
           </a>
