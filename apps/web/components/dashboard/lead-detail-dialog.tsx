@@ -144,9 +144,9 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
             Nenhuma conversa registrada para este lead.
           </p>
         ) : (
-          <ul role="list" className="mt-3 flex flex-col gap-3">
+          <ul role="list" className="mt-2 flex flex-col gap-2">
             {detail.conversations.map((convo) => (
-              <li key={convo.id} className="w-fit min-w-[320px] max-w-full rounded-[14px] border border-border px-[22px] py-5">
+              <li key={convo.id} className="w-fit min-w-[300px] max-w-full rounded-[12px] border border-border px-5 py-4 pr-8">
                 <div className="flex flex-wrap items-center gap-3">
                   <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-[5px] text-[12px] font-medium text-muted-foreground">
                     {convo.channel === "web" ? "Web" : "WhatsApp"}
@@ -156,7 +156,7 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
                     {timeAgo(convo.lastMessageAt)}
                   </span>
                 </div>
-                <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
+                <div className="mt-3 flex flex-wrap items-center gap-2.5">
                   <span className="tabular text-[12px] text-muted-foreground">
                     {convo.messageCount} {convo.messageCount === 1 ? "mensagem" : "mensagens"}
                   </span>
