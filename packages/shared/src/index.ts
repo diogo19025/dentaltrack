@@ -11,3 +11,4 @@ export * from "./procedures";
 export * from "./metrics";
 export * from "./leads";
 export * from "./conversations";
+export * from "./reminders";

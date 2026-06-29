@@ -13,5 +13,7 @@ import { WhatsappService } from './whatsapp.service';
   imports: [ChatModule],
   controllers: [WhatsappController],
   providers: [WhatsappService, EvolutionService],
+  // EvolutionService é reusado pelo RemindersModule (envio de lembretes do CRM).
+  exports: [EvolutionService],
 })
 export class WhatsappModule {}
