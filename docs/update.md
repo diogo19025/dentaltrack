@@ -818,3 +818,73 @@ roteamento/dedupe/opt-out/áudio/fallback) e +6 do WA-2 (`processInboundMessage`
 - **Opt-out** confirma por palavra-chave, mas **não persiste** lista de bloqueio ainda.
 - **Deploy**: a Evolution precisa de host acessível pelo webhook (em produção, trocar
   `host.docker.internal` pela URL pública da API).
+
+---
+
+## Lembrete por WhatsApp pelo CRM (2026-06-28)
+
+> Primeira ação **de saída iniciada pelo operador** (proativa), não uma resposta do
+> bot a um inbound. Do próprio CRM, o operador envia um **lembrete por WhatsApp** a um
+> paciente para retomar uma conversa anterior. Reusa o transporte do canal
+> (`EvolutionService`) e o motor channel-agnostic **não foi tocado** — é só uma nova
+> borda de saída.
+
+**Visão geral.** No painel do lead (ou no painel de uma "Conversa recente") aparece o
+botão **"Enviar lembrete"**. Ele abre uma caixa com um **rascunho editável** (nome +
+interesse + oferta vigente, montado pelo servidor) e, ao confirmar, o backend resolve a
+instância do WhatsApp + o telefone do contato, envia pela Evolution, **persiste a
+mensagem na própria conversa** (role `assistant`, igual à resposta do bot) e **reabre** a
+conversa se ela estava `abandonada` — assim a resposta do paciente cai no mesmo fio.
+Tudo escopado por `clinicId`. Sem novas envs (usa as `EVOLUTION_*` do WhatsApp).
+
+### BE — `RemindersModule` + `/conversations/:id/reminder`
+**O quê.** Módulo dedicado (`apps/api/src/reminders`) com `RemindersService` +
+`RemindersController` (sob `TenantGuard`):
+- `GET /conversations/:id/reminder` → `ReminderContext` = `{ canSend, reason, phone, draft }`:
+  elegibilidade (`no_phone` | `whatsapp_not_configured`), telefone resolvido (do canal ou
+  do lead) e o **rascunho determinístico** (`buildReminderDraft`, sem IA — decisão de
+  produto).
+- `POST /conversations/:id/reminder` (body `{ message }`, Zod via `nestjs-zod`) →
+  **envia primeiro** pela Evolution (telefone normalizado p/ DDI BR, reusando o delay
+  "digitando"); só então persiste via `ConversationsService.appendMessage` e reabre se
+  `abandonada`. Falha no envio → **502** e **não** grava um lembrete fantasma.
+
+Wiring: `RemindersModule` importa `ConversationsModule` (persistir) e `WhatsappModule`
+(agora **exporta** `EvolutionService`). Sem ciclo (nenhum desses importa `RemindersModule`).
+Contrato Zod novo em `packages/shared/src/reminders.ts`.
+**Por quê.** Pôr a rota em `ConversationsModule` criaria ciclo
+(Conversations → Whatsapp → Chat → Conversations); um módulo próprio mantém a borda limpa.
+A unidade é a **conversa** ("lembrar desta conversa"), então o endpoint é conversa-cêntrico
+e serve aos dois pontos de entrada do FE.
+
+### FE — Caixa "Enviar lembrete" (compartilhada) nos dois painéis
+**O quê.** `components/dashboard/send-reminder-dialog.tsx` (Dialog + Textarea pré-preenchida
+pelo `GET …/reminder`, contador, estados loading/erro/bloqueado/sucesso, a11y: `label`,
+`role=note`, `role=alert`) + hook `hooks/use-reminders.ts` (`useReminderContext` +
+`useSendReminder`, que invalida `["leads"]` e `["conversations"]`). Botão **"Enviar
+lembrete"** (primário, ícone `Bell`) ao lado do deep-link `wa.me` (rebaixado a `outline`)
+no **painel do lead** (`lead-detail-dialog`) e no **painel da conversa recente**
+(`conversation-detail-dialog`). A caixa é **montada sob demanda** (só ao abrir) — a busca
+de contexto só roda no clique e os testes existentes (sem `QueryClientProvider`) seguem
+verdes. O valor do textarea é **derivado no render** (rascunho do servidor até o operador
+editar), sem `setState`-em-efeito.
+**Por quê.** Mensagem editável dá controle ao operador sobre o que vai a um paciente real;
+o endpoint compartilhado tornou barato cobrir os dois caminhos de chegada que o usuário
+descreveu (lead e "conversas recentes").
+
+### Qualidade / validação
+`typecheck` (api + web) verde · `nest build` + `tsup` (shared) ok · lint (api + web) limpo.
+**+13 testes** na API (`reminders.service.spec.ts`: helpers de telefone/rascunho,
+elegibilidade, envio, reabertura de `abandonada`, 400 sem telefone/instância, **502** com
+persistência abortada, 404 cross-tenant) → **148 (Jest)**. **+4** no web
+(`send-reminder-dialog.test.tsx`: pré-preenche e envia, bloqueios, confirmação) → **76 (Vitest)**.
+
+### Pendências / próximos passos
+- **Opt-out:** o lembrete ainda **não checa** lista de bloqueio (o opt-out por palavra-chave
+  do WhatsApp não persiste — ver WA-4). Antes de uso em massa, persistir e respeitar opt-out.
+- **Rascunho por IA (opcional):** hoje é template determinístico; o `GET …/reminder` já é o
+  ponto de extensão natural para um rascunho gerado pela IA referenciando a conversa.
+- **Janela 24h / templates:** envios proativos fora da janela de 24h podem exigir template
+  aprovado caso se migre para a API oficial da Meta (não é o caso do Evolution/Baileys hoje).
+- **Validação ao vivo:** lógica coberta por testes; falta o disparo real ponta a ponta com a
+  Evolution pareada (mesmo runbook do WhatsApp).

@@ -11,6 +11,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
+import { RemindersModule } from './reminders/reminders.module';
 import { SettingsModule } from './settings/settings.module';
 import { TagsModule } from './tags/tags.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
@@ -31,6 +32,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     LeadsModule,
     JobsModule,
     WhatsappModule,
+    RemindersModule,
   ],
 })
 export class AppModule {}

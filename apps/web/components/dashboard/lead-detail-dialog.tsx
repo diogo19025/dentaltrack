@@ -1,8 +1,8 @@
 "use client";
 
 import type { LeadDetail } from "@dentaltrack/shared";
-import { MessageCircle } from "lucide-react";
-import type { ReactNode } from "react";
+import { Bell, MessageCircle } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,7 @@ import { useLeadDetail } from "@/hooks/use-leads";
 import { formatCaptured, initials, sourceLabel, timeAgo } from "@/lib/format";
 import { TEMPERATURE_META } from "@/lib/lead-temperature";
 import { whatsappUrl } from "@/lib/whatsapp";
+import { SendReminderDialog } from "./send-reminder-dialog";
 
 /**
  * Painel de detalhe do lead (FE-3.8), aberto ao clicar num lead da seção de
@@ -71,6 +72,13 @@ export function LeadDetailDialog({
 export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
   const meta = TEMPERATURE_META[detail.temperature];
   const wa = whatsappUrl(detail.phone);
+  const [reminderOpen, setReminderOpen] = useState(false);
+  // O lembrete vai para a conversa de WhatsApp mais recente do lead (se houver);
+  // senão, a mais recente — o backend resolve o telefone (contato ou lead).
+  const reminderConversationId =
+    detail.conversations.find((c) => c.channel === "whatsapp")?.id ??
+    detail.conversations[0]?.id ??
+    null;
 
   return (
     <>
@@ -124,15 +132,34 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
       </div>
 
       {wa ? (
-        <Button asChild className="w-fit justify-self-start">
-          <a href={wa} target="_blank" rel="noreferrer">
-            <MessageCircle className="size-4" /> Conversar no WhatsApp
-          </a>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 justify-self-start">
+          <Button
+            type="button"
+            className="w-fit"
+            onClick={() => setReminderOpen(true)}
+            disabled={!reminderConversationId}
+          >
+            <Bell className="size-4" /> Enviar lembrete
+          </Button>
+          <Button asChild variant="outline" className="w-fit">
+            <a href={wa} target="_blank" rel="noreferrer">
+              <MessageCircle className="size-4" /> Conversar no WhatsApp
+            </a>
+          </Button>
+        </div>
       ) : (
         <p className="text-[12.5px] text-muted-foreground">
           Sem telefone capturado — peça o contato na conversa para falar direto com o lead.
         </p>
+      )}
+
+      {reminderOpen && reminderConversationId && (
+        <SendReminderDialog
+          conversationId={reminderConversationId}
+          contactName={detail.name}
+          open
+          onOpenChange={setReminderOpen}
+        />
       )}
 
       <div>

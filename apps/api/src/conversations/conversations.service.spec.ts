@@ -283,7 +283,12 @@ describe('ConversationsService', () => {
       });
 
       expect(prismaMock.lead.create).toHaveBeenCalledWith({
-        data: { clinicId: CLINIC_ID, name: 'João', phone: PHONE, source: 'whatsapp' },
+        data: {
+          clinicId: CLINIC_ID,
+          name: 'João',
+          phone: PHONE,
+          source: 'whatsapp',
+        },
         select: { id: true },
       });
       expect(prismaMock.conversation.update).toHaveBeenCalledWith({
@@ -295,7 +300,10 @@ describe('ConversationsService', () => {
     it('dedupe: reusa o lead existente do mesmo telefone e vincula (sem criar)', async () => {
       prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: null });
       prismaMock.lead.findFirst.mockResolvedValueOnce({ id: LEAD_ID });
-      prismaMock.lead.findUnique.mockResolvedValueOnce({ name: 'João', phone: PHONE });
+      prismaMock.lead.findUnique.mockResolvedValueOnce({
+        name: 'João',
+        phone: PHONE,
+      });
 
       await service.ensureContactLead(CONVERSATION_ID, CLINIC_ID, {
         phone: PHONE,
@@ -311,8 +319,13 @@ describe('ConversationsService', () => {
     });
 
     it('backfill: lead vinculado sem telefone recebe o telefone, mas não sobrescreve o nome', async () => {
-      prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: LEAD_ID });
-      prismaMock.lead.findUnique.mockResolvedValueOnce({ name: 'Maria', phone: null });
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({
+        leadId: LEAD_ID,
+      });
+      prismaMock.lead.findUnique.mockResolvedValueOnce({
+        name: 'Maria',
+        phone: null,
+      });
 
       await service.ensureContactLead(CONVERSATION_ID, CLINIC_ID, {
         phone: PHONE,
@@ -339,7 +352,12 @@ describe('ConversationsService', () => {
       });
 
       expect(prismaMock.lead.create).toHaveBeenCalledWith({
-        data: { clinicId: CLINIC_ID, name: null, phone: PHONE, source: 'whatsapp' },
+        data: {
+          clinicId: CLINIC_ID,
+          name: null,
+          phone: PHONE,
+          source: 'whatsapp',
+        },
         select: { id: true },
       });
     });

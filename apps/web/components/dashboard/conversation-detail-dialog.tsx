@@ -1,8 +1,8 @@
 "use client";
 
 import type { ChatMessageDto, ConversationDetail } from "@dentaltrack/shared";
-import { Bot, MessageCircle, User } from "lucide-react";
-import type { ReactNode } from "react";
+import { Bell, Bot, MessageCircle, User } from "lucide-react";
+import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -18,6 +18,7 @@ import { useConversationDetail } from "@/hooks/use-conversations";
 import { formatCaptured } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { whatsappUrl } from "@/lib/whatsapp";
+import { SendReminderDialog } from "./send-reminder-dialog";
 
 /**
  * Painel "ver mais" de uma conversa, aberto ao clicar numa linha de "Conversas
@@ -70,6 +71,7 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
   const thread = detail.messages.filter((m) => m.role !== "system");
   const wa = whatsappUrl(detail.contactPhone);
   const truncated = detail.messageCount > thread.length;
+  const [reminderOpen, setReminderOpen] = useState(false);
 
   return (
     <>
@@ -112,15 +114,32 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
       </div>
 
       {wa ? (
-        <Button asChild className="w-fit justify-self-start">
-          <a href={wa} target="_blank" rel="noreferrer">
-            <MessageCircle className="size-4" /> Abrir conversa no WhatsApp
-          </a>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 justify-self-start">
+          <Button
+            type="button"
+            className="w-fit"
+            onClick={() => setReminderOpen(true)}
+          >
+            <Bell className="size-4" /> Enviar lembrete
+          </Button>
+          <Button asChild variant="outline" className="w-fit">
+            <a href={wa} target="_blank" rel="noreferrer">
+              <MessageCircle className="size-4" /> Abrir conversa no WhatsApp
+            </a>
+          </Button>
+        </div>
       ) : (
         <p className="text-[12.5px] text-muted-foreground">
           Sem telefone do contato — não dá para abrir esta conversa direto no WhatsApp.
         </p>
+      )}
+
+      {reminderOpen && (
+        <SendReminderDialog
+          conversationId={detail.id}
+          open
+          onOpenChange={setReminderOpen}
+        />
       )}
 
       <div>
