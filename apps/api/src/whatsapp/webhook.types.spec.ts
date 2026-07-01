@@ -28,6 +28,22 @@ describe('parseInboundMessage', () => {
     });
   });
 
+  it('captura addressingMode:"lid" (sinal p/ responder ao JID @lid)', () => {
+    const res = parseInboundMessage(
+      payload({
+        key: {
+          remoteJid: JID,
+          remoteJidAlt: JID,
+          addressingMode: 'lid',
+          fromMe: false,
+          id: 'MSG1',
+        },
+      }),
+    );
+    expect(res?.addressingMode).toBe('lid');
+    expect(res?.phone).toBe('5511999998888');
+  });
+
   it('extrai texto de extendedTextMessage e faz trim', () => {
     const res = parseInboundMessage(
       payload({

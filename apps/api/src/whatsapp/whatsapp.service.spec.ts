@@ -29,7 +29,11 @@ describe('WhatsappService', () => {
   let service: WhatsappService;
   const prismaMock = { clinicSettings: { findUnique: jest.fn() } };
   const chatMock = { processInboundMessage: jest.fn() };
-  const evolutionMock = { sendText: jest.fn(), getMediaBase64: jest.fn() };
+  const evolutionMock = {
+    sendText: jest.fn(),
+    getMediaBase64: jest.fn(),
+    resolveLidJid: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -65,6 +69,65 @@ describe('WhatsappService', () => {
       contactName: 'João',
       message: 'Quero agendar',
     });
+    expect(evolutionMock.sendText).toHaveBeenCalledWith(
+      'dentaltrack',
+      '5511999998888',
+      'Claro! Para quando?',
+    );
+  });
+
+  it('contato via LID: resolve o JID @lid e envia a resposta para ele (não p/ o telefone)', async () => {
+    // A Evolution entrega o webhook já com o telefone em remoteJid, mas sinaliza
+    // addressingMode:'lid'. A resposta PRECISA ir p/ o @lid (senão fica PENDING).
+    evolutionMock.resolveLidJid.mockResolvedValueOnce('143722591289599@lid');
+    await service.handleWebhook(
+      payload(
+        {},
+        {
+          key: {
+            remoteJid: JID,
+            remoteJidAlt: JID,
+            addressingMode: 'lid',
+            fromMe: false,
+            id: 'MSGLID',
+          },
+        },
+      ),
+    );
+
+    expect(evolutionMock.resolveLidJid).toHaveBeenCalledWith(
+      'dentaltrack',
+      JID,
+      'MSGLID',
+    );
+    // Identidade (lead/conversa) continua sendo o telefone…
+    expect(chatMock.processInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ contactPhone: '5511999998888' }),
+    );
+    // …mas o envio vai para o @lid.
+    expect(evolutionMock.sendText).toHaveBeenCalledWith(
+      'dentaltrack',
+      '143722591289599@lid',
+      'Claro! Para quando?',
+    );
+  });
+
+  it('contato via LID sem @lid resolvível: cai p/ o telefone (não quebra)', async () => {
+    evolutionMock.resolveLidJid.mockResolvedValueOnce(null);
+    await service.handleWebhook(
+      payload(
+        {},
+        {
+          key: {
+            remoteJid: JID,
+            remoteJidAlt: JID,
+            addressingMode: 'lid',
+            fromMe: false,
+            id: 'MSGLID2',
+          },
+        },
+      ),
+    );
     expect(evolutionMock.sendText).toHaveBeenCalledWith(
       'dentaltrack',
       '5511999998888',

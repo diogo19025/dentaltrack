@@ -67,7 +67,11 @@ export class WhatsappService {
 
       // Opt-out mínimo: confirma e não roda o bot neste turno.
       if (inbound.text && OPT_OUT_WORDS.has(inbound.text.toLowerCase())) {
-        await this.safeSend(inbound.instance, inbound.phone, OPT_OUT_REPLY);
+        await this.safeSend(
+          inbound.instance,
+          await this.replyTarget(inbound),
+          OPT_OUT_REPLY,
+        );
         return;
       }
 
@@ -83,7 +87,8 @@ export class WhatsappService {
       });
 
       if (reply) {
-        await this.evolution.sendText(inbound.instance, inbound.phone, reply);
+        const target = await this.replyTarget(inbound);
+        await this.evolution.sendText(inbound.instance, target, reply);
       }
     } catch (err) {
       await this.handleError(err, payload);
@@ -118,6 +123,26 @@ export class WhatsappService {
     return null;
   }
 
+  /**
+   * JID de destino da resposta. Contato migrado p/ **LID** (`addressingMode:
+   * 'lid'`): resolve o JID `@lid` (enviar p/ o telefone não entrega — fica em
+   * PENDING). Sem LID (ou se a resolução falhar): usa o telefone, como antes.
+   */
+  private async replyTarget(inbound: ParsedInbound): Promise<string> {
+    if (inbound.addressingMode === 'lid') {
+      const lid = await this.evolution.resolveLidJid(
+        inbound.instance,
+        inbound.remoteJid,
+        inbound.messageId,
+      );
+      if (lid) return lid;
+      this.logger.warn(
+        `LID não resolvido para ${inbound.phone} — enviando ao telefone (pode não entregar).`,
+      );
+    }
+    return inbound.phone;
+  }
+
   /** Resolve a clínica dona da instância Evolution (WA-1). */
   private async resolveClinicId(instance: string): Promise<string | null> {
     const settings = await this.prisma.clinicSettings.findUnique({
@@ -149,7 +174,11 @@ export class WhatsappService {
     if (err instanceof AiUnavailableError) {
       const inbound = parseInboundMessage(payload);
       if (inbound) {
-        await this.safeSend(inbound.instance, inbound.phone, AI_FALLBACK);
+        await this.safeSend(
+          inbound.instance,
+          await this.replyTarget(inbound),
+          AI_FALLBACK,
+        );
       }
     }
   }

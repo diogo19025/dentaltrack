@@ -75,7 +75,11 @@ describe('RemindersService', () => {
     conversation: { findFirst: jest.fn(), update: jest.fn() },
   };
   const conversationsMock = { appendMessage: jest.fn() };
-  const evolutionMock = { sendText: jest.fn(), isConfigured: jest.fn() };
+  const evolutionMock = {
+    sendText: jest.fn(),
+    isConfigured: jest.fn(),
+    resolveLidJid: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -226,6 +230,25 @@ describe('RemindersService', () => {
       expect(prismaMock.conversation.update).not.toHaveBeenCalled();
       expect(res.conversationId).toBe(CONVERSATION_ID);
       expect(res.sentAt).toEqual(expect.any(String));
+    });
+
+    it('contato via LID: envia o lembrete ao JID @lid resolvido (não ao telefone)', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce(makeConvo());
+      evolutionMock.resolveLidJid.mockResolvedValueOnce('143722591289599@lid');
+      evolutionMock.sendText.mockResolvedValueOnce(undefined);
+      conversationsMock.appendMessage.mockResolvedValueOnce({ id: 'msg-1' });
+
+      await service.send(CLINIC_ID, CONVERSATION_ID, 'Olá, tudo bem?');
+
+      expect(evolutionMock.resolveLidJid).toHaveBeenCalledWith(
+        'dentaltrack',
+        '5511999998888@s.whatsapp.net',
+      );
+      expect(evolutionMock.sendText).toHaveBeenCalledWith(
+        'dentaltrack',
+        '143722591289599@lid',
+        'Olá, tudo bem?',
+      );
     });
 
     it('reabre a conversa abandonada (abandonada → em_andamento) após enviar', async () => {
