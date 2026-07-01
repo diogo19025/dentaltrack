@@ -4,6 +4,7 @@ import {
   type MetricsDto,
   type MetricsRange,
   RANGE_DAYS,
+  type Retention,
   type TopTag,
 } from '@dentaltrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,7 +18,17 @@ const SPARK_POINTS = 12;
 interface ConvoLite {
   status: 'em_andamento' | 'agendada' | 'abandonada';
   createdAt: Date;
+  lastMessageAt: Date | null;
   messages: { role: string; createdAt: Date }[];
+}
+
+/** Eventos de retorno (recorrência) da clínica, agregados por lead. */
+interface LeadReturns {
+  events: { leadId: string; date: Date }[];
+  /** Leads com pelo menos um retorno (all-time). */
+  recurrentLeads: number;
+  /** Leads com pelo menos um agendamento (all-time) — denominador da taxa. */
+  leadsWithAppointment: number;
 }
 
 /** Estatísticas de uma janela de tempo (reusadas para o período e o anterior). */
@@ -48,21 +59,23 @@ export class MetricsService {
     const since50 = addDays(today0, -(BOT_WINDOW_DAYS - 1));
     const prev50Since = addDays(since50, -BOT_WINDOW_DAYS);
 
-    const [cur, prev, botMsgs, prevBot, lineMsgs, topTags] = await Promise.all([
-      this.windowStats(clinicId, since, null),
-      this.windowStats(clinicId, prevSince, since),
-      this.countAssistant(clinicId, since50, null),
-      this.countAssistant(clinicId, prev50Since, since50),
-      this.prisma.message.findMany({
-        where: {
-          clinicId,
-          role: { in: ['user', 'assistant'] },
-          createdAt: { gte: since },
-        },
-        select: { role: true, createdAt: true },
-      }),
-      this.topTags(clinicId, since),
-    ]);
+    const [cur, prev, botMsgs, prevBot, lineMsgs, topTags, returns] =
+      await Promise.all([
+        this.windowStats(clinicId, since, null),
+        this.windowStats(clinicId, prevSince, since),
+        this.countAssistant(clinicId, since50, null),
+        this.countAssistant(clinicId, prev50Since, since50),
+        this.prisma.message.findMany({
+          where: {
+            clinicId,
+            role: { in: ['user', 'assistant'] },
+            createdAt: { gte: since },
+          },
+          select: { role: true, createdAt: true },
+        }),
+        this.topTags(clinicId, since),
+        this.leadReturns(clinicId),
+      ]);
 
     // Sparklines: tendência diária no período (decorativa — downsample p/ 12 pts).
     const leadsSpark = downsample(
@@ -138,7 +151,81 @@ export class MetricsService {
         { status: 'agendada', value: cur.byStatus.agendada },
         { status: 'abandonada', value: cur.byStatus.abandonada },
       ],
+      retention: this.buildRetention(cur, returns, since, days, labels),
     };
+  }
+
+  /**
+   * Abandono × recorrência. A série de abandono usa as conversas do período
+   * (mesma população do KPI "Não completadas"), na data da última mensagem; a
+   * de recorrência usa os eventos de retorno (novo agendamento de um lead que
+   * já havia agendado antes, em outra conversa). A taxa é all-time.
+   */
+  private buildRetention(
+    cur: WindowStats,
+    returns: LeadReturns,
+    since: Date,
+    days: number,
+    labels: string[],
+  ): Retention {
+    const abandonedDates = cur.conversations
+      .filter((c) => c.status === 'abandonada')
+      .map((c) => c.lastMessageAt ?? c.createdAt);
+    const inWindow = returns.events.filter((e) => e.date >= since);
+    return {
+      labels,
+      abandoned: bucketDaily(abandonedDates, since, days),
+      recurrent: bucketDaily(
+        inWindow.map((e) => e.date),
+        since,
+        days,
+      ),
+      abandonedTotal: cur.byStatus.abandonada,
+      recurrentLeads: new Set(inWindow.map((e) => e.leadId)).size,
+      recurrenceRate:
+        returns.leadsWithAppointment > 0
+          ? returns.recurrentLeads / returns.leadsWithAppointment
+          : 0,
+    };
+  }
+
+  /**
+   * Eventos de retorno da clínica (all-time): um agendamento de um lead que já
+   * tinha agendamento anterior, criado em OUTRA conversa (agendar duas vezes na
+   * mesma conversa não é retorno). Agendamentos sem lead não são rastreáveis.
+   */
+  private async leadReturns(clinicId: string): Promise<LeadReturns> {
+    const appointments = await this.prisma.appointment.findMany({
+      where: { clinicId, leadId: { not: null } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, leadId: true, conversationId: true, createdAt: true },
+    });
+
+    const byLead = new Map<string, typeof appointments>();
+    for (const a of appointments) {
+      const list = byLead.get(a.leadId as string) ?? [];
+      list.push(a);
+      byLead.set(a.leadId as string, list);
+    }
+
+    const events: { leadId: string; date: Date }[] = [];
+    let recurrentLeads = 0;
+    for (const [leadId, list] of byLead) {
+      const seenConversations = new Set<string>();
+      let returned = false;
+      list.forEach((a, i) => {
+        // Sem conversa vinculada, cada agendamento conta como conversa própria.
+        const convKey = a.conversationId ?? `appt:${a.id}`;
+        if (i > 0 && !seenConversations.has(convKey)) {
+          returned = true;
+          events.push({ leadId, date: a.createdAt });
+        }
+        seenConversations.add(convKey);
+      });
+      if (returned) recurrentLeads += 1;
+    }
+
+    return { events, recurrentLeads, leadsWithAppointment: byLead.size };
   }
 
   /** Estatísticas de conversas + leads numa janela [since, until) (until null = agora). */
@@ -158,6 +245,7 @@ export class MetricsService {
         select: {
           status: true,
           createdAt: true,
+          lastMessageAt: true,
           messages: {
             select: { role: true, createdAt: true },
             orderBy: { createdAt: 'asc' },
