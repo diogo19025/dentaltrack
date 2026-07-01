@@ -57,6 +57,9 @@ function buildPrismaMock() {
         .fn()
         .mockResolvedValue([{ id: T1, name: 'implante', color: 'teal' }]),
     },
+    appointment: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
   };
 }
 
@@ -112,5 +115,69 @@ describe('MetricsService', () => {
   it('range inválido não chega aqui (default já resolvido no controller)', async () => {
     const m = await service.getMetrics(CLINIC, '30d');
     expect(m.range).toBe('30d');
+  });
+
+  describe('retention (abandono × recorrência)', () => {
+    const LEAD_A = '00000000-0000-0000-0000-00000000a001';
+    const LEAD_B = '00000000-0000-0000-0000-00000000b001';
+    const CONV_1 = '00000000-0000-0000-0000-0000000c0001';
+    const CONV_2 = '00000000-0000-0000-0000-0000000c0002';
+    const CONV_3 = '00000000-0000-0000-0000-0000000c0003';
+
+    it('sem agendamentos: séries zeradas e taxa 0', async () => {
+      const m = await service.getMetrics(CLINIC, '7d');
+      expect(m.retention.labels).toHaveLength(RANGE_DAYS['7d']);
+      expect(m.retention.abandoned).toHaveLength(RANGE_DAYS['7d']);
+      expect(m.retention.recurrent).toHaveLength(RANGE_DAYS['7d']);
+      expect(m.retention.recurrentLeads).toBe(0);
+      expect(m.retention.recurrenceRate).toBe(0);
+    });
+
+    it('lead que volta em OUTRA conversa para agendar de novo é recorrente', async () => {
+      const now = new Date();
+      const past = new Date(now.getTime() - 2 * 24 * 3_600_000);
+      prismaMock.appointment.findMany.mockResolvedValue([
+        // Lead A: agendou, voltou em outra conversa → 1 retorno.
+        { id: 'a1', leadId: LEAD_A, conversationId: CONV_1, createdAt: past },
+        { id: 'a2', leadId: LEAD_A, conversationId: CONV_2, createdAt: now },
+        // Lead B: 2 agendamentos na MESMA conversa → não é retorno.
+        { id: 'b1', leadId: LEAD_B, conversationId: CONV_3, createdAt: past },
+        { id: 'b2', leadId: LEAD_B, conversationId: CONV_3, createdAt: now },
+      ]);
+
+      const m = await service.getMetrics(CLINIC, '7d');
+
+      expect(m.retention.recurrentLeads).toBe(1); // só o lead A
+      // Taxa all-time: 1 recorrente / 2 leads com agendamento.
+      expect(m.retention.recurrenceRate).toBeCloseTo(0.5);
+      // O evento de retorno cai no bucket de hoje.
+      const total = m.retention.recurrent.reduce((a, b) => a + b, 0);
+      expect(total).toBe(1);
+      expect(m.retention.recurrent[RANGE_DAYS['7d'] - 1]).toBe(1);
+    });
+
+    it('conversas abandonadas do período entram na série de abandono', async () => {
+      const now = new Date();
+      prismaMock.conversation.findMany.mockResolvedValue([
+        {
+          status: 'abandonada',
+          createdAt: now,
+          lastMessageAt: now,
+          messages: [{ role: 'assistant', createdAt: now }],
+        },
+        {
+          status: 'agendada',
+          createdAt: now,
+          lastMessageAt: now,
+          messages: [],
+        },
+      ]);
+
+      const m = await service.getMetrics(CLINIC, '7d');
+
+      expect(m.retention.abandonedTotal).toBe(1);
+      const total = m.retention.abandoned.reduce((a, b) => a + b, 0);
+      expect(total).toBe(1);
+    });
   });
 });

@@ -9,10 +9,28 @@ import type {
  * dados da clínica, das configurações (opcionais) e do catálogo de procedimentos.
  * Pure function (sem I/O) — fácil de testar. Ainda sem tools/streaming.
  */
+/**
+ * Dados já conhecidos do paciente da conversa (lead vinculado / identidade do
+ * canal, ex.: telefone do WhatsApp). Quando presentes, o bot NÃO deve pedi-los
+ * de novo — é o que faz o agente "lembrar" de um contato recorrente.
+ */
+export interface KnownContact {
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  /** Agendamentos anteriores (mais recente primeiro) — sinal de recorrência. */
+  appointments?: {
+    procedureName: string | null;
+    preferredTime: string | null;
+    createdAt: Date;
+  }[];
+}
+
 export interface BuildSystemPromptInput {
   clinic: Clinic;
   settings?: ClinicSettings | null;
   procedures: Procedure[];
+  contact?: KnownContact | null;
 }
 
 /** Formata centavos como BRL (ex.: 150000 → "R$ 1.500"). */
@@ -82,10 +100,68 @@ function formatProcedure(proc: Procedure): string {
   return `- ${proc.name}${detail}`;
 }
 
+/** Formata a data de um agendamento anterior (dd/mm/aaaa). */
+function formatAppointmentDate(d: Date): string {
+  return d.toLocaleDateString('pt-BR');
+}
+
+/**
+ * Seção "dados já conhecidos do paciente" — só entra quando há algo capturado.
+ * Instrui o bot a usar (e não re-perguntar) nome/telefone e a acolher o
+ * paciente recorrente que volta para agendar de novo.
+ */
+function formatKnownContact(contact: KnownContact): string[] {
+  const known: string[] = [];
+  if (contact.name?.trim()) known.push(`- Nome: ${contact.name.trim()}`);
+  if (contact.phone?.trim()) known.push(`- Telefone: ${contact.phone.trim()}`);
+  if (contact.email?.trim()) known.push(`- E-mail: ${contact.email.trim()}`);
+  if (known.length === 0) return [];
+
+  const lines: string[] = [];
+  lines.push('');
+  lines.push(
+    'Dados já conhecidos do paciente desta conversa (capturados em contatos anteriores ou pelo canal):',
+  );
+  lines.push(...known);
+
+  const appointments = contact.appointments ?? [];
+  if (appointments.length > 0) {
+    lines.push(
+      'Este paciente JÁ AGENDOU antes nesta clínica (paciente recorrente):',
+    );
+    for (const a of appointments) {
+      const parts = [
+        a.procedureName ?? 'procedimento não informado',
+        a.preferredTime ? `preferência: ${a.preferredTime}` : null,
+        `registrado em ${formatAppointmentDate(a.createdAt)}`,
+      ].filter(Boolean);
+      lines.push(`- ${parts.join(' — ')}`);
+    }
+  }
+
+  lines.push('Como usar esses dados:');
+  lines.push(
+    '- NÃO pergunte novamente nome, telefone ou e-mail já listados acima; use-os diretamente, inclusive ao chamar `captureLead` e `bookAppointment`.',
+  );
+  if (contact.name?.trim()) {
+    lines.push('- Cumprimente o paciente pelo nome.');
+  }
+  if (appointments.length > 0) {
+    lines.push(
+      '- Acolha o retorno (ex.: "que bom falar com você de novo") e, se ele quiser marcar outro horário, siga direto para o agendamento sem repetir perguntas de cadastro.',
+    );
+  }
+  lines.push(
+    '- Atualize os dados (via `captureLead`) apenas se o paciente informar que mudaram.',
+  );
+  return lines;
+}
+
 export function buildSystemPrompt({
   clinic,
   settings,
   procedures,
+  contact,
 }: BuildSystemPromptInput): string {
   const lines: string[] = [];
 
@@ -139,6 +215,11 @@ export function buildSystemPrompt({
     lines.push(`Horários de atendimento: ${availability}`);
   }
 
+  // Dados já conhecidos do paciente (memória do contato — não re-perguntar).
+  if (contact) {
+    lines.push(...formatKnownContact(contact));
+  }
+
   // Catálogo de procedimentos.
   lines.push('');
   if (procedures.length > 0) {
@@ -157,7 +238,7 @@ export function buildSystemPrompt({
     '- Responda sempre em português do Brasil, como um atendente de clínica odontológica: cordial, claro e objetivo.',
   );
   lines.push(
-    '- Quando o paciente demonstrar interesse em um procedimento ou em agendar, conduza-o gentilmente a deixar o nome e o telefone para contato.',
+    '- Quando o paciente demonstrar interesse em um procedimento ou em agendar, conduza-o gentilmente a deixar o nome e o telefone para contato — pedindo apenas o que ainda não for conhecido.',
   );
   lines.push(
     '- Não invente preços, horários ou procedimentos que não estejam no catálogo acima. Se não tiver a informação, ofereça uma avaliação presencial.',

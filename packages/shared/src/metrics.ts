@@ -75,6 +75,26 @@ export const statusSliceSchema = z.object({
 });
 export type StatusSlice = z.infer<typeof statusSliceSchema>;
 
+/**
+ * Abandono × recorrência (seção "Retenção" do dashboard). Séries diárias no
+ * período: atendimentos abandonados × retornos de pacientes (novo agendamento
+ * de um lead que já havia agendado antes, em outra conversa). Totais do
+ * período + taxa de recorrência da clínica (all-time: pacientes recorrentes /
+ * pacientes que já agendaram), como fração 0..1.
+ */
+export const retentionSchema = z.object({
+  labels: z.array(z.string()),
+  abandoned: z.array(z.number()),
+  recurrent: z.array(z.number()),
+  /** Conversas abandonadas no período (mesma população do KPI "Não completadas"). */
+  abandonedTotal: z.number(),
+  /** Pacientes distintos que retornaram para agendar de novo no período. */
+  recurrentLeads: z.number(),
+  /** Taxa de recorrência all-time (0..1). */
+  recurrenceRate: z.number(),
+});
+export type Retention = z.infer<typeof retentionSchema>;
+
 /** Resposta de GET /metrics?range=. */
 export const metricsSchema = z.object({
   range: metricsRangeSchema,
@@ -83,5 +103,6 @@ export const metricsSchema = z.object({
   funnel: funnelSchema,
   topTags: z.array(topTagSchema),
   statusDistribution: z.array(statusSliceSchema),
+  retention: retentionSchema,
 });
 export type MetricsDto = z.infer<typeof metricsSchema>;

@@ -176,4 +176,64 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('nome e o telefone');
     expect(prompt).toContain('Não invente preços');
   });
+
+  describe('dados já conhecidos do paciente (memória do contato)', () => {
+    it('inclui nome/telefone conhecidos e instrui a não re-perguntar', () => {
+      const prompt = buildSystemPrompt({
+        clinic: makeClinic(),
+        procedures: [],
+        contact: { name: 'João Silva', phone: '5511999998888' },
+      });
+      expect(prompt).toContain('Nome: João Silva');
+      expect(prompt).toContain('Telefone: 5511999998888');
+      expect(prompt).toContain('NÃO pergunte novamente');
+      expect(prompt).toContain('Cumprimente o paciente pelo nome');
+    });
+
+    it('marca o paciente como recorrente quando há agendamento anterior', () => {
+      const prompt = buildSystemPrompt({
+        clinic: makeClinic(),
+        procedures: [],
+        contact: {
+          name: 'João',
+          phone: '5511999998888',
+          appointments: [
+            {
+              procedureName: 'Clareamento',
+              preferredTime: 'sexta de manhã',
+              createdAt: NOW,
+            },
+          ],
+        },
+      });
+      expect(prompt).toContain('JÁ AGENDOU antes');
+      expect(prompt).toContain('Clareamento');
+      expect(prompt).toContain('sexta de manhã');
+    });
+
+    it('só telefone (identidade do canal, sem nome) também entra', () => {
+      const prompt = buildSystemPrompt({
+        clinic: makeClinic(),
+        procedures: [],
+        contact: { phone: '5511999998888' },
+      });
+      expect(prompt).toContain('Telefone: 5511999998888');
+      expect(prompt).not.toContain('Cumprimente o paciente pelo nome');
+    });
+
+    it('contact vazio/null não gera a seção', () => {
+      const semNada = buildSystemPrompt({
+        clinic: makeClinic(),
+        procedures: [],
+        contact: { name: '  ', phone: null },
+      });
+      const nulo = buildSystemPrompt({
+        clinic: makeClinic(),
+        procedures: [],
+        contact: null,
+      });
+      expect(semNada).not.toContain('Dados já conhecidos');
+      expect(nulo).not.toContain('Dados já conhecidos');
+    });
+  });
 });

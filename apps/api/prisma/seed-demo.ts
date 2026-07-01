@@ -104,6 +104,10 @@ async function main(): Promise<void> {
     let scheduled = 0;
     let engaged = 0;
     let abandoned = 0;
+    let returns = 0;
+    // Leads que já agendaram — candidatos a voltar para agendar de novo
+    // (alimenta a seção "Abandono × Recorrência" do dashboard).
+    const scheduledLeadIds: string[] = [];
 
     for (let i = 0; i < TOTAL; i++) {
       const r = Math.random();
@@ -121,9 +125,15 @@ async function main(): Promise<void> {
       }
       const scenario = pick(SCENARIOS);
 
-      const lead = await prisma.lead.create({
-        data: { clinicId: DEMO_CLINIC_ID, name: pick(NAMES), phone: phone(), source: "web", createdAt: start },
-      });
+      // ~1/3 dos agendamentos vem de um paciente que já agendou antes
+      // (recorrente): reusa o lead em vez de criar um novo.
+      const returning =
+        status === "agendada" && scheduledLeadIds.length > 0 && Math.random() < 0.35;
+      const lead = returning
+        ? { id: pick(scheduledLeadIds) }
+        : await prisma.lead.create({
+            data: { clinicId: DEMO_CLINIC_ID, name: pick(NAMES), phone: phone(), source: "web", createdAt: start },
+          });
 
       // Roteiro de mensagens (abandonada = paciente não responde de volta).
       const msgs: Msg[] = [];
@@ -214,13 +224,15 @@ async function main(): Promise<void> {
           },
         });
         scheduled += 1;
+        if (returning) returns += 1;
+        else scheduledLeadIds.push(lead.id);
       }
       if (engages) engaged += 1;
       if (status === "abandonada") abandoned += 1;
     }
 
     console.log(
-      `✔ Demo populada: ${TOTAL} conversas (engajadas≈${engaged}, agendadas=${scheduled}, abandonadas=${abandoned}) ao longo de ~50 dias.`,
+      `✔ Demo populada: ${TOTAL} conversas (engajadas≈${engaged}, agendadas=${scheduled}, recorrentes=${returns}, abandonadas=${abandoned}) ao longo de ~50 dias.`,
     );
   } finally {
     await prisma.$disconnect();
