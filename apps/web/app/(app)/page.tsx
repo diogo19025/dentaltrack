@@ -21,6 +21,7 @@ import { ConversationDetailDialog } from "@/components/dashboard/conversation-de
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
 import { LeadTemperatureSection } from "@/components/dashboard/lead-temperature";
+import { RetentionSection } from "@/components/dashboard/retention-section";
 import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -181,6 +182,11 @@ export default function DashboardPage() {
             </Card>
           </div>
 
+          {/* Abandono × recorrência — perdas × pacientes que voltaram a agendar */}
+          <div className="mb-[18px]">
+            <RetentionSection retention={data.retention} rangeDaysLabel={RANGE_DAYS_LABEL[range]} />
+          </div>
+
           {/* Temperatura dos leads — clique abre o painel de detalhe */}
           <div className="mb-[18px]">
             <LeadTemperatureSection
@@ -326,6 +332,7 @@ function DashboardSkeleton() {
         <Skeleton className="h-[220px] w-full" />
         <Skeleton className="h-[220px] w-full" />
       </div>
+      <Skeleton className="mb-[18px] h-[360px] w-full" />
       <Skeleton className="mb-[18px] h-[240px] w-full" />
       <Skeleton className="h-[280px] w-full" />
     </>
