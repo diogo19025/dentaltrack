@@ -115,12 +115,17 @@ export class RemindersService {
       );
     }
 
-    try {
-      await this.evolution.sendText(
+    // Contatos migrados p/ LID só recebem no JID `@lid` (enviar p/ o telefone
+    // fica preso em PENDING). Resolve on-demand (null p/ contatos não-LID, que
+    // caem no telefone, como antes). Ver `EvolutionService.resolveLidJid`.
+    const target =
+      (await this.evolution.resolveLidJid(
         loaded.instance,
-        loaded.normalizedPhone,
-        message,
-      );
+        `${loaded.normalizedPhone}@s.whatsapp.net`,
+      )) ?? loaded.normalizedPhone;
+
+    try {
+      await this.evolution.sendText(loaded.instance, target, message);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.error(

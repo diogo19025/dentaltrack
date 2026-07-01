@@ -10,6 +10,15 @@ interface EvolutionMessageKey {
   remoteJid?: string;
   fromMe?: boolean;
   id?: string;
+  /**
+   * Telefone "real" (`@s.whatsapp.net`) quando o contato foi migrado p/ **LID**.
+   * Com LID, a Evolution reescreve `remoteJid` p/ o telefone antes de postar o
+   * webhook (perdemos o `@lid`), mas mantém `addressingMode: 'lid'` — o sinal de
+   * que a resposta precisa ir p/ o JID `@lid`, não p/ o telefone (senão não
+   * entrega). Ver `EvolutionService.resolveLidJid`.
+   */
+  remoteJidAlt?: string;
+  addressingMode?: string;
 }
 
 /** Conteúdo da mensagem (um dos campos preenchido conforme o tipo). */
@@ -41,9 +50,14 @@ export interface EvolutionWebhookPayload {
 export interface ParsedInbound {
   instance: string;
   messageId: string;
-  /** Só dígitos (parte antes do `@` do JID) — identidade do contato e destino. */
+  /** Só dígitos (parte antes do `@` do JID) — identidade do contato. */
   phone: string;
   remoteJid: string;
+  /**
+   * `'lid'` quando o contato usa **LID addressing**. Nesse caso a resposta deve
+   * ser endereçada ao JID `@lid` (resolvido on-demand), não ao telefone.
+   */
+  addressingMode?: string;
   pushName?: string;
   text?: string;
   /** Presente quando a mensagem é um áudio (PTT). base64 pode faltar (buscar depois). */
@@ -82,6 +96,7 @@ export function parseInboundMessage(
     messageId,
     phone,
     remoteJid,
+    addressingMode: key?.addressingMode,
     pushName: data?.pushName,
   };
 

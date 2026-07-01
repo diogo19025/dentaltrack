@@ -24,7 +24,11 @@ services:
       DATABASE_CONNECTION_CLIENT_NAME: dentaltrack
       DATABASE_SAVE_DATA_INSTANCE: "true"
       DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
-      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      # "false": em contatos LID a Evolution v2.3.7 estoura ao gravar o status
+      # (PrismaClientValidationError "remoteJid is missing") a cada ACK, poluindo
+      # o log. Nosso app não lê o status da Evolution (a entrega é inferida do
+      # 2xx do sendText), então desligar é cosmético e sem impacto funcional.
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
       # Cache/sessão no Redis (recomendado p/ estabilidade da sessão Baileys).
       CACHE_REDIS_ENABLED: "true"
       CACHE_REDIS_URI: redis://redis:6379/6

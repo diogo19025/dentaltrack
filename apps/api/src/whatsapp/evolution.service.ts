@@ -15,6 +15,8 @@ const TYPING_MAX_MS = 8000;
 @Injectable()
 export class EvolutionService {
   private readonly logger = new Logger(EvolutionService.name);
+  /** Cache telefone(JID) → JID `@lid` (o LID é estável por contato). */
+  private readonly lidByPhoneJid = new Map<string, string>();
 
   constructor(private readonly config: ConfigService<Env, true>) {}
 
@@ -24,17 +26,61 @@ export class EvolutionService {
   }
 
   /**
-   * Envia uma mensagem de texto. Aplica um `delay` (indicador "digitando")
-   * proporcional ao tamanho do texto — higiene anti-ban (WA-4), respostas
-   * instantâneas parecem robô e aumentam risco de banimento.
+   * Envia uma mensagem de texto. `to` é um telefone (dígitos) **ou** um JID
+   * completo (ex.: `<lid>@lid` — necessário p/ contatos migrados p/ LID, senão
+   * a mensagem fica presa em PENDING e nunca entrega). Aplica um `delay`
+   * (indicador "digitando") proporcional ao tamanho do texto — higiene anti-ban
+   * (WA-4): respostas instantâneas parecem robô e aumentam risco de banimento.
    */
-  async sendText(instance: string, phone: string, text: string): Promise<void> {
+  async sendText(instance: string, to: string, text: string): Promise<void> {
     const delay = this.typingDelay(text);
     await this.post(`/message/sendText/${instance}`, {
-      number: phone,
+      number: to,
       text,
       delay,
     });
+  }
+
+  /**
+   * Resolve o JID `@lid` de um contato migrado p/ **LID addressing**.
+   *
+   * A Evolution (v2.3.x) reescreve `remoteJid` p/ o telefone antes de postar o
+   * webhook, então o adapter nunca recebe o `@lid` — mas **precisa** enviar a
+   * resposta p/ o `@lid` (enviar p/ `<telefone>@s.whatsapp.net` não estabelece
+   * sessão e a mensagem nunca entrega). O `@lid` fica preservado na `key` das
+   * mensagens **recebidas** (a Evolution guarda `remoteJid: <lid>@lid`,
+   * `remoteJidAlt: <telefone>@s.whatsapp.net`), que buscamos via `findMessages`:
+   * - com `messageId` (resposta a um inbound): filtra pela própria `key.id` —
+   *   correto por construção (é exatamente a mensagem que estamos respondendo);
+   * - sem ele (envio proativo, ex.: lembrete): filtra por `remoteJidAlt`
+   *   (telefone) e pega a mais recente do contato.
+   * Resultado cacheado (LID é estável por contato). Best-effort: `null` se não
+   * achar (o chamador cai p/ o telefone).
+   */
+  async resolveLidJid(
+    instance: string,
+    phoneJid: string,
+    messageId?: string,
+  ): Promise<string | null> {
+    const cached = this.lidByPhoneJid.get(phoneJid);
+    if (cached) return cached;
+    try {
+      const where = messageId
+        ? { key: { id: messageId } }
+        : { key: { remoteJidAlt: phoneJid } };
+      const res = await this.post<{
+        messages?: { records?: Array<{ key?: { remoteJid?: string } }> };
+      }>(`/chat/findMessages/${instance}`, { where, limit: 1 });
+      const lid = res?.messages?.records?.[0]?.key?.remoteJid;
+      if (typeof lid === 'string' && lid.endsWith('@lid')) {
+        this.lidByPhoneJid.set(phoneJid, lid);
+        return lid;
+      }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Falha ao resolver LID de ${phoneJid}: ${detail}`);
+    }
+    return null;
   }
 
   /**
