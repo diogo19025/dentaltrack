@@ -1,4 +1,5 @@
 import { type ToolSet, dynamicTool, jsonSchema } from 'ai';
+import type { Channel } from '@dentaltrack/shared';
 import type { ConversationsService } from '../conversations/conversations.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -17,6 +18,8 @@ export interface ChatToolsContext {
   conversations: ConversationsService;
   clinicId: string;
   conversationId: string;
+  /** Canal da conversa — vira o `source` do lead criado pelas tools. */
+  channel?: Channel;
 }
 
 interface SearchInput {
@@ -81,6 +84,7 @@ function toView(p: ProcedureRow) {
 /** Constrói o conjunto de tools para uma conversa específica. */
 export function buildChatTools(ctx: ChatToolsContext): ToolSet {
   const { prisma, conversations, clinicId, conversationId } = ctx;
+  const channel: Channel = ctx.channel ?? 'web';
 
   async function findProcedures(query?: string, take = 5) {
     const q = query?.trim();
@@ -217,6 +221,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             nome,
             telefone,
             email,
+            source: channel,
           });
           return { ok: true, leadId };
         } catch {
@@ -260,6 +265,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
                 conversationId,
                 nome,
                 telefone,
+                source: channel,
               })
             : ((
                 await prisma.conversation.findFirst({
@@ -313,6 +319,7 @@ async function upsertLead(
     nome: string;
     telefone?: string;
     email?: string;
+    source?: Channel;
   },
 ): Promise<string> {
   const convo = await prisma.conversation.findFirst({
@@ -339,7 +346,7 @@ async function upsertLead(
       name: args.nome,
       phone: args.telefone ?? null,
       email: args.email ?? null,
-      source: 'web',
+      source: args.source ?? 'web',
     },
     select: { id: true },
   });

@@ -70,6 +70,7 @@ describe('ChatService.streamMessage', () => {
     clinic: { findUnique: jest.fn() },
     clinicSettings: { findUnique: jest.fn() },
     procedure: { findMany: jest.fn() },
+    appointment: { findMany: jest.fn().mockResolvedValue([]) },
   };
 
   beforeEach(async () => {
@@ -422,6 +423,48 @@ describe('ChatService.streamMessage', () => {
       );
       expect(result.reply).toBe('Sinto muito!');
       expect(result.transcript).toBe(TRANSCRIPT);
+    });
+
+    it('contato conhecido (lead vinculado): injeta nome/telefone e recorrência no system prompt', async () => {
+      conversationsMock.resolveByPhone.mockResolvedValueOnce({
+        id: CONVERSATION_ID,
+      });
+      conversationsMock.getConversation.mockResolvedValueOnce({
+        messages: [{ role: 'user', content: 'Oi, quero marcar de novo' }],
+      });
+      // loadKnownContact: conversa com lead já capturado em sessão anterior.
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({
+        channel: 'whatsapp',
+        contactPhone: PHONE,
+        lead: {
+          id: 'lead-1',
+          name: 'João Silva',
+          phone: PHONE,
+          email: null,
+        },
+      });
+      prismaMock.appointment.findMany.mockResolvedValueOnce([
+        {
+          createdAt: new Date(),
+          preferredTime: 'sexta de manhã',
+          procedure: { name: 'Clareamento' },
+        },
+      ]);
+      generateMock.mockResolvedValueOnce({ text: 'Oi, João!', tokens: 3 });
+
+      await service.processInboundMessage({
+        clinicId: CLINIC_ID,
+        channel: 'whatsapp',
+        contactPhone: PHONE,
+        message: 'Oi, quero marcar de novo',
+      });
+
+      const system = generateMock.mock.calls[0][1] as string;
+      expect(system).toContain('João Silva');
+      expect(system).toContain(PHONE);
+      expect(system).toContain('NÃO pergunte novamente');
+      expect(system).toContain('JÁ AGENDOU antes');
+      expect(system).toContain('Clareamento');
     });
 
     it('IA indisponível propaga AiUnavailableError (adapter decide o fallback)', async () => {

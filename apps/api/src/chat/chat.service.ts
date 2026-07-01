@@ -14,7 +14,7 @@ import {
   type ReplyMessage,
   streamAssistantReply,
 } from '../ai/generate-reply';
-import { buildSystemPrompt } from '../ai/prompt';
+import { buildSystemPrompt, type KnownContact } from '../ai/prompt';
 import { tagConversation } from '../ai/tagging';
 import { buildChatTools } from '../ai/tools';
 import { transcribeAudio } from '../ai/transcribe';
@@ -187,6 +187,9 @@ export class ChatService {
   /**
    * System prompt da clínica + histórico (user/assistant) + tools da conversa.
    * Compartilhado pelo caminho streaming (web) e non-streaming (WhatsApp).
+   * O prompt inclui os dados já conhecidos do paciente (lead vinculado /
+   * identidade do canal) — é o que faz o bot reconhecer um contato recorrente
+   * sem pedir nome e telefone de novo.
    */
   private async prepareTurn(
     conversationId: string,
@@ -196,11 +199,11 @@ export class ChatService {
     history: ReplyMessage[];
     tools: ReturnType<typeof buildChatTools>;
   }> {
-    const systemPrompt = await this.buildPrompt(clinicId);
-    const convo = await this.conversations.getConversation(
-      conversationId,
-      clinicId,
-    );
+    const [convo, known] = await Promise.all([
+      this.conversations.getConversation(conversationId, clinicId),
+      this.loadKnownContact(conversationId, clinicId),
+    ]);
+    const systemPrompt = await this.buildPrompt(clinicId, known?.contact);
     const history: ReplyMessage[] = convo.messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => ({
@@ -212,8 +215,71 @@ export class ChatService {
       conversations: this.conversations,
       clinicId,
       conversationId,
+      channel: known?.channel ?? 'web',
     });
     return { systemPrompt, history, tools };
+  }
+
+  /**
+   * Carrega o que já se sabe do paciente da conversa: lead vinculado (nome,
+   * telefone, e-mail), identidade do canal (`contactPhone` no WhatsApp) e os
+   * últimos agendamentos do lead (sinal de recorrência). Best-effort — qualquer
+   * falha vira "nenhum dado conhecido" e o turno segue normal.
+   */
+  private async loadKnownContact(
+    conversationId: string,
+    clinicId: string,
+  ): Promise<{ channel: Channel; contact: KnownContact | null } | null> {
+    try {
+      const convo = await this.prisma.conversation.findFirst({
+        where: { id: conversationId, clinicId },
+        select: {
+          channel: true,
+          contactPhone: true,
+          lead: {
+            select: { id: true, name: true, phone: true, email: true },
+          },
+        },
+      });
+      if (!convo) return null;
+
+      const phone = convo.lead?.phone ?? convo.contactPhone ?? null;
+      if (!convo.lead && !phone)
+        return { channel: convo.channel, contact: null };
+
+      const appointments = convo.lead
+        ? await this.prisma.appointment.findMany({
+            where: { clinicId, leadId: convo.lead.id },
+            orderBy: { createdAt: 'desc' },
+            take: 3,
+            select: {
+              createdAt: true,
+              preferredTime: true,
+              procedure: { select: { name: true } },
+            },
+          })
+        : [];
+
+      return {
+        channel: convo.channel,
+        contact: {
+          name: convo.lead?.name ?? null,
+          phone,
+          email: convo.lead?.email ?? null,
+          appointments: appointments.map((a) => ({
+            procedureName: a.procedure?.name ?? null,
+            preferredTime: a.preferredTime,
+            createdAt: a.createdAt,
+          })),
+        },
+      };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Falha ao carregar contato conhecido (conversa ${conversationId}): ${detail}`,
+      );
+      return null;
+    }
   }
 
   /**
@@ -293,7 +359,10 @@ export class ChatService {
    * Monta o system prompt da clínica (BE-1.3): identidade + settings (opcional)
    * + catálogo de procedimentos ativos. Tudo escopado por `clinicId`.
    */
-  private async buildPrompt(clinicId: string): Promise<string> {
+  private async buildPrompt(
+    clinicId: string,
+    contact?: KnownContact | null,
+  ): Promise<string> {
     const [clinic, settings, procedures] = await Promise.all([
       this.prisma.clinic.findUnique({ where: { id: clinicId } }),
       this.prisma.clinicSettings.findUnique({ where: { clinicId } }),
@@ -304,7 +373,7 @@ export class ChatService {
     ]);
     if (!clinic)
       throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
-    return buildSystemPrompt({ clinic, settings, procedures });
+    return buildSystemPrompt({ clinic, settings, procedures, contact });
   }
 
   /**
