@@ -888,3 +888,34 @@ persistência abortada, 404 cross-tenant) → **148 (Jest)**. **+4** no web
   aprovado caso se migre para a API oficial da Meta (não é o caso do Evolution/Baileys hoje).
 - **Validação ao vivo:** lógica coberta por testes; falta o disparo real ponta a ponta com a
   Evolution pareada (mesmo runbook do WhatsApp).
+
+---
+
+# Update — Abandono × Recorrência no dashboard + memória do contato no agente (2026-07-01)
+
+## Visão geral
+
+Duas frentes pedidas pelo produto: **(1)** o dashboard ganhou a seção **"Abandono × Recorrência"** — compara, por dia, os atendimentos abandonados com os pacientes **recorrentes** (quem já agendou e voltou para agendar de novo); **(2)** o agente agora **lembra do contato**: nome/telefone já capturados (pela tool `captureLead` ou automaticamente pelo canal, ex.: telefone/pushName do WhatsApp) entram no system prompt, então um paciente que volta a falar com o bot **não precisa se apresentar de novo**.
+
+## O que foi feito
+
+### BE — métricas de retenção (`GET /metrics` · `retention`)
+**O quê.** `packages/shared` ganhou `retentionSchema` (labels + séries diárias `abandoned`/`recurrent` + `abandonedTotal` + `recurrentLeads` + `recurrenceRate` 0..1) dentro do `MetricsDto`. No `MetricsService`, `leadReturns()` varre os agendamentos da clínica (all-time, por lead, em ordem cronológica): um agendamento de um lead que **já tinha agendamento anterior em OUTRA conversa** conta como **retorno** (agendar 2× na mesma conversa não conta). A série de abandono reusa a população do KPI "Não completadas" (conversas do período com status `abandonada`, na data da última mensagem). Taxa de recorrência = pacientes recorrentes / pacientes que já agendaram (all-time).
+**Por quê.** "Recorrente" precisa de uma definição operacional; a conversa é a fronteira natural de um novo atendimento — e sem a exigência de "outra conversa" qualquer pedido duplo viraria recorrência.
+
+### FE — seção "Abandono × Recorrência" (fora do handoff, seguindo o design system)
+**O quê.** `components/dashboard/retention-section.tsx` (card com 3 números-resumo + estado vazio) + `components/charts/retention-line.tsx` (Recharts, mesma anatomia do LineChart do handoff). Cores: recorrentes = `--chart-1` (sólida) × abandonos = `--chart-2` (**tracejada** — o tracejado distingue as séries sem depender de cor: CVD/impressão; o par teal×âmbar é o de maior separação CVD da paleta fixa). Entra no dashboard entre "Tags mais frequentes" e "Temperatura dos leads"; skeleton atualizado.
+
+### BE — memória do contato no agente (channel-agnostic)
+**O quê.** `ChatService.prepareTurn` agora carrega o que já se sabe do paciente da conversa (`loadKnownContact`, best-effort): lead vinculado (nome/telefone/e-mail), identidade do canal (`contactPhone`) e os **últimos 3 agendamentos** do lead. `buildSystemPrompt` ganhou `contact?: KnownContact` e injeta a seção "Dados já conhecidos do paciente": não re-perguntar o que já se sabe, cumprimentar pelo nome, acolher o paciente recorrente e usar os dados nas tools. Vale para web e WhatsApp (mesmo motor). Bônus: as tools agora gravam o `source` do lead com o **canal real** (antes, sempre `web`).
+**Por quê.** A captura já existia (`ensureContactLead` no inbound do WhatsApp deduplica lead por telefone entre sessões); faltava **fechar o ciclo** devolvendo esses dados ao modelo — sem isso o bot pedia nome/telefone a cada nova sessão.
+
+### Seed demo
+`db:seed:demo`: ~1/3 dos agendamentos passa a reusar um lead que já agendou (gera retornos), para a nova seção renderizar com dados.
+
+### Qualidade / validação
+`build` + `typecheck` + `lint` verdes nos 3 pacotes. **165 testes (API)** — novos: retention (retorno em outra conversa ×  mesma conversa, séries/taxa, abandono), prompt com `contact` (não re-perguntar, recorrência, só-telefone, vazio) e injeção fim-a-fim no `processInboundMessage`. **79 testes (web)** — novos: `retention-section.test.tsx` (totais/taxa, gráfico, estado vazio).
+
+### Pendências / próximos passos
+- **Validação ao vivo:** rodar `db:seed:demo` e conferir a seção no dashboard; no WhatsApp, mandar mensagem de um número que já agendou e verificar que o bot cumprimenta pelo nome sem pedir os dados.
+- A `recurrenceRate` é all-time por desenho (estabilidade com pouco volume); se o produto quiser por período, basta trocar o denominador.
