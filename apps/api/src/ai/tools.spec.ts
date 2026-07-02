@@ -12,19 +12,22 @@ function exec(tool: unknown, input: unknown): Promise<any> {
 
 describe('buildChatTools', () => {
   const prismaMock = {
-    procedure: { findMany: jest.fn() },
+    procedure: { findMany: jest.fn(), findFirst: jest.fn() },
+    tag: { findMany: jest.fn().mockResolvedValue([]) },
+    clinicSettings: { findUnique: jest.fn().mockResolvedValue(null) },
     conversation: { findFirst: jest.fn(), update: jest.fn() },
     lead: { create: jest.fn(), update: jest.fn() },
     appointment: { create: jest.fn() },
   };
   const conversationsMock = { markAsScheduled: jest.fn() };
 
-  function tools() {
+  function tools(attachments?: unknown[]) {
     return buildChatTools({
       prisma: prismaMock,
       conversations: conversationsMock,
       clinicId: CLINIC_ID,
       conversationId: CONVERSATION_ID,
+      ...(attachments ? { attachments } : {}),
     } as unknown as ChatToolsContext);
   }
 
@@ -139,5 +142,94 @@ describe('buildChatTools', () => {
     const res = await exec(tools().bookAppointment, { preferencia: 'amanhã' });
 
     expect(res).toEqual({ ok: true, appointmentId: 'appt-2' });
+  });
+
+  it('presentOffer: oferta do procedimento nomeado + empurra a mídia no coletor (F6)', async () => {
+    prismaMock.procedure.findFirst.mockResolvedValueOnce({
+      name: 'Clareamento',
+      offerText: '20% off neste mês',
+      offerMediaUrl: 'https://cdn/promo.jpg',
+      offerMediaType: 'image',
+    });
+    const attachments: unknown[] = [];
+
+    const res = await exec(tools(attachments).presentOffer, {
+      procedimento: 'clareamento',
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      oferta: '20% off neste mês',
+      enviandoMidia: true,
+      tipoMidia: 'image',
+    });
+    expect(attachments).toEqual([
+      { url: 'https://cdn/promo.jpg', type: 'image' },
+    ]);
+  });
+
+  it('presentOffer: por interesse casa a tag e escolhe procedimento com oferta', async () => {
+    // Limpa a fila de `once` (clearAllMocks não a esvazia entre testes).
+    prismaMock.procedure.findMany.mockReset();
+    prismaMock.tag.findMany.mockReset();
+    prismaMock.tag.findMany.mockResolvedValueOnce([
+      { id: 't1', name: 'estética', keywords: ['dente amarelo'] },
+    ]);
+    prismaMock.procedure.findMany.mockResolvedValueOnce([
+      {
+        name: 'Faceta',
+        offerText: null,
+        offerMediaUrl: null,
+        offerMediaType: null,
+      },
+      {
+        name: 'Clareamento',
+        offerText: 'Avaliação grátis',
+        offerMediaUrl: null,
+        offerMediaType: null,
+      },
+    ]);
+
+    const res = await exec(tools().presentOffer, {
+      interesse: 'meu dente amarelo me incomoda',
+    });
+
+    expect(res).toMatchObject({
+      ok: true,
+      oferta: 'Avaliação grátis',
+      enviandoMidia: false,
+    });
+  });
+
+  it('presentOffer: sem oferta específica, cai na oferta global ativa', async () => {
+    prismaMock.procedure.findFirst.mockResolvedValueOnce(null);
+    prismaMock.clinicSettings.findUnique.mockResolvedValueOnce({
+      offerEnabled: true,
+      offerText: 'Primeira consulta grátis',
+      offerMediaUrl: '',
+      offerMediaType: null,
+    });
+
+    const res = await exec(tools().presentOffer, {
+      procedimento: 'inexistente',
+    });
+
+    expect(res).toMatchObject({ ok: true, oferta: 'Primeira consulta grátis' });
+  });
+
+  it('presentOffer: nada a oferecer → ok:false', async () => {
+    prismaMock.tag.findMany.mockResolvedValueOnce([]);
+    prismaMock.clinicSettings.findUnique.mockResolvedValueOnce({
+      offerEnabled: false,
+      offerText: null,
+      offerMediaUrl: null,
+      offerMediaType: null,
+    });
+
+    const res = await exec(tools().presentOffer, {
+      interesse: 'qualquer coisa',
+    });
+
+    expect(res.ok).toBe(false);
   });
 });

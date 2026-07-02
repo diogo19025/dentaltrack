@@ -71,6 +71,8 @@ describe('ChatService.streamMessage', () => {
     clinicSettings: { findUnique: jest.fn() },
     procedure: { findMany: jest.fn() },
     appointment: { findMany: jest.fn().mockResolvedValue([]) },
+    // F6: contagem de mensagens (1º contato → mídia de saudação).
+    message: { count: jest.fn().mockResolvedValue(1) },
   };
 
   beforeEach(async () => {
@@ -387,7 +389,35 @@ describe('ChatService.streamMessage', () => {
         conversationId: CONVERSATION_ID,
         reply: 'Claro!',
         transcript: undefined,
+        attachments: [],
       });
+    });
+
+    it('primeiro contato: inclui a mídia de saudação (F6) nos anexos', async () => {
+      conversationsMock.resolveByPhone.mockResolvedValueOnce({
+        id: CONVERSATION_ID,
+      });
+      conversationsMock.getConversation.mockResolvedValueOnce({
+        messages: [{ role: 'user', content: 'Oi' }],
+      });
+      // 1º turno (nenhuma mensagem ainda) → dispara a mídia de saudação.
+      prismaMock.message.count.mockResolvedValueOnce(0);
+      prismaMock.clinicSettings.findUnique.mockResolvedValue({
+        greetingMediaUrl: 'https://cdn/welcome.jpg',
+        greetingMediaType: 'image',
+      });
+      generateMock.mockResolvedValueOnce({ text: 'Bem-vindo!', tokens: 5 });
+
+      const result = await service.processInboundMessage({
+        clinicId: CLINIC_ID,
+        channel: 'whatsapp',
+        contactPhone: PHONE,
+        message: 'Oi',
+      });
+
+      expect(result.attachments).toEqual([
+        { url: 'https://cdn/welcome.jpg', type: 'image' },
+      ]);
     });
 
     it('transcreve áudio e devolve a transcrição junto da resposta', async () => {

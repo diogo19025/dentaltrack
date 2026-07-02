@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mediaTypeSchema, mediaUrlFieldSchema } from "./media";
 
 /**
  * Contrato do catálogo de procedimentos (F2 · BE-2.2). CRUD escopado por
@@ -15,6 +16,10 @@ export const procedureSchema = z.object({
   priceMaxCents: z.number().int().nullable(),
   durationMinutes: z.number().int().nullable(),
   active: z.boolean(),
+  /** Oferta personalizada do procedimento (F6). Vazio = sem oferta específica. */
+  offerText: z.string().nullable(),
+  offerMediaUrl: z.string().nullable(),
+  offerMediaType: mediaTypeSchema.nullable(),
   /** IDs das tags de interesse associadas (relação N:N — ver `tags.ts`). */
   tagIds: z.array(z.string().uuid()),
 });
@@ -29,6 +34,9 @@ export const createProcedureSchema = z
     priceMaxCents: z.number().int().nonnegative().optional(),
     durationMinutes: z.number().int().positive().max(1440).optional(),
     active: z.boolean().optional(),
+    offerText: z.string().trim().max(600).optional(),
+    offerMediaUrl: mediaUrlFieldSchema.optional(),
+    offerMediaType: mediaTypeSchema.nullable().optional(),
     tagIds: z.array(z.string().uuid()).max(20).optional(),
   })
   .refine(
@@ -46,6 +54,9 @@ export const updateProcedureSchema = z.object({
   priceMaxCents: z.number().int().nonnegative().nullable().optional(),
   durationMinutes: z.number().int().positive().max(1440).nullable().optional(),
   active: z.boolean().optional(),
+  offerText: z.string().trim().max(600).nullable().optional(),
+  offerMediaUrl: mediaUrlFieldSchema.nullable().optional(),
+  offerMediaType: mediaTypeSchema.nullable().optional(),
   tagIds: z.array(z.string().uuid()).max(20).optional(),
 });
 export type UpdateProcedureInput = z.infer<typeof updateProcedureSchema>;

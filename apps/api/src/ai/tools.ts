@@ -1,5 +1,10 @@
 import { type ToolSet, dynamicTool, jsonSchema } from 'ai';
-import type { Channel } from '@dentaltrack/shared';
+import {
+  type Channel,
+  MEDIA_TYPES,
+  type MediaAttachment,
+  type MediaType,
+} from '@dentaltrack/shared';
 import type { ConversationsService } from '../conversations/conversations.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -20,6 +25,13 @@ export interface ChatToolsContext {
   conversationId: string;
   /** Canal da conversa — vira o `source` do lead criado pelas tools. */
   channel?: Channel;
+  /**
+   * Coletor de mídia (F6): a tool `presentOffer` empurra aqui a mídia da oferta
+   * escolhida (imagem/vídeo/áudio/catálogo). O adapter do canal (WhatsApp) envia
+   * esses anexos após o texto; o web ignora (mantém texto). Mutável de propósito
+   * — é preenchido durante a execução das tools no turno.
+   */
+  attachments?: MediaAttachment[];
 }
 
 interface SearchInput {
@@ -38,6 +50,50 @@ interface BookInput {
   telefone?: string;
   procedimento?: string;
   preferencia?: string;
+}
+interface PresentOfferInput {
+  procedimento?: string;
+  interesse?: string;
+}
+
+/**
+ * Uma oferta escolhida por `presentOffer`: o texto (que o modelo tece na
+ * resposta) e a mídia opcional (que vira anexo do turno para o canal enviar).
+ */
+interface SelectedOffer {
+  text: string;
+  media: MediaAttachment | null;
+}
+
+/** Normaliza (url, tipo) do banco num anexo; url vazia/ausente → sem mídia. */
+function toAttachment(
+  url: string | null | undefined,
+  type: string | null | undefined,
+  caption?: string,
+): MediaAttachment | null {
+  const u = url?.trim();
+  if (!u) return null;
+  const t = (MEDIA_TYPES as readonly string[]).includes(type ?? '')
+    ? (type as MediaType)
+    : 'image';
+  const cap = caption?.trim();
+  return { url: u, type: t, ...(cap ? { caption: cap } : {}) };
+}
+
+/** Linha mínima de oferta (procedimento ou settings) → SelectedOffer, ou null. */
+function offerFromRow(
+  row: {
+    name?: string;
+    offerText: string | null;
+    offerMediaUrl: string | null;
+    offerMediaType: string | null;
+  },
+  fallbackText: string,
+): SelectedOffer | null {
+  const text = row.offerText?.trim();
+  const media = toAttachment(row.offerMediaUrl, row.offerMediaType);
+  if (!text && !media) return null;
+  return { text: text || fallbackText, media };
 }
 
 /** Formata centavos em BRL (ex.: 150000 → "R$ 1.500"). */
@@ -81,10 +137,100 @@ function toView(p: ProcedureRow) {
   };
 }
 
+/** Campos de oferta lidos de um procedimento. */
+const OFFER_SELECT = {
+  name: true,
+  offerText: true,
+  offerMediaUrl: true,
+  offerMediaType: true,
+} as const;
+
 /** Constrói o conjunto de tools para uma conversa específica. */
 export function buildChatTools(ctx: ChatToolsContext): ToolSet {
   const { prisma, conversations, clinicId, conversationId } = ctx;
   const channel: Channel = ctx.channel ?? 'web';
+
+  /**
+   * Escolhe a oferta mais pertinente (F6) para o momento da conversa:
+   *  1. procedimento nomeado com oferta própria (mais específico);
+   *  2. interesse → tags casadas → procedimento com oferta (personalização por tag);
+   *  3. oferta global da clínica (se ativa), como fallback.
+   * Retorna o texto + mídia opcional; `null` se não houver nada a oferecer.
+   */
+  async function selectOffer(
+    procedimento?: string,
+    interesse?: string,
+  ): Promise<SelectedOffer | null> {
+    // 1. Procedimento específico.
+    const term = procedimento?.trim();
+    if (term) {
+      const proc = await prisma.procedure.findFirst({
+        where: {
+          clinicId,
+          active: true,
+          name: { contains: term, mode: 'insensitive' },
+        },
+        select: OFFER_SELECT,
+      });
+      if (proc) {
+        const offer = offerFromRow(
+          proc,
+          `Temos uma condição especial para ${proc.name}.`,
+        );
+        if (offer) return offer;
+      }
+    }
+
+    // 2. Interesse → tags → procedimento com oferta (personalização por tag).
+    const q = interesse?.trim();
+    if (q) {
+      const text = q.toLowerCase();
+      const tags = await prisma.tag.findMany({
+        where: { clinicId },
+        select: { id: true, name: true, keywords: true },
+      });
+      const matchedTagIds = tags
+        .filter(
+          (t) =>
+            text.includes(t.name.toLowerCase()) ||
+            t.keywords.some((k) => k && text.includes(k.toLowerCase())),
+        )
+        .map((t) => t.id);
+      if (matchedTagIds.length > 0) {
+        const rows = await prisma.procedure.findMany({
+          where: {
+            clinicId,
+            active: true,
+            tags: { some: { id: { in: matchedTagIds } } },
+          },
+          orderBy: { name: 'asc' },
+          select: OFFER_SELECT,
+        });
+        for (const proc of rows) {
+          const offer = offerFromRow(
+            proc,
+            `Temos uma condição especial para ${proc.name}.`,
+          );
+          if (offer) return offer;
+        }
+      }
+    }
+
+    // 3. Oferta global da clínica (fallback).
+    const settings = await prisma.clinicSettings.findUnique({
+      where: { clinicId },
+      select: {
+        offerEnabled: true,
+        offerText: true,
+        offerMediaUrl: true,
+        offerMediaType: true,
+      },
+    });
+    if (settings?.offerEnabled) {
+      return offerFromRow(settings, 'Temos uma oferta especial em vigor.');
+    }
+    return null;
+  }
 
   async function findProcedures(query?: string, take = 5) {
     const q = query?.trim();
@@ -193,6 +339,42 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
         const { interesse } = input as SuggestInput;
         const procedures = await suggestByInterest(interesse);
         return { procedures, total: procedures.length };
+      },
+    }),
+
+    presentOffer: dynamicTool({
+      description:
+        'Apresenta a oferta/promoção mais pertinente ao paciente (F6). Chame quando ele demonstrar interesse num procedimento ou tema. Informe `procedimento` (nome do procedimento de interesse) e/ou `interesse` (o que o paciente relata). Retorna o texto da oferta para você adaptar na resposta; se houver mídia (imagem/vídeo/áudio/catálogo), ela é enviada automaticamente pelo canal — mencione que está enviando o material, sem inventar links.',
+      inputSchema: jsonSchema<PresentOfferInput>({
+        type: 'object',
+        properties: {
+          procedimento: {
+            type: 'string',
+            description: 'Procedimento de interesse (se identificado).',
+          },
+          interesse: {
+            type: 'string',
+            description: 'O que o paciente relata/procura.',
+          },
+        },
+        additionalProperties: false,
+      }),
+      execute: async (input) => {
+        const { procedimento, interesse } = input as PresentOfferInput;
+        const offer = await selectOffer(procedimento, interesse);
+        if (!offer) {
+          return {
+            ok: false,
+            motivo: 'Nenhuma oferta disponível para este caso no momento.',
+          };
+        }
+        if (offer.media) ctx.attachments?.push(offer.media);
+        return {
+          ok: true,
+          oferta: offer.text,
+          enviandoMidia: Boolean(offer.media),
+          tipoMidia: offer.media?.type,
+        };
       },
     }),
 

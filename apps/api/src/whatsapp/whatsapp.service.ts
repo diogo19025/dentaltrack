@@ -78,7 +78,7 @@ export class WhatsappService {
       const turn = await this.buildTurn(inbound);
       if (!turn) return; // tipo não suportado / mídia indisponível
 
-      const { reply } = await this.chat.processInboundMessage({
+      const { reply, attachments } = await this.chat.processInboundMessage({
         clinicId,
         channel: 'whatsapp',
         contactPhone: inbound.phone,
@@ -86,9 +86,23 @@ export class WhatsappService {
         ...turn,
       });
 
-      if (reply) {
+      if (reply || attachments.length > 0) {
         const target = await this.replyTarget(inbound);
-        await this.evolution.sendText(inbound.instance, target, reply);
+        if (reply)
+          await this.evolution.sendText(inbound.instance, target, reply);
+        // Mídia da saudação/oferta (F6): enviada após o texto, uma a uma.
+        // Best-effort — a falha de um anexo não impede os demais nem a resposta.
+        for (const media of attachments) {
+          try {
+            await this.evolution.sendMedia(inbound.instance, target, media);
+          } catch (mediaErr) {
+            const detail =
+              mediaErr instanceof Error ? mediaErr.message : String(mediaErr);
+            this.logger.error(
+              `Falha ao enviar mídia (${media.type}) ao ${inbound.phone}: ${detail}`,
+            );
+          }
+        }
       }
     } catch (err) {
       await this.handleError(err, payload);

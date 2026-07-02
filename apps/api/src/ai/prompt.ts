@@ -209,6 +209,19 @@ export function buildSystemPrompt({
     );
   }
 
+  // Ofertas personalizadas por procedimento (F6) — orientam quando chamar
+  // `presentOffer`. A mídia (imagem/vídeo/áudio/catálogo) é enviada pela tool.
+  const withOffer = procedures.filter((p) => p.offerText?.trim());
+  if (withOffer.length > 0) {
+    lines.push('');
+    lines.push(
+      'Ofertas especiais por procedimento — chame `presentOffer` (com o procedimento) ao falar destes; ela envia o material promocional automaticamente:',
+    );
+    for (const p of withOffer) {
+      lines.push(`- ${p.name}: ${p.offerText!.trim()}`);
+    }
+  }
+
   // Disponibilidade de atendimento (orienta o bot ao propor horários).
   const availability = formatAvailability(settings?.availability);
   if (availability) {
@@ -255,6 +268,9 @@ export function buildSystemPrompt({
   );
   lines.push(
     '- Para falar de procedimentos, preços ou duração, chame `searchProcedures` (ou `suggestProcedures`) e responda com base no resultado. Nunca invente.',
+  );
+  lines.push(
+    '- Quando o paciente demonstrar interesse e houver oferta pertinente, chame `presentOffer` (com o procedimento e/ou o interesse relatado). Ela cuida do material promocional (imagem/vídeo/áudio/catálogo). Use o texto retornado; não invente promoções nem links.',
   );
   lines.push(
     '- Assim que tiver o nome e o telefone do paciente, chame `captureLead` para registrar o contato.',

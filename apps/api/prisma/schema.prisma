@@ -69,10 +69,16 @@ model ClinicSettings {
   assistantName String?  @map("assistant_name")
   tone          String?
   greeting      String?
+  // F6 — Mídia da saudação (imagem/vídeo/áudio/catálogo) enviada no 1º contato.
+  greetingMediaUrl  String? @map("greeting_media_url")
+  greetingMediaType String? @map("greeting_media_type")
   instructions  String?
   // F2 — Ofertas & disponibilidade (alimentam o system prompt, BE-1.3).
   offerEnabled  Boolean  @default(false) @map("offer_enabled")
   offerText     String?  @map("offer_text")
+  // F6 — Mídia da oferta global (imagem/vídeo/áudio/catálogo).
+  offerMediaUrl  String? @map("offer_media_url")
+  offerMediaType String? @map("offer_media_type")
   offerStartsOn String?  @map("offer_starts_on")
   offerEndsOn   String?  @map("offer_ends_on")
   /// Linhas de disponibilidade [{ day, hours, open }] — ver @dentaltrack/shared.
@@ -115,6 +121,12 @@ model Procedure {
   priceMaxCents   Int?     @map("price_max_cents")
   durationMinutes Int?     @map("duration_minutes")
   active          Boolean  @default(true)
+  // F6 — Oferta personalizada do procedimento (texto + mídia opcional). O agente
+  // apresenta esta oferta quando o paciente demonstra interesse no procedimento
+  // (direto ou por uma das tags associadas).
+  offerText       String?  @map("offer_text")
+  offerMediaUrl   String?  @map("offer_media_url")
+  offerMediaType  String?  @map("offer_media_type")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 

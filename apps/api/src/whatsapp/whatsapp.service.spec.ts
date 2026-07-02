@@ -31,6 +31,7 @@ describe('WhatsappService', () => {
   const chatMock = { processInboundMessage: jest.fn() };
   const evolutionMock = {
     sendText: jest.fn(),
+    sendMedia: jest.fn(),
     getMediaBase64: jest.fn(),
     resolveLidJid: jest.fn(),
   };
@@ -43,6 +44,7 @@ describe('WhatsappService', () => {
     chatMock.processInboundMessage.mockResolvedValue({
       conversationId: 'c1',
       reply: 'Claro! Para quando?',
+      attachments: [],
     });
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -196,9 +198,54 @@ describe('WhatsappService', () => {
     chatMock.processInboundMessage.mockResolvedValueOnce({
       conversationId: 'c1',
       reply: '',
+      attachments: [],
     });
     await service.handleWebhook(payload());
     expect(evolutionMock.sendText).not.toHaveBeenCalled();
+  });
+
+  it('envia a mídia (F6) do turno após o texto, uma a uma', async () => {
+    chatMock.processInboundMessage.mockResolvedValueOnce({
+      conversationId: 'c1',
+      reply: 'Bem-vindo!',
+      attachments: [
+        { url: 'https://cdn/x.jpg', type: 'image' },
+        { url: 'https://cdn/y.mp3', type: 'audio' },
+      ],
+    });
+    await service.handleWebhook(payload());
+    expect(evolutionMock.sendText).toHaveBeenCalledWith(
+      'dentaltrack',
+      '5511999998888',
+      'Bem-vindo!',
+    );
+    expect(evolutionMock.sendMedia).toHaveBeenCalledTimes(2);
+    expect(evolutionMock.sendMedia).toHaveBeenNthCalledWith(
+      1,
+      'dentaltrack',
+      '5511999998888',
+      { url: 'https://cdn/x.jpg', type: 'image' },
+    );
+    expect(evolutionMock.sendMedia).toHaveBeenNthCalledWith(
+      2,
+      'dentaltrack',
+      '5511999998888',
+      { url: 'https://cdn/y.mp3', type: 'audio' },
+    );
+  });
+
+  it('falha de um anexo não impede os demais (best-effort)', async () => {
+    chatMock.processInboundMessage.mockResolvedValueOnce({
+      conversationId: 'c1',
+      reply: 'Oi',
+      attachments: [
+        { url: 'https://cdn/x.jpg', type: 'image' },
+        { url: 'https://cdn/y.jpg', type: 'image' },
+      ],
+    });
+    evolutionMock.sendMedia.mockRejectedValueOnce(new Error('boom'));
+    await service.handleWebhook(payload());
+    expect(evolutionMock.sendMedia).toHaveBeenCalledTimes(2);
   });
 
   it('nunca lança, mesmo com erro inesperado no resolve', async () => {

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mediaTypeSchema, mediaUrlFieldSchema } from "./media";
 
 /**
  * Contrato de Configurações do bot (F2 · BE-2.1 / FE-2.1..2.5).
@@ -39,9 +40,15 @@ export const clinicSettingsSchema = z.object({
   assistantName: z.string(),
   tone: toneSchema,
   greeting: z.string(),
+  /** Mídia da saudação (F6) — enviada no 1º contato pelo WhatsApp. Vazio = sem mídia. */
+  greetingMediaUrl: z.string(),
+  greetingMediaType: mediaTypeSchema.nullable(),
   instructions: z.string(),
   offerEnabled: z.boolean(),
   offerText: z.string(),
+  /** Mídia da oferta global (F6) — imagem/vídeo/áudio/catálogo. Vazio = sem mídia. */
+  offerMediaUrl: z.string(),
+  offerMediaType: mediaTypeSchema.nullable(),
   offerStartsOn: z.string(),
   offerEndsOn: z.string(),
   availability: z.array(availabilitySlotSchema),
@@ -61,9 +68,13 @@ export const updateSettingsSchema = z.object({
   assistantName: z.string().trim().max(60).optional(),
   tone: toneSchema.optional(),
   greeting: z.string().trim().max(600).optional(),
+  greetingMediaUrl: mediaUrlFieldSchema.optional(),
+  greetingMediaType: mediaTypeSchema.nullable().optional(),
   instructions: z.string().trim().max(2000).optional(),
   offerEnabled: z.boolean().optional(),
   offerText: z.string().trim().max(600).optional(),
+  offerMediaUrl: mediaUrlFieldSchema.optional(),
+  offerMediaType: mediaTypeSchema.nullable().optional(),
   offerStartsOn: z.string().trim().max(40).optional(),
   offerEndsOn: z.string().trim().max(40).optional(),
   availability: z.array(availabilitySlotSchema).max(14).optional(),

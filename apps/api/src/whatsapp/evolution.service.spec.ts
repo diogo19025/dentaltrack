@@ -24,6 +24,62 @@ function findMessagesOk(lid: string) {
   } as unknown as Response;
 }
 
+/** Resposta genérica 200 OK com corpo vazio (rotas de envio). */
+function okEmpty() {
+  return {
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve(undefined),
+    text: () => Promise.resolve(''),
+  } as unknown as Response;
+}
+
+describe('EvolutionService.sendMedia', () => {
+  let service: EvolutionService;
+  let fetchMock: jest.Mock;
+
+  beforeEach(() => {
+    service = new EvolutionService(makeConfig());
+    fetchMock = jest.fn().mockResolvedValue(okEmpty());
+    global.fetch = fetchMock;
+  });
+
+  it('imagem/vídeo/documento: usa /message/sendMedia com o mediatype e a URL', async () => {
+    await service.sendMedia('dentaltrack', '5511999', {
+      url: 'https://cdn/catalogo.pdf',
+      type: 'document',
+      caption: 'Nosso catálogo',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://evo.local/message/sendMedia/dentaltrack');
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toMatchObject({
+      number: '5511999',
+      mediatype: 'document',
+      media: 'https://cdn/catalogo.pdf',
+      caption: 'Nosso catálogo',
+    });
+    expect(typeof body.delay).toBe('number');
+  });
+
+  it('áudio: usa o endpoint dedicado /message/sendWhatsAppAudio (mensagem de voz)', async () => {
+    await service.sendMedia('dentaltrack', '5511999', {
+      url: 'https://cdn/audio.mp3',
+      type: 'audio',
+    });
+
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://evo.local/message/sendWhatsAppAudio/dentaltrack');
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toMatchObject({
+      number: '5511999',
+      audio: 'https://cdn/audio.mp3',
+    });
+    expect(body.mediatype).toBeUndefined();
+  });
+});
+
 describe('EvolutionService.resolveLidJid', () => {
   let service: EvolutionService;
   let fetchMock: jest.Mock;

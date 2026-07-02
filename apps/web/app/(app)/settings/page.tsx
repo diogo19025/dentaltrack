@@ -8,6 +8,9 @@ import {
   type ClinicSettingsDto,
   clinicSettingsSchema,
   DEFAULT_AVAILABILITY,
+  MEDIA_TYPE_LABELS,
+  MEDIA_TYPES,
+  type MediaType,
   type Tone,
 } from "@dentaltrack/shared";
 import { Bot, Calendar, Check, Info, RefreshCw, Sparkles, Upload } from "lucide-react";
@@ -67,9 +70,13 @@ const BLANK: ClinicSettingsDto = {
   assistantName: "",
   tone: "amigavel",
   greeting: "",
+  greetingMediaUrl: "",
+  greetingMediaType: null,
   instructions: "",
   offerEnabled: false,
   offerText: "",
+  offerMediaUrl: "",
+  offerMediaType: null,
   offerStartsOn: "",
   offerEndsOn: "",
   availability: DEFAULT_AVAILABILITY,
@@ -94,7 +101,9 @@ export default function SettingsPage() {
   const assistantName = useWatch({ control, name: "assistantName" });
   const clinicName = useWatch({ control, name: "clinicName" });
   const greeting = useWatch({ control, name: "greeting" });
+  const greetingMediaType = useWatch({ control, name: "greetingMediaType" });
   const offerText = useWatch({ control, name: "offerText" });
+  const offerMediaType = useWatch({ control, name: "offerMediaType" });
   const availability = useWatch({ control, name: "availability" });
 
   // Carrega os valores reais assim que a API responde.
@@ -175,12 +184,20 @@ export default function SettingsPage() {
                 setTone={(v) => setValue("tone", v, { shouldDirty: true })}
                 specialty={specialty}
                 setSpecialty={(v) => setValue("specialty", v, { shouldDirty: true })}
+                greetingMediaType={greetingMediaType}
+                setGreetingMediaType={(v) =>
+                  setValue("greetingMediaType", v, { shouldDirty: true })
+                }
               />
             ) : (
               <OffersFields
                 register={register}
                 offerEnabled={offerEnabled}
                 setOfferEnabled={(v) => setValue("offerEnabled", v, { shouldDirty: true })}
+                offerMediaType={offerMediaType}
+                setOfferMediaType={(v) =>
+                  setValue("offerMediaType", v, { shouldDirty: true })
+                }
                 availability={availability}
                 setAvailability={(a) => setValue("availability", a, { shouldDirty: true })}
               />
@@ -246,6 +263,53 @@ function Field({
 }
 
 type Register = ReturnType<typeof useForm<ClinicSettingsDto>>["register"];
+type MediaUrlField = "greetingMediaUrl" | "offerMediaUrl";
+
+/**
+ * Campos de mídia (F6): URL pública + tipo. Enviados pelo bot no WhatsApp
+ * (saudação/oferta). "Sem mídia" limpa o tipo — só texto.
+ */
+function MediaFields({
+  register,
+  urlName,
+  urlPlaceholder,
+  hint,
+  type,
+  setType,
+}: {
+  register: Register;
+  urlName: MediaUrlField;
+  urlPlaceholder: string;
+  hint: string;
+  type: MediaType | null;
+  setType: (v: MediaType | null) => void;
+}) {
+  return (
+    <div className="mt-[18px] grid grid-cols-[minmax(0,1fr)_190px] gap-3 max-[560px]:grid-cols-1">
+      <Field label="Mídia (URL pública)" hint={hint} htmlFor={urlName}>
+        <Input id={urlName} type="url" {...register(urlName)} placeholder={urlPlaceholder} />
+      </Field>
+      <Field label="Tipo">
+        <Select
+          value={type ?? "none"}
+          onValueChange={(v) => setType(v === "none" ? null : (v as MediaType))}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Sem mídia</SelectItem>
+            {MEDIA_TYPES.map((t) => (
+              <SelectItem key={t} value={t}>
+                {MEDIA_TYPE_LABELS[t]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+    </div>
+  );
+}
 
 /** Aba "Identidade & Persona". */
 function IdentityFields({
@@ -254,12 +318,16 @@ function IdentityFields({
   setTone,
   specialty,
   setSpecialty,
+  greetingMediaType,
+  setGreetingMediaType,
 }: {
   register: Register;
   tone: Tone;
   setTone: (v: Tone) => void;
   specialty: string;
   setSpecialty: (v: string) => void;
+  greetingMediaType: MediaType | null;
+  setGreetingMediaType: (v: MediaType | null) => void;
 }) {
   // Garante que o valor carregado apareça mesmo fora da lista padrão.
   const specialtyOptions = Array.from(
@@ -324,6 +392,14 @@ function IdentityFields({
             placeholder="Olá! Sou a assistente virtual da clínica…"
           />
         </Field>
+        <MediaFields
+          register={register}
+          urlName="greetingMediaUrl"
+          urlPlaceholder="https://…/boas-vindas.jpg"
+          hint="Imagem, vídeo ou áudio enviado no 1º contato pelo WhatsApp."
+          type={greetingMediaType}
+          setType={setGreetingMediaType}
+        />
       </SectionCard>
     </>
   );
@@ -334,12 +410,16 @@ function OffersFields({
   register,
   offerEnabled,
   setOfferEnabled,
+  offerMediaType,
+  setOfferMediaType,
   availability,
   setAvailability,
 }: {
   register: Register;
   offerEnabled: boolean;
   setOfferEnabled: (v: boolean) => void;
+  offerMediaType: MediaType | null;
+  setOfferMediaType: (v: MediaType | null) => void;
   availability: AvailabilitySlot[];
   setAvailability: (a: AvailabilitySlot[]) => void;
 }) {
@@ -391,6 +471,14 @@ function OffersFields({
             <IconInput id="set-offer-end" icon={Calendar} {...register("offerEndsOn")} placeholder="30/06/2026" />
           </Field>
         </div>
+        <MediaFields
+          register={register}
+          urlName="offerMediaUrl"
+          urlPlaceholder="https://…/promocao.jpg"
+          hint="Imagem, vídeo, áudio ou catálogo enviado junto da oferta no WhatsApp."
+          type={offerMediaType}
+          setType={setOfferMediaType}
+        />
       </SectionCard>
 
       <SectionCard

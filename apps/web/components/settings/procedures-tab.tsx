@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-import type { CreateProcedureInput, ProcedureDto, TagColor, TagDto } from "@dentaltrack/shared";
+import {
+  type CreateProcedureInput,
+  MEDIA_TYPE_LABELS,
+  MEDIA_TYPES,
+  type MediaType,
+  type ProcedureDto,
+  type TagColor,
+  type TagDto,
+} from "@dentaltrack/shared";
 import { Pencil, Plus, Stethoscope, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -16,6 +24,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -185,6 +200,9 @@ interface ProcForm {
   priceMax: string;
   duration: string;
   active: boolean;
+  offerText: string;
+  offerMediaUrl: string;
+  offerMediaType: MediaType | null;
   tagIds: string[];
 }
 
@@ -211,10 +229,14 @@ function ProcedureDialog({
       priceMax: procedure?.priceMaxCents != null ? String(procedure.priceMaxCents / 100) : "",
       duration: procedure?.durationMinutes != null ? String(procedure.durationMinutes) : "",
       active: procedure?.active ?? true,
+      offerText: procedure?.offerText ?? "",
+      offerMediaUrl: procedure?.offerMediaUrl ?? "",
+      offerMediaType: procedure?.offerMediaType ?? null,
       tagIds: procedure?.tagIds ?? [],
     },
   });
   const active = useWatch({ control, name: "active" });
+  const offerMediaType = useWatch({ control, name: "offerMediaType" });
   const tagIds = useWatch({ control, name: "tagIds" });
 
   const toCents = (s: string) => (s.trim() === "" ? undefined : Math.round(Number(s) * 100));
@@ -233,6 +255,9 @@ function ProcedureDialog({
       priceMaxCents: toCents(v.priceMax),
       durationMinutes: toInt(v.duration),
       active: v.active,
+      offerText: v.offerText.trim() || undefined,
+      offerMediaUrl: v.offerMediaUrl.trim() || undefined,
+      offerMediaType: v.offerMediaType ?? undefined,
       tagIds: v.tagIds,
     };
     const onDone = { onSuccess: onClose };
@@ -311,6 +336,56 @@ function ProcedureDialog({
             <p className="mt-1.5 text-[12px] text-muted-foreground">
               Ajudam o agente a sugerir este procedimento conforme o interesse do paciente.
             </p>
+          </div>
+
+          <div>
+            <Label htmlFor="proc-offer-text" className="mb-2 text-[13px]">
+              Oferta especial (opcional)
+            </Label>
+            <Textarea
+              id="proc-offer-text"
+              rows={2}
+              {...register("offerText")}
+              placeholder="Ex.: 10% de desconto à vista neste mês."
+            />
+            <p className="mt-1.5 text-[12px] text-muted-foreground">
+              O agente apresenta esta oferta quando o paciente se interessa por este procedimento
+              (ou por uma das suas tags).
+            </p>
+          </div>
+          <div className="grid grid-cols-[minmax(0,1fr)_170px] gap-3 max-[420px]:grid-cols-1">
+            <div>
+              <Label htmlFor="proc-offer-media" className="mb-2 text-[13px]">
+                Mídia da oferta (URL)
+              </Label>
+              <Input
+                id="proc-offer-media"
+                type="url"
+                {...register("offerMediaUrl")}
+                placeholder="https://…/catalogo.pdf"
+              />
+            </div>
+            <div>
+              <Label className="mb-2 text-[13px]">Tipo</Label>
+              <Select
+                value={offerMediaType ?? "none"}
+                onValueChange={(v) =>
+                  setValue("offerMediaType", v === "none" ? null : (v as MediaType))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem mídia</SelectItem>
+                  {MEDIA_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {MEDIA_TYPE_LABELS[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <label className="flex items-center justify-between rounded-[var(--radius-md)] bg-muted px-3.5 py-2.5">

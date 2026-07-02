@@ -6,7 +6,13 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type { ServerResponse } from 'node:http';
-import type { Channel, ChatRequest } from '@dentaltrack/shared';
+import {
+  type Channel,
+  type ChatRequest,
+  MEDIA_TYPES,
+  type MediaAttachment,
+  type MediaType,
+} from '@dentaltrack/shared';
 import {
   AiUnavailableError,
   generateAssistantReply,
@@ -42,6 +48,11 @@ export interface InboundReply {
   conversationId: string;
   reply: string;
   transcript?: string;
+  /**
+   * Mídia a enviar junto da resposta (F6): saudação (1º contato) e/ou oferta
+   * escolhida pela tool `presentOffer`. O adapter do canal envia após o texto.
+   */
+  attachments: MediaAttachment[];
 }
 
 /**
@@ -139,6 +150,14 @@ export class ChatService {
       input.contactPhone,
     );
 
+    // 1a. Primeiro contato desta conversa? (sem nenhuma mensagem ainda) → manda
+    // a mídia de saudação (F6) junto da primeira resposta, se configurada.
+    const isFirstTurn =
+      (await this.prisma.message.count({ where: { conversationId } })) === 0;
+    const greetingMedia = isFirstTurn
+      ? await this.loadGreetingMedia(input.clinicId)
+      : null;
+
     // 1b. Captura automática do lead pelo contato do canal: o telefone está
     // sempre disponível e o nome de perfil (pushName) quando houver. Best-effort
     // — não bloqueia a resposta se o banco falhar. Backfill que não sobrescreve
@@ -169,19 +188,28 @@ export class ChatService {
       input.clinicId,
     );
 
-    // 3. Mesmo preparo do web (prompt + histórico + tools).
-    const { systemPrompt, history, tools } = await this.prepareTurn(
-      conversationId,
-      input.clinicId,
-    );
+    // 3. Mesmo preparo do web (prompt + histórico + tools + coletor de mídia).
+    const { systemPrompt, history, tools, attachments } =
+      await this.prepareTurn(conversationId, input.clinicId);
 
     // 4. Gera sem streaming (com fallback de provider). Erro → AiUnavailableError.
+    // As tools (ex.: `presentOffer`) preenchem `attachments` durante a geração.
     const result = await generateAssistantReply(history, systemPrompt, tools);
 
     // 5. Persiste a resposta + dispara o auto-tagging (igual ao onFinish do web).
     await this.persistAssistantReply(conversationId, input.clinicId, result);
 
-    return { conversationId, reply: result.text, transcript };
+    // 6. Mídia do turno: saudação (1º contato) primeiro, depois a(s) oferta(s).
+    const outbound = greetingMedia
+      ? [greetingMedia, ...attachments]
+      : attachments;
+
+    return {
+      conversationId,
+      reply: result.text,
+      transcript,
+      attachments: outbound,
+    };
   }
 
   /**
@@ -198,6 +226,8 @@ export class ChatService {
     systemPrompt: string;
     history: ReplyMessage[];
     tools: ReturnType<typeof buildChatTools>;
+    /** Coletor de mídia da oferta (F6), preenchido pela tool `presentOffer`. */
+    attachments: MediaAttachment[];
   }> {
     const [convo, known] = await Promise.all([
       this.conversations.getConversation(conversationId, clinicId),
@@ -210,14 +240,47 @@ export class ChatService {
         role: m.role as ReplyMessage['role'],
         content: m.content,
       }));
+    const attachments: MediaAttachment[] = [];
     const tools = buildChatTools({
       prisma: this.prisma,
       conversations: this.conversations,
       clinicId,
       conversationId,
       channel: known?.channel ?? 'web',
+      attachments,
     });
-    return { systemPrompt, history, tools };
+    return { systemPrompt, history, tools, attachments };
+  }
+
+  /**
+   * Mídia da saudação (F6): enviada no **primeiro** contato de uma conversa por
+   * canal (WhatsApp). Best-effort — falha vira "sem mídia". Retorna `null` se a
+   * clínica não configurou saudação com mídia.
+   */
+  private async loadGreetingMedia(
+    clinicId: string,
+  ): Promise<MediaAttachment | null> {
+    try {
+      const settings = await this.prisma.clinicSettings.findUnique({
+        where: { clinicId },
+        select: { greetingMediaUrl: true, greetingMediaType: true },
+      });
+      const url = settings?.greetingMediaUrl?.trim();
+      if (!url) return null;
+      const rawType = settings?.greetingMediaType ?? '';
+      const type: MediaType = (MEDIA_TYPES as readonly string[]).includes(
+        rawType,
+      )
+        ? (rawType as MediaType)
+        : 'image';
+      return { url, type };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Falha ao carregar mídia de saudação (clínica ${clinicId}): ${detail}`,
+      );
+      return null;
+    }
   }
 
   /**

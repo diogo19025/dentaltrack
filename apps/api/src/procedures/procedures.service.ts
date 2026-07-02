@@ -3,10 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type {
-  CreateProcedureInput,
-  ProcedureDto,
-  UpdateProcedureInput,
+import {
+  type CreateProcedureInput,
+  MEDIA_TYPES,
+  type MediaType,
+  type ProcedureDto,
+  type UpdateProcedureInput,
 } from '@dentaltrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -19,11 +21,21 @@ interface ProcedureRow {
   priceMaxCents: number | null;
   durationMinutes: number | null;
   active: boolean;
+  offerText: string | null;
+  offerMediaUrl: string | null;
+  offerMediaType: string | null;
   tags: { id: string }[];
 }
 
 /** Inclui as tags associadas (só o id) em toda leitura/escrita. */
 const WITH_TAGS = { tags: { select: { id: true } } } as const;
+
+/** Valida o tipo de mídia salvo (string livre no banco) → MediaType | null. */
+function normalizeMediaType(value: string | null): MediaType | null {
+  return value && (MEDIA_TYPES as readonly string[]).includes(value)
+    ? (value as MediaType)
+    : null;
+}
 
 /** Linha do banco → DTO público (sem clinicId/timestamps; tags como ids). */
 function toDto(row: ProcedureRow): ProcedureDto {
@@ -35,6 +47,9 @@ function toDto(row: ProcedureRow): ProcedureDto {
     priceMaxCents: row.priceMaxCents,
     durationMinutes: row.durationMinutes,
     active: row.active,
+    offerText: row.offerText,
+    offerMediaUrl: row.offerMediaUrl,
+    offerMediaType: normalizeMediaType(row.offerMediaType),
     tagIds: row.tags.map((t) => t.id),
   };
 }

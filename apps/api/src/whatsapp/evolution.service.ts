@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { MediaAttachment } from '@dentaltrack/shared';
 import type { Env } from '../config/env.validation';
 
 /** Limites do "digitando" (delay anti-ban) antes de enviar uma resposta. */
@@ -37,6 +38,36 @@ export class EvolutionService {
     await this.post(`/message/sendText/${instance}`, {
       number: to,
       text,
+      delay,
+    });
+  }
+
+  /**
+   * Envia uma mídia (F6) a partir de uma **URL pública**: imagem, vídeo,
+   * documento (catálogo) ou áudio. `to` é telefone ou JID (igual ao `sendText`).
+   * Áudio usa o endpoint dedicado `sendWhatsAppAudio` (vira mensagem de voz/PTT);
+   * o restante usa `sendMedia` com o `mediatype` correspondente. Aplica o mesmo
+   * delay "digitando" (higiene anti-ban, WA-4).
+   */
+  async sendMedia(
+    instance: string,
+    to: string,
+    attachment: MediaAttachment,
+  ): Promise<void> {
+    const delay = this.typingDelay(attachment.caption ?? '');
+    if (attachment.type === 'audio') {
+      await this.post(`/message/sendWhatsAppAudio/${instance}`, {
+        number: to,
+        audio: attachment.url,
+        delay,
+      });
+      return;
+    }
+    await this.post(`/message/sendMedia/${instance}`, {
+      number: to,
+      mediatype: attachment.type,
+      media: attachment.url,
+      ...(attachment.caption ? { caption: attachment.caption } : {}),
       delay,
     });
   }

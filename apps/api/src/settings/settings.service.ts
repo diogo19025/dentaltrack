@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   type ClinicSettingsDto,
   DEFAULT_AVAILABILITY,
+  MEDIA_TYPES,
+  type MediaType,
   TONES,
   type Tone,
   type UpdateSettingsInput,
@@ -82,9 +84,13 @@ export class SettingsService {
       assistantName: settings?.assistantName ?? '',
       tone: TONES.includes(tone as Tone) ? (tone as Tone) : DEFAULT_TONE,
       greeting: settings?.greeting ?? '',
+      greetingMediaUrl: settings?.greetingMediaUrl ?? '',
+      greetingMediaType: normalizeMediaType(settings?.greetingMediaType),
       instructions: settings?.instructions ?? '',
       offerEnabled: settings?.offerEnabled ?? false,
       offerText: settings?.offerText ?? '',
+      offerMediaUrl: settings?.offerMediaUrl ?? '',
+      offerMediaType: normalizeMediaType(settings?.offerMediaType),
       offerStartsOn: settings?.offerStartsOn ?? '',
       offerEndsOn: settings?.offerEndsOn ?? '',
       availability: this.normalizeAvailability(settings?.availability),
@@ -111,4 +117,13 @@ export class SettingsService {
         }))
       : DEFAULT_AVAILABILITY;
   }
+}
+
+/** Valida o tipo de mídia salvo (string livre no banco) → MediaType | null. */
+function normalizeMediaType(
+  value: string | null | undefined,
+): MediaType | null {
+  return value && (MEDIA_TYPES as readonly string[]).includes(value)
+    ? (value as MediaType)
+    : null;
 }
