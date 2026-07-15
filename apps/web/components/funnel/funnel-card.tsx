@@ -28,11 +28,13 @@ export const CARD_DRAG_TYPE = "application/x-dentaltrack-card";
 export function FunnelCard({
   card,
   stages,
+  onOpen,
   onMove,
   onRemove,
 }: {
   card: PipelineCardDto;
   stages: PipelineStageDto[];
+  onOpen: () => void;
   onMove: (stageId: string) => void;
   onRemove: () => void;
 }) {
@@ -48,7 +50,17 @@ export function FunnelCard({
     <div
       draggable
       onDragStart={onDragStart}
-      className="lift cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm active:cursor-grabbing"
+      role="button"
+      tabIndex={0}
+      aria-haspopup="dialog"
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="lift cursor-grab rounded-lg border border-border bg-card p-3 shadow-sm outline-none transition-colors hover:border-primary/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 active:cursor-grabbing"
     >
       <div className="flex items-center gap-2.5">
         <Avatar className="size-8">
@@ -66,7 +78,12 @@ export function FunnelCard({
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label={`Ações de ${title}`}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Ações de ${title}`}
+              onClick={(e) => e.stopPropagation()}
+            >
               <MoreHorizontal className="size-4" />
             </Button>
           </DropdownMenuTrigger>
