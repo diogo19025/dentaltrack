@@ -34,6 +34,8 @@ model Clinic {
   appointments     Appointment[]
   conversationTags ConversationTag[]
   dailyMetrics     DailyMetric[]
+  pipelineStages   PipelineStage[]
+  pipelineCards    PipelineCard[]
 
   @@map("clinic")
 }
@@ -158,6 +160,7 @@ model Conversation {
   messages         Message[]
   appointments     Appointment[]
   conversationTags ConversationTag[]
+  pipelineCard     PipelineCard?
 
   @@index([clinicId])
   @@index([clinicId, status])
@@ -199,6 +202,7 @@ model Lead {
   clinic        Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   appointments  Appointment[]
+  pipelineCards PipelineCard[]
 
   @@index([clinicId])
   @@map("lead")
@@ -272,6 +276,60 @@ model DailyMetric {
   @@map("daily_metric")
 }
 
+/// Coluna do Funil de atendimento (F7), por clínica. As 5 colunas padrão são
+/// provisionadas automaticamente e carregam `systemStage` — a "semântica" que
+/// o detector automático reconhece (só elas recebem movimento automático);
+/// colunas criadas pelo dono (`systemStage` NULL) são manuais. Colunas padrão
+/// podem ser renomeadas, mas não excluídas. `position` ordena o board e define
+/// a regra "auto só avança".
+model PipelineStage {
+  id          String       @id @default(uuid()) @db.Uuid
+  clinicId    String       @map("clinic_id") @db.Uuid
+  name        String
+  position    Int
+  systemStage FunnelStage? @map("system_stage")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  clinic Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  cards  PipelineCard[]
+
+  @@unique([clinicId, systemStage])
+  @@unique([clinicId, name])
+  @@index([clinicId, position])
+  @@map("pipeline_stage")
+}
+
+/// Card do Funil de atendimento (F7 · kanban). Um contato posicionado numa
+/// coluna do pipeline: criado automaticamente pelas conversas do bot
+/// (`source=auto`, 1 card por conversa) ou à mão pelo dono (`source=manual`,
+/// vinculado a um Lead sem conversa). `stageSource` registra quem fez o último
+/// movimento — o detector automático (`ai/stage-detection.ts`) só avança um
+/// card, nunca regride, então o posicionamento manual do dono é respeitado.
+model PipelineCard {
+  id             String         @id @default(uuid()) @db.Uuid
+  clinicId       String         @map("clinic_id") @db.Uuid
+  conversationId String?        @unique @map("conversation_id") @db.Uuid
+  leadId         String?        @map("lead_id") @db.Uuid
+  stageId        String         @map("stage_id") @db.Uuid
+  source         PipelineSource @default(auto)
+  stageSource    PipelineSource @default(auto) @map("stage_source")
+  note           String?
+  stageUpdatedAt DateTime       @default(now()) @map("stage_updated_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  stage        PipelineStage @relation(fields: [stageId], references: [id])
+
+  @@index([clinicId, stageId])
+  @@index([clinicId])
+  @@index([leadId])
+  @@map("pipeline_card")
+}
+
 enum Role {
   owner
   staff
@@ -303,6 +361,25 @@ enum MessageRole {
   system
 
   @@map("message_role")
+}
+
+/// Estágio do Funil de atendimento (espelha FUNNEL_STAGES em @dentaltrack/shared).
+enum FunnelStage {
+  novo_contato
+  interessado
+  quero_agendar
+  escolha_data
+  agendado
+
+  @@map("funnel_stage")
+}
+
+/// Origem de um card/movimento do funil (espelha PIPELINE_SOURCES no shared).
+enum PipelineSource {
+  auto
+  manual
+
+  @@map("pipeline_source")
 }
 
 /// Paleta fixa de cor de tag (espelha TAG_COLORS em @dentaltrack/shared).

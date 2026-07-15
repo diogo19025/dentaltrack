@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Filter,
   LayoutDashboard,
   LogOut,
   MessageCircle,
@@ -25,6 +26,7 @@ const NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/funil", label: "Funil", icon: Filter },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 
