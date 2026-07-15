@@ -17,6 +17,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLeads } from "@/hooks/use-leads";
+import { useSettings } from "@/hooks/use-settings";
+import { brand } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -36,7 +38,7 @@ function isActive(pathname: string, href: string) {
 
 export function Sidebar({
   userEmail,
-  clinicName = "Painel da clínica",
+  clinicName,
 }: {
   userEmail: string;
   clinicName?: string;
@@ -44,7 +46,10 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const { data: leadsData } = useLeads();
+  const { data: settings } = useSettings();
   const leadsBadge = leadsData?.summary.total || 0;
+  // Marca do shell = nome da clínica (multi-tenant); fallback: marca da plataforma.
+  const brandName = clinicName?.trim() || settings?.clinicName?.trim() || brand.name;
 
   async function logout() {
     const supabase = createClient();
@@ -63,10 +68,10 @@ export function Sidebar({
       <div className="px-5 pb-[18px] pt-5">
         <Link
           href="/"
-          aria-label="DentalTrack — ir para o Dashboard"
-          className="inline-flex rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label={`${brandName} — ir para o Dashboard`}
+          className="inline-flex max-w-full rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          <Logo mark={26} font={18} />
+          <Logo name={brandName} mark={26} font={18} />
         </Link>
       </div>
 
@@ -150,7 +155,9 @@ export function Sidebar({
           </Avatar>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[13.5px] font-semibold">{userEmail}</div>
-            <div className="truncate text-xs text-muted-foreground">{clinicName}</div>
+            <div className="truncate text-xs text-muted-foreground">
+              {settings?.clinicName?.trim() || clinicName || "Painel"}
+            </div>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>

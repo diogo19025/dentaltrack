@@ -1,41 +1,51 @@
-import type { CSSProperties, SVGProps } from "react";
+import type { CSSProperties } from "react";
+import { brand, brandInitials } from "@/lib/brand";
 
-type ToothMarkProps = SVGProps<SVGSVGElement> & {
+type BrandMarkProps = {
+  /** Nome do qual derivar as iniciais (default: marca da plataforma). */
+  name?: string;
+  /** Tamanho de referência do glifo (px) — combina com o quadro que o envolve. */
   size?: number;
-  strokeWidth?: number;
+  style?: CSSProperties;
+  className?: string;
 };
 
-/** Símbolo de dente (molar estilizado) — 1:1 com icons.jsx do handoff. */
-export function ToothMark({ size = 22, strokeWidth = 1.8, ...props }: ToothMarkProps) {
+/**
+ * Símbolo da marca — monograma neutro (whitelabel). Renderiza as iniciais do
+ * nome, pensado para ficar dentro do quadro teal do design (ver `Logo` e o
+ * painel de marca do login). Sem qualquer referência a um segmento específico.
+ */
+export function BrandMark({ name = brand.name, size = 22, style, className }: BrandMarkProps) {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={strokeWidth}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
+    <span
+      aria-hidden="true"
+      className={className}
+      style={{
+        fontSize: Math.round(size * 0.62),
+        fontWeight: 700,
+        letterSpacing: "-0.03em",
+        lineHeight: 1,
+        ...style,
+      }}
     >
-      <path d="M12 5.5c-1.7-1.6-3.7-2.2-5.2-1.3C5 5.3 4.4 7.6 4.9 10.2c.3 1.5.4 2.4.5 3.8.2 2.3.4 4 .9 5.4.3.9.8 1.6 1.4 1.6.8 0 1-1 1.3-2.5.3-1.4.6-2.6 1.6-2.6h.8c1 0 1.3 1.2 1.6 2.6.3 1.5.5 2.5 1.3 2.5.6 0 1.1-.7 1.4-1.6.5-1.4.7-3.1.9-5.4.1-1.4.2-2.3.5-3.8.5-2.6-.1-4.9-1.9-6C15.7 3.3 13.7 3.9 12 5.5Z" />
-    </svg>
+      {brandInitials(name)}
+    </span>
   );
 }
 
 type LogoProps = {
+  /** Nome exibido no wordmark (default: marca da plataforma; no shell, a clínica). */
+  name?: string;
   compact?: boolean;
   mark?: number;
   font?: number;
   style?: CSSProperties;
 };
 
-/** Logo completo (marca teal + wordmark "DentalTrack"). */
-export function Logo({ compact = false, mark = 30, font = 18, style }: LogoProps) {
+/** Logo completo (marca teal + wordmark). */
+export function Logo({ name = brand.name, compact = false, mark = 30, font = 18, style }: LogoProps) {
   return (
-    <div className="flex items-center gap-[11px]" style={style}>
+    <div className="flex min-w-0 items-center gap-[11px]" style={style}>
       <span
         className="flex shrink-0 items-center justify-center text-white"
         style={{
@@ -46,14 +56,14 @@ export function Logo({ compact = false, mark = 30, font = 18, style }: LogoProps
           boxShadow: "var(--shadow-sm)",
         }}
       >
-        <ToothMark size={mark} strokeWidth={1.9} style={{ fill: "rgba(255,255,255,0.08)" }} />
+        <BrandMark name={name} size={mark} />
       </span>
       {!compact && (
         <span
-          className="font-semibold tracking-[-0.02em] text-foreground"
+          className="min-w-0 truncate font-semibold tracking-[-0.02em] text-foreground"
           style={{ fontSize: font }}
         >
-          Dental<span style={{ color: "var(--primary)" }}>Track</span>
+          {name}
         </span>
       )}
     </div>

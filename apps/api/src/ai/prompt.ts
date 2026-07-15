@@ -168,7 +168,7 @@ export function buildSystemPrompt({
   // Identidade da clínica.
   const specialty = settings?.specialty?.trim();
   lines.push(
-    `Você é o assistente virtual de atendimento da clínica odontológica "${clinic.name}"` +
+    `Você é o assistente virtual de atendimento da clínica "${clinic.name}"` +
       (specialty ? `, especializada em ${specialty}.` : '.'),
   );
   if (settings?.description?.trim()) {
@@ -248,7 +248,7 @@ export function buildSystemPrompt({
   lines.push('');
   lines.push('Diretrizes de atendimento:');
   lines.push(
-    '- Responda sempre em português do Brasil, como um atendente de clínica odontológica: cordial, claro e objetivo.',
+    '- Responda sempre em português do Brasil, como um atendente de clínica: cordial, claro e objetivo.',
   );
   lines.push(
     '- Quando o paciente demonstrar interesse em um procedimento ou em agendar, conduza-o gentilmente a deixar o nome e o telefone para contato — pedindo apenas o que ainda não for conhecido.',

@@ -27,7 +27,7 @@ async function bootstrap(): Promise<void> {
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port);
-  new Logger('Bootstrap').log(`API DentalTrack em http://localhost:${port}`);
+  new Logger('Bootstrap').log(`API em http://localhost:${port}`);
 }
 
 void bootstrap();

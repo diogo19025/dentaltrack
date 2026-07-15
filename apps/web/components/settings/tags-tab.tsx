@@ -65,7 +65,7 @@ export function TagsTab() {
         <EmptyState
           icon={<TagIcon className="size-5" />}
           title="Nenhuma tag cadastrada"
-          desc="Crie tags de interesse (ex.: implante, clareamento) com palavras-chave para classificar as conversas."
+          desc="Crie tags de interesse (ex.: orçamento, agendamento) com palavras-chave para classificar as conversas."
         />
       ) : (
         <table className="w-full text-sm">
@@ -183,7 +183,7 @@ function TagDialog({ tag, onClose }: { tag: TagDto | null; onClose: () => void }
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="tag-name" className="mb-2 text-[13px]">Nome</Label>
-              <Input id="tag-name" {...register("name", { required: true })} placeholder="Ex.: implante" autoFocus />
+              <Input id="tag-name" {...register("name", { required: true })} placeholder="Ex.: orçamento" autoFocus />
             </div>
             <div>
               <Label htmlFor="tag-category" className="mb-2 text-[13px]">Categoria</Label>
@@ -218,7 +218,7 @@ function TagDialog({ tag, onClose }: { tag: TagDto | null; onClose: () => void }
 
           <div>
             <Label htmlFor="tag-keywords" className="mb-2 text-[13px]">Palavras-chave</Label>
-            <Input id="tag-keywords" {...register("keywords")} placeholder="implante, dente perdido, perdi um dente" />
+            <Input id="tag-keywords" {...register("keywords")} placeholder="orçamento, valor, preço, quanto custa" />
             <p className="mt-1.5 text-[12px] text-muted-foreground">Separe por vírgula.</p>
           </div>
 

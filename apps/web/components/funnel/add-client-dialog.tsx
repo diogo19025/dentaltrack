@@ -125,7 +125,7 @@ export function AddClientDialog({
               rows={3}
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Ex.: Ligou pedindo orçamento de implante."
+              placeholder="Ex.: Ligou pedindo um orçamento."
             />
           </div>
           {create.isError && (
