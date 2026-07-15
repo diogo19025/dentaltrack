@@ -21,6 +21,7 @@ import {
   streamAssistantReply,
 } from '../ai/generate-reply';
 import { buildSystemPrompt, type KnownContact } from '../ai/prompt';
+import { detectFunnelStage } from '../ai/stage-detection';
 import { tagConversation } from '../ai/tagging';
 import { buildChatTools } from '../ai/tools';
 import { transcribeAudio } from '../ai/transcribe';
@@ -367,6 +368,12 @@ export class ChatService {
       // Auto-tagging (BE-3.1) — best-effort, após a resposta persistida (o
       // classificador lê o histórico do banco).
       void tagConversation({
+        prisma: this.prisma,
+        clinicId,
+        conversationId,
+      });
+      // Detecção de estágio do funil (F7) — best-effort, mesmo padrão.
+      void detectFunnelStage({
         prisma: this.prisma,
         clinicId,
         conversationId,

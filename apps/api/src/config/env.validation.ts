@@ -42,6 +42,8 @@ export const envSchema = z.object({
   AI_TAG_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).optional(),
   // Horas de inatividade até marcar a conversa como abandonada (cron BE-3.4).
   ABANDON_AFTER_HOURS: z.coerce.number().int().positive().optional(),
+  // Confiança mínima para o detector do funil mover um card de estágio (F7).
+  AI_STAGE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).optional(),
 
   // ─── WhatsApp (WA) ───
   // Janela (horas) em que uma conversa de WhatsApp ainda `em_andamento` é reusada
