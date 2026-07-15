@@ -919,3 +919,33 @@ Duas frentes pedidas pelo produto: **(1)** o dashboard ganhou a seção **"Aband
 ### Pendências / próximos passos
 - **Validação ao vivo:** rodar `db:seed:demo` e conferir a seção no dashboard; no WhatsApp, mandar mensagem de um número que já agendou e verificar que o bot cumprimenta pelo nome sem pedir os dados.
 - A `recurrenceRate` é all-time por desenho (estabilidade com pouco volume); se o produto quiser por período, basta trocar o denominador.
+
+---
+
+# Update — Funil de atendimento (kanban do pipeline) — F7 (2026-07-14)
+
+## Visão geral
+
+O CRM ganhou o **Funil de atendimento** (`/funil`): um board kanban onde cada contato é um card posicionado pelo **estágio da conversa** com o chatbot. As **colunas são registros por clínica**: as 5 padrão — `Novo contato → Interessado → Quero agendar → Escolha de data → Agendado` — nascem automaticamente e carregam a semântica que o detector reconhece; o dono pode **criar/renomear/excluir colunas** (limite de 10; as padrão só renomeiam). Os cards **andam sozinhos**: um detector automático (keywords + IA, mesmo padrão do auto-tagging) reavalia o estágio a cada turno da conversa (web e WhatsApp, motor channel-agnostic). O dono também **move qualquer card à mão** (drag-and-drop ou menu) e **adiciona clientes manualmente** (quem chegou por telefone/indicação — vira Lead `source=manual`).
+
+## O que foi feito
+
+### Schema & migration (`20260714120000_f7_pipeline`)
+Enums `FunnelStage` (semântica dos 5 estágios do sistema) e `PipelineSource` (`auto`/`manual`) + dois modelos: **`PipelineStage`** (`pipeline_stage` — coluna por clínica: `name`, `position`, `systemStage?`; unique por `(clinicId, systemStage)` e `(clinicId, name)`; provisionamento idempotente e race-safe em `pipeline/pipeline-stages.ts`) e **`PipelineCard`** (`pipeline_card`): 1 card por conversa (`conversationId` unique, cascade) ou manual (só `leadId`), com `stageId` (FK), `source` (origem do card), `stageSource` (quem fez o **último movimento**), `note` e `stageUpdatedAt`. Multi-tenant (`clinic_id` + índices). **Migration criada offline — aplicar ao vivo pendente** (`db:deploy`).
+
+### BE — detecção de estágio (`ai/stage-detection.ts`, hook no ChatService)
+Mesmo mecanismo do auto-tagging: **pré-filtro por keywords PT-BR** por estágio (frases do paciente E do bot — "qual seria a melhor data?" também sinaliza) → **`generateObject`** restrito aos candidatos → move acima de `AI_STAGE_MIN_CONFIDENCE` (env, default 0.6). Regras: todo turno **garante o card** (nasce na coluna `novo_contato` da clínica, mantém vínculo com o lead); conversa `agendada` vai **direto** a `agendado` sem gastar IA; e o detector **só avança** um card (comparação por `position` da coluna) — nunca regride — então o posicionamento manual do dono é respeitado, inclusive numa **coluna personalizada** adiante (só colunas do sistema ADIANTE da atual entram no pré-filtro; sem candidato, não chama a IA). Fire-and-forget no `persistAssistantReply` (web + WhatsApp), best-effort (nunca lança).
+
+### BE — módulo `pipeline/` (REST sob TenantGuard)
+`GET /pipeline` (colunas por posição + cards com contato derivado do lead/conversa) · `POST /pipeline/cards` (cliente manual → cria Lead `source=manual` + card `stageSource=manual`, na coluna escolhida ou na 1ª) · `PATCH /pipeline/cards/:id` (movimento manual, **qualquer direção/coluna**) · `DELETE /pipeline/cards/:id` (tira do board sem apagar lead/conversa) · **colunas:** `POST /pipeline/stages` (personalizada no fim do board; limite `MAX_PIPELINE_STAGES=10` → 400; nome duplicado → 409), `PATCH /pipeline/stages/:id` (renomear — vale p/ as do sistema) e `DELETE /pipeline/stages/:id` (só personalizadas — as do sistema retornam 400; os cards da coluna excluída voltam p/ a 1ª coluna, em transação). 404 cross-tenant em mutações. Contratos em `packages/shared/src/pipeline.ts` (`FUNNEL_STAGES`, `FUNNEL_STAGE_DEFAULT_NAMES`, `MAX_PIPELINE_STAGES`, DTOs Zod).
+
+### FE — página `/funil` (fora do handoff, seguindo o design system)
+Board com colunas dinâmicas do servidor (`lib/funnel.ts`: tints fixos p/ as colunas do sistema + ciclo da paleta p/ as personalizadas — precedente da temperatura de leads), cards com avatar/canal/recência/nota e badge "Posicionado manualmente" (`stageSource=manual`). **Drag-and-drop nativo** + menu **"Mover para"** por card (caminho acessível por teclado; as duas vias chamam o mesmo PATCH). **Gestão de colunas na própria página**: botão "Nova coluna" (desabilita no limite) e menu por coluna (Renomear sempre; Excluir só nas personalizadas) via `StageNameDialog` (criar/renomear compartilhado, valor derivado no render sem setState-em-efeito). Dialog **"Adicionar cliente"** (nome/telefone/coluna/observação). `hooks/use-pipeline.ts`: TanStack Query com **polling 15s** (os cards refletem o detector quase em tempo real), **update otimista com rollback** no movimento e mutations de coluna invalidando o board. Item "Funil" na sidebar.
+
+### Qualidade / validação
+`typecheck` + `lint` + `turbo build` (3/3) verdes. **195 testes (API)** — novos: `stage-detection.spec.ts` (9: upsert do card na coluna de entrada, atalho agendada, avanço confirmado pela IA, só-avança/respeita manual, coluna personalizada adiante não regride, limiar, estágio inventado, sinal do assistente, never-throws, escopo tenant) e `pipeline.service.spec.ts` (12: board+provisionamento das colunas no 1º acesso, contato derivado, criação manual com coluna default/404, movimento manual regressivo, 404 cross-tenant, criar coluna no fim/limite 400/duplicada 409, renomear incl. sistema, excluir sistema 400, excluir personalizada movendo cards, remoção de card). **88 testes (web)** — novos: `use-pipeline.test.tsx` (board com colunas, otimismo, rollback, criar coluna) e `funnel-card.test.tsx` (5: contato/canal, manual+nota, badge, menu mover c/ coluna personalizada, remover).
+
+### Pendências / próximos passos
+- **Aplicar a migration ao vivo**: `pnpm --filter @dentaltrack/api db:deploy` no Supabase.
+- **Backfill**: conversas antigas só entram no board quando tiverem um novo turno (o card nasce no turno). Se quiser popular com o histórico, um script one-shot resolve.
+- **Reordenar colunas** (drag do cabeçalho / setas) e **keywords próprias** por coluna personalizada (para o detector movê-las também) são extensões naturais — o schema já tem `position` e o detector já compara por posição.
