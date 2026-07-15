@@ -33,11 +33,24 @@ function card(overrides: Partial<PipelineCardDto> = {}): PipelineCardDto {
 
 describe("FunnelCard", () => {
   it("mostra nome, telefone e canal do contato", () => {
-    render(<FunnelCard card={card()} stages={STAGES} onMove={vi.fn()} onRemove={vi.fn()} />);
+    render(<FunnelCard card={card()} stages={STAGES} onOpen={vi.fn()} onMove={vi.fn()} onRemove={vi.fn()} />);
 
     expect(screen.getByText("João Silva")).toBeInTheDocument();
     expect(screen.getByText("11 99999-0000")).toBeInTheDocument();
     expect(screen.getByText(/WhatsApp/)).toBeInTheDocument();
+  });
+
+  it("clicar no card abre o detalhe (onOpen); clicar no menu não", async () => {
+    const user = userEvent.setup();
+    const onOpen = vi.fn();
+    render(<FunnelCard card={card()} stages={STAGES} onOpen={onOpen} onMove={vi.fn()} onRemove={vi.fn()} />);
+
+    await user.click(screen.getByText("João Silva"));
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    // Abrir o menu de ações não deve disparar o detalhe do card.
+    await user.click(screen.getByRole("button", { name: /Ações de João Silva/ }));
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
   it("card manual sem conversa mostra a origem Manual e a nota", () => {
@@ -45,6 +58,7 @@ describe("FunnelCard", () => {
       <FunnelCard
         card={card({ channel: null, source: "manual", note: "Ligou pedindo orçamento" })}
         stages={STAGES}
+        onOpen={vi.fn()}
         onMove={vi.fn()}
         onRemove={vi.fn()}
       />,
@@ -56,7 +70,7 @@ describe("FunnelCard", () => {
 
   it('badge "Posicionado manualmente" só aparece quando o último movimento foi do dono', () => {
     const { rerender } = render(
-      <FunnelCard card={card()} stages={STAGES} onMove={vi.fn()} onRemove={vi.fn()} />,
+      <FunnelCard card={card()} stages={STAGES} onOpen={vi.fn()} onMove={vi.fn()} onRemove={vi.fn()} />,
     );
     expect(screen.queryByText("Posicionado manualmente")).not.toBeInTheDocument();
 
@@ -64,6 +78,7 @@ describe("FunnelCard", () => {
       <FunnelCard
         card={card({ stageSource: "manual" })}
         stages={STAGES}
+        onOpen={vi.fn()}
         onMove={vi.fn()}
         onRemove={vi.fn()}
       />,
@@ -74,7 +89,7 @@ describe("FunnelCard", () => {
   it('menu "Mover para" lista as demais colunas (inclusive personalizadas) e chama onMove', async () => {
     const user = userEvent.setup();
     const onMove = vi.fn();
-    render(<FunnelCard card={card()} stages={STAGES} onMove={onMove} onRemove={vi.fn()} />);
+    render(<FunnelCard card={card()} stages={STAGES} onOpen={vi.fn()} onMove={onMove} onRemove={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: /Ações de João Silva/ }));
     // A coluna atual (Quero agendar) fica de fora do menu.
@@ -88,7 +103,7 @@ describe("FunnelCard", () => {
   it('menu tem "Remover do funil" chamando onRemove', async () => {
     const user = userEvent.setup();
     const onRemove = vi.fn();
-    render(<FunnelCard card={card()} stages={STAGES} onMove={vi.fn()} onRemove={onRemove} />);
+    render(<FunnelCard card={card()} stages={STAGES} onOpen={vi.fn()} onMove={vi.fn()} onRemove={onRemove} />);
 
     await user.click(screen.getByRole("button", { name: /Ações de João Silva/ }));
     await user.click(screen.getByRole("menuitem", { name: /Remover do funil/ }));

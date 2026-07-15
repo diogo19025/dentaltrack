@@ -4,6 +4,8 @@ import { useMemo, useState, type DragEvent } from "react";
 import type { PipelineCardDto, PipelineStageDto } from "@dentaltrack/shared";
 import { MAX_PIPELINE_STAGES } from "@dentaltrack/shared";
 import { MoreHorizontal, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
+import { ConversationDetailDialog } from "@/components/dashboard/conversation-detail-dialog";
+import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
 import { AddClientDialog } from "@/components/funnel/add-client-dialog";
 import { CARD_DRAG_TYPE, FunnelCard } from "@/components/funnel/funnel-card";
 import { StageNameDialog } from "@/components/funnel/stage-name-dialog";
@@ -46,6 +48,15 @@ export default function FunnelPage() {
   const [newStageOpen, setNewStageOpen] = useState(false);
   const [renaming, setRenaming] = useState<PipelineStageDto | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
+  // Detalhe do contato: card com lead → painel do lead (lembrete, WhatsApp,
+  // conversas, agendamentos); card ainda sem lead → detalhe da conversa.
+  const [detailLeadId, setDetailLeadId] = useState<string | null>(null);
+  const [detailConversationId, setDetailConversationId] = useState<string | null>(null);
+
+  function openCard(card: PipelineCardDto) {
+    if (card.leadId) setDetailLeadId(card.leadId);
+    else if (card.conversationId) setDetailConversationId(card.conversationId);
+  }
 
   const stages = useMemo(
     () => [...(data?.stages ?? [])].sort((a, b) => a.position - b.position),
@@ -166,6 +177,7 @@ export default function FunnelPage() {
                         key={card.id}
                         card={card}
                         stages={stages}
+                        onOpen={() => openCard(card)}
                         onMove={(stageId) => move.mutate({ id: card.id, stageId })}
                         onRemove={() => removeCard.mutate(card.id)}
                       />
@@ -177,6 +189,19 @@ export default function FunnelPage() {
           })}
         </div>
       )}
+
+      <LeadDetailDialog
+        leadId={detailLeadId}
+        onOpenChange={(open) => {
+          if (!open) setDetailLeadId(null);
+        }}
+      />
+      <ConversationDetailDialog
+        conversationId={detailConversationId}
+        onOpenChange={(open) => {
+          if (!open) setDetailConversationId(null);
+        }}
+      />
 
       <AddClientDialog open={addOpen} stages={stages} onOpenChange={setAddOpen} />
 
