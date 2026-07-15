@@ -9,6 +9,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { LeadsModule } from './leads/leads.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { PipelineModule } from './pipeline/pipeline.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
 import { RemindersModule } from './reminders/reminders.module';
@@ -30,6 +31,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     TagsModule,
     MetricsModule,
     LeadsModule,
+    PipelineModule,
     JobsModule,
     WhatsappModule,
     RemindersModule,
