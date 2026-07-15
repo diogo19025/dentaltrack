@@ -1,5 +1,10 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
+import {
+  FUNNEL_STAGES,
+  FUNNEL_STAGE_DEFAULT_NAMES,
+  type FunnelStage,
+} from "@dentaltrack/shared";
 import { PrismaClient } from "../generated/prisma/client";
 
 /**
@@ -94,6 +99,12 @@ async function main(): Promise<void> {
     }
 
     // Limpa dados de conversa anteriores (mantém catálogo/tags/settings).
+    // Cards do funil primeiro (FK RESTRICT p/ coluna); colunas personalizadas
+    // depois. As 5 do sistema são reaproveitadas (upsert por systemStage).
+    await prisma.pipelineCard.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
+    await prisma.pipelineStage.deleteMany({
+      where: { clinicId: DEMO_CLINIC_ID, systemStage: null },
+    });
     await prisma.conversationTag.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
     await prisma.appointment.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
     await prisma.message.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
@@ -108,6 +119,14 @@ async function main(): Promise<void> {
     // Leads que já agendaram — candidatos a voltar para agendar de novo
     // (alimenta a seção "Abandono × Recorrência" do dashboard).
     const scheduledLeadIds: string[] = [];
+    // Dados por conversa para povoar o funil (F7) depois do loop.
+    const convoRows: {
+      conversationId: string;
+      leadId: string;
+      status: string;
+      engaged: boolean;
+      lastAt: Date;
+    }[] = [];
 
     for (let i = 0; i < TOTAL; i++) {
       const r = Math.random();
@@ -229,14 +248,125 @@ async function main(): Promise<void> {
       }
       if (engages) engaged += 1;
       if (status === "abandonada") abandoned += 1;
+
+      convoRows.push({
+        conversationId: convo.id,
+        leadId: lead.id,
+        status,
+        engaged: engages,
+        lastAt,
+      });
     }
+
+    const pipeline = await seedPipeline(prisma, convoRows);
 
     console.log(
       `✔ Demo populada: ${TOTAL} conversas (engajadas≈${engaged}, agendadas=${scheduled}, recorrentes=${returns}, abandonadas=${abandoned}) ao longo de ~50 dias.`,
     );
+    console.log(
+      `✔ Funil populado: ${pipeline.cards} cards em ${pipeline.stages} colunas (${pipeline.manual} clientes manuais).`,
+    );
   } finally {
     await prisma.$disconnect();
   }
+}
+
+/** Clientes manuais de exemplo (chegaram fora do chatbot) para o board. */
+const MANUAL_CLIENTS: { name: string; stage: FunnelStage; note: string }[] = [
+  { name: "Roberta Amaral", stage: "novo_contato", note: "Indicação da Dra. Helena — quer avaliar clareamento." },
+  { name: "Marcos Vinícius", stage: "quero_agendar", note: "Ligou no balcão pedindo orçamento de implante." },
+  { name: "Sandra Yamada", stage: "escolha_data", note: "Pediu horário na parte da manhã, aguardando retorno." },
+];
+
+/**
+ * Povoa o Funil de atendimento (F7): garante as 5 colunas do sistema + uma
+ * coluna personalizada de exemplo, distribui um card por conversa na coluna
+ * coerente com o progresso dela e adiciona alguns clientes manuais. Idempotente
+ * junto do seed demo (os cards/colunas personalizadas foram limpos no início).
+ */
+async function seedPipeline(
+  prisma: PrismaClient,
+  convos: { conversationId: string; leadId: string; status: string; engaged: boolean; lastAt: Date }[],
+): Promise<{ stages: number; cards: number; manual: number }> {
+  // 1. Colunas do sistema (upsert por systemStage) na ordem do funil.
+  const stageIdBySystem = new Map<FunnelStage, string>();
+  for (let i = 0; i < FUNNEL_STAGES.length; i++) {
+    const systemStage = FUNNEL_STAGES[i];
+    const stage = await prisma.pipelineStage.upsert({
+      where: { clinicId_systemStage: { clinicId: DEMO_CLINIC_ID, systemStage } },
+      update: {},
+      create: {
+        clinicId: DEMO_CLINIC_ID,
+        name: FUNNEL_STAGE_DEFAULT_NAMES[systemStage],
+        position: i,
+        systemStage,
+      },
+      select: { id: true },
+    });
+    stageIdBySystem.set(systemStage, stage.id);
+  }
+
+  // 2. Coluna personalizada de exemplo (demonstra o CRUD de colunas).
+  const custom = await prisma.pipelineStage.create({
+    data: {
+      clinicId: DEMO_CLINIC_ID,
+      name: "Pós-atendimento",
+      position: FUNNEL_STAGES.length,
+    },
+    select: { id: true },
+  });
+
+  // 3. Um card por conversa, na coluna coerente com o progresso.
+  //    agendada → agendado · em andamento engajada → quero_agendar/escolha_data
+  //    · em andamento sem engajar → interessado · abandonada → início do funil.
+  const cardStage = (c: { status: string; engaged: boolean }): FunnelStage => {
+    if (c.status === "agendada") return "agendado";
+    if (c.status === "abandonada") return pick(["novo_contato", "interessado"]);
+    return c.engaged ? pick(["quero_agendar", "escolha_data"]) : "interessado";
+  };
+
+  for (const c of convos) {
+    await prisma.pipelineCard.create({
+      data: {
+        clinicId: DEMO_CLINIC_ID,
+        conversationId: c.conversationId,
+        leadId: c.leadId,
+        stageId: stageIdBySystem.get(cardStage(c))!,
+        source: "auto",
+        stageSource: "auto",
+        stageUpdatedAt: c.lastAt,
+        createdAt: c.lastAt,
+      },
+    });
+  }
+
+  // 4. Clientes manuais (criam Lead source=manual + card manual). O último vai
+  //    para a coluna personalizada, mostrando cards fora do fluxo automático.
+  for (let i = 0; i < MANUAL_CLIENTS.length; i++) {
+    const m = MANUAL_CLIENTS[i];
+    const lead = await prisma.lead.create({
+      data: { clinicId: DEMO_CLINIC_ID, name: m.name, phone: phone(), source: "manual" },
+      select: { id: true },
+    });
+    const stageId =
+      i === MANUAL_CLIENTS.length - 1 ? custom.id : stageIdBySystem.get(m.stage)!;
+    await prisma.pipelineCard.create({
+      data: {
+        clinicId: DEMO_CLINIC_ID,
+        leadId: lead.id,
+        stageId,
+        source: "manual",
+        stageSource: "manual",
+        note: m.note,
+      },
+    });
+  }
+
+  return {
+    stages: FUNNEL_STAGES.length + 1,
+    cards: convos.length + MANUAL_CLIENTS.length,
+    manual: MANUAL_CLIENTS.length,
+  };
 }
 
 main().catch((err) => {
