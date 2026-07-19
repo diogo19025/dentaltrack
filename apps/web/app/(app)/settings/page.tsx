@@ -57,10 +57,10 @@ const TONE_OPTIONS: { value: Tone; label: string }[] = [
 ];
 
 const SPECIALTIES = [
-  "Odontologia geral",
-  "Estética e harmonização",
-  "Implantodontia",
-  "Ortodontia",
+  "Atendimento geral",
+  "Vendas e agendamentos",
+  "Estética e bem-estar",
+  "Consultas e avaliações",
 ];
 
 const BLANK: ClinicSettingsDto = {
@@ -566,7 +566,7 @@ function BotPreview({
   const clinic = clinicName.trim() || "sua clínica";
   const greet =
     greeting.trim() ||
-    `Olá! Sou ${assistantName.trim() ? `a ${name}, assistente` : "o assistente"} da ${clinic}. Como posso ajudar com seu sorriso hoje?`;
+    `Olá! Sou ${assistantName.trim() ? `a ${name}, assistente` : "o assistente"} da ${clinic}. Como posso ajudar você hoje?`;
   const offer = offerText.trim();
   const toneLabel = TONE_OPTIONS.find((t) => t.value === tone)?.label.toLowerCase() ?? tone;
 

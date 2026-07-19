@@ -11,7 +11,7 @@ import {
   type TagColor,
   type TagDto,
 } from "@dentaltrack/shared";
-import { Pencil, Plus, Stethoscope, Trash2 } from "lucide-react";
+import { ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -108,9 +108,9 @@ export function ProceduresTab() {
         <div className="px-6 py-12 text-center text-sm text-muted-foreground">Carregando…</div>
       ) : procedures.length === 0 ? (
         <EmptyState
-          icon={<Stethoscope className="size-5" />}
+          icon={<ClipboardList className="size-5" />}
           title="Nenhum procedimento cadastrado"
-          desc="Adicione os tratamentos da clínica para o bot poder sugeri-los e informar valores."
+          desc="Adicione os serviços da clínica para o bot poder sugeri-los e informar valores."
         />
       ) : (
         <table className="w-full text-sm">
@@ -278,7 +278,7 @@ function ProcedureDialog({
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div>
             <Label htmlFor="proc-name" className="mb-2 text-[13px]">Nome</Label>
-            <Input id="proc-name" {...register("name", { required: true })} placeholder="Ex.: Implante dentário" autoFocus />
+            <Input id="proc-name" {...register("name", { required: true })} placeholder="Ex.: Consulta de avaliação" autoFocus />
           </div>
           <div>
             <Label htmlFor="proc-description" className="mb-2 text-[13px]">Descrição</Label>

@@ -232,7 +232,7 @@ export async function detectFunnelStage(
       maxRetries: 1,
       abortSignal: AbortSignal.timeout(TIMEOUT_MS),
       system: [
-        'Você classifica em que etapa do funil de agendamento está uma conversa entre um paciente e o assistente de uma clínica odontológica.',
+        'Você classifica em que etapa do funil de agendamento está uma conversa entre um paciente e o assistente de uma clínica.',
         'Escolha exatamente um estágio da lista permitida — o mais avançado que a conversa realmente atingiu — ou null se nenhum se aplicar.',
         'Atribua um confidence de 0 a 1. Não invente estágios fora da lista.',
       ].join(' '),

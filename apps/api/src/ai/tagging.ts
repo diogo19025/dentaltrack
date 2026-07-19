@@ -96,7 +96,7 @@ export async function tagConversation(
       maxRetries: 1,
       abortSignal: AbortSignal.timeout(TIMEOUT_MS),
       system: [
-        'Você classifica conversas de uma clínica odontológica pelo interesse demonstrado pelo paciente.',
+        'Você classifica conversas de uma clínica pelo interesse demonstrado pelo paciente.',
         'Escolha apenas tags da lista permitida que realmente reflitam o interesse da conversa.',
         'Atribua um confidence de 0 a 1 para cada tag escolhida. Não invente tags fora da lista.',
         'Se nada se aplicar, retorne uma lista vazia.',

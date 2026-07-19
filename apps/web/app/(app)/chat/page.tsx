@@ -51,8 +51,8 @@ const GREETING: UIMessage = {
 const QUICK = [
   "Quero agendar uma consulta",
   "Ver procedimentos",
-  "Saber sobre implante",
-  "Estou com dor",
+  "Saber valores",
+  "Tirar uma dúvida",
 ];
 
 /** Concatena o texto das partes de uma mensagem (UIMessage). */

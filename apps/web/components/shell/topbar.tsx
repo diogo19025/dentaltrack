@@ -5,23 +5,29 @@ import { Bell, ChevronRight, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useSettings } from "@/hooks/use-settings";
+import { brand } from "@/lib/brand";
 
 const TITLES: Record<string, string> = {
   "/": "Dashboard",
   "/chat": "Chat",
   "/leads": "Leads",
+  "/funil": "Funil",
   "/settings": "Configurações",
 };
 
-function titleFor(pathname: string) {
+function titleFor(pathname: string, fallback: string) {
   if (pathname === "/") return TITLES["/"];
   const key = Object.keys(TITLES).find((k) => k !== "/" && pathname.startsWith(k));
-  return key ? TITLES[key] : "DentalTrack";
+  return key ? TITLES[key] : fallback;
 }
 
 export function Topbar() {
   const pathname = usePathname();
-  const title = titleFor(pathname);
+  const { data: settings } = useSettings();
+  // Raiz do breadcrumb = nome da clínica (multi-tenant); fallback: marca da plataforma.
+  const brandName = settings?.clinicName?.trim() || brand.name;
+  const title = titleFor(pathname, brandName);
 
   return (
     <header
@@ -31,9 +37,9 @@ export function Topbar() {
         backdropFilter: "blur(8px)",
       }}
     >
-      <div className="flex items-center gap-2 text-[13.5px] text-muted-foreground">
-        <span>DentalTrack</span>
-        <ChevronRight className="size-[14px]" />
+      <div className="flex min-w-0 items-center gap-2 text-[13.5px] text-muted-foreground">
+        <span className="truncate">{brandName}</span>
+        <ChevronRight className="size-[14px] flex-none" />
         <span className="font-medium text-foreground">{title}</span>
       </div>
 

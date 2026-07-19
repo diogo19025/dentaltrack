@@ -3,6 +3,7 @@
 import { type ComponentProps, type FormEvent, type ReactNode, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Building2,
   Calendar,
   ChevronRight,
   Eye,
@@ -11,14 +12,14 @@ import {
   Lock,
   Mail,
   Sparkles,
-  Stethoscope,
   Tag,
   Users,
 } from "lucide-react";
 import { GoogleLogo } from "@/components/brand/google-logo";
-import { ToothMark } from "@/components/brand/logo";
+import { BrandMark } from "@/components/brand/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { brand } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -98,9 +99,9 @@ export default function LoginPage() {
 
         <div className="relative flex items-center gap-[11px]">
           <span className="flex size-10 items-center justify-center rounded-[11px] bg-white/[0.14] backdrop-blur-[2px]">
-            <ToothMark size={24} strokeWidth={1.9} />
+            <BrandMark size={24} />
           </span>
-          <span className="text-[19px] font-semibold tracking-[-0.02em]">DentalTrack</span>
+          <span className="text-[19px] font-semibold tracking-[-0.02em]">{brand.name}</span>
         </div>
 
         <div className="relative max-w-[420px]">
@@ -132,7 +133,7 @@ export default function LoginPage() {
         </div>
 
         <div className="relative text-[13px] text-white/70">
-          © 2026 DentalTrack · Plataforma para clínicas odontológicas
+          © 2026 {brand.name} · {brand.tagline}
         </div>
       </aside>
 
@@ -153,10 +154,10 @@ export default function LoginPage() {
               <Field label="Nome da clínica" htmlFor="clinic">
                 <IconInput
                   id="clinic"
-                  icon={Stethoscope}
+                  icon={Building2}
                   value={clinic}
                   onChange={(e) => setClinic(e.target.value)}
-                  placeholder="Ex.: Clínica Sorriso Pleno"
+                  placeholder="Ex.: Clínica Bem-Estar"
                   required
                 />
               </Field>
