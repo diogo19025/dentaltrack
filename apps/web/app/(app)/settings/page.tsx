@@ -106,10 +106,12 @@ export default function SettingsPage() {
   const offerMediaType = useWatch({ control, name: "offerMediaType" });
   const availability = useWatch({ control, name: "availability" });
 
-  // Carrega os valores reais assim que a API responde.
+  // Sincroniza o form com o servidor só quando o usuário NÃO está editando —
+  // evita que um refetch/atualização da cache de ["settings"] (assinada também
+  // por Sidebar/Topbar) apague o que está sendo digitado.
   useEffect(() => {
-    if (data) reset(data);
-  }, [data, reset]);
+    if (data && !formState.isDirty) reset(data);
+  }, [data, formState.isDirty, reset]);
 
   const onSubmit = handleSubmit((values) =>
     update.mutate(values, { onSuccess: (saved) => reset(saved) }),
