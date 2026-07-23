@@ -6,7 +6,7 @@ import { WhatsappService } from './whatsapp.service';
 
 /**
  * Adapter do canal WhatsApp (WA-3) — Evolution API (Baileys, não-oficial). É só
- * a borda: recebe o webhook, resolve a clínica pela instância e chama o **mesmo**
+ * a borda: recebe o webhook, resolve a empresa pela instância e chama o **mesmo**
  * ChatService (non-streaming). PrismaService vem do PrismaModule global.
  */
 @Module({

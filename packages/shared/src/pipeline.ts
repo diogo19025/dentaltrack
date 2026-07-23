@@ -3,7 +3,7 @@ import { channelSchema, conversationStatusSchema } from "./enums";
 
 /**
  * Contrato do Funil de atendimento (F7 · kanban do pipeline). As colunas são
- * registros por clínica: as 5 padrão nascem automaticamente e carregam
+ * registros por empresa: as 5 padrão nascem automaticamente e carregam
  * `systemStage` — a semântica que o detector automático (`ai/stage-detection`)
  * reconhece; colunas criadas pelo dono são manuais (cards chegam nelas por
  * drag-and-drop/menu). O detector só AVANÇA um card (por `position`) — nunca
@@ -35,7 +35,7 @@ export const FUNNEL_STAGE_DEFAULT_NAMES: Record<FunnelStage, string> = {
   agendado: "Agendado",
 };
 
-/** Máximo de colunas por clínica (5 do sistema + personalizadas). */
+/** Máximo de colunas por empresa (5 do sistema + personalizadas). */
 export const MAX_PIPELINE_STAGES = 10;
 
 /** Origem do card e de seu último movimento: detector (auto) ou dono (manual). */

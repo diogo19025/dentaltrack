@@ -71,8 +71,8 @@ export class ChatService {
   ) {}
 
   /**
-   * Streama um turno (BE-1.6) na clínica do usuário autenticado (`clinicId`):
-   * abre/continua a conversa, persiste a mensagem do paciente, monta o system
+   * Streama um turno (BE-1.6) na empresa do usuário autenticado (`clinicId`):
+   * abre/continua a conversa, persiste a mensagem do cliente, monta o system
    * prompt + histórico + tools e pipa a resposta do AI SDK como UI message
    * stream (consumível pelo `useChat`). A resposta do bot é persistida no
    * `onFinish`; o `conversationId` volta no header `X-Conversation-Id`. As tools
@@ -89,7 +89,7 @@ export class ChatService {
 
     const conversationId = await this.resolveConversation(input, clinicId);
 
-    // 1. Persiste a mensagem do paciente (antes do stream → retry mantém contexto).
+    // 1. Persiste a mensagem do cliente (antes do stream → retry mantém contexto).
     await this.conversations.appendMessage(
       conversationId,
       'user',
@@ -98,7 +98,7 @@ export class ChatService {
       clinicId,
     );
 
-    // 2. System prompt (dados da clínica) + histórico (user/assistant) + tools.
+    // 2. System prompt (dados da empresa) + histórico (user/assistant) + tools.
     const { systemPrompt, history, tools } = await this.prepareTurn(
       conversationId,
       clinicId,
@@ -138,7 +138,7 @@ export class ChatService {
    * `generateAssistantReply` (que tem timeout/retry/fallback de provider). A
    * resposta volta como **texto** para o adapter enviar pelo canal; persistência
    * e auto-tagging são idênticos ao web. Lança `AiUnavailableError` se a IA falhar
-   * (o adapter decide o que enviar ao paciente).
+   * (o adapter decide o que enviar ao cliente).
    */
   async processInboundMessage(input: InboundMessage): Promise<InboundReply> {
     // 0. Texto OU áudio → transcreve antes de tocar o banco (STT pode falhar).
@@ -180,7 +180,7 @@ export class ChatService {
       );
     }
 
-    // 2. Persiste a mensagem do paciente antes de gerar (retry mantém contexto).
+    // 2. Persiste a mensagem do cliente antes de gerar (retry mantém contexto).
     await this.conversations.appendMessage(
       conversationId,
       'user',
@@ -214,9 +214,9 @@ export class ChatService {
   }
 
   /**
-   * System prompt da clínica + histórico (user/assistant) + tools da conversa.
+   * System prompt da empresa + histórico (user/assistant) + tools da conversa.
    * Compartilhado pelo caminho streaming (web) e non-streaming (WhatsApp).
-   * O prompt inclui os dados já conhecidos do paciente (lead vinculado /
+   * O prompt inclui os dados já conhecidos do cliente (lead vinculado /
    * identidade do canal) — é o que faz o bot reconhecer um contato recorrente
    * sem pedir nome e telefone de novo.
    */
@@ -256,7 +256,7 @@ export class ChatService {
   /**
    * Mídia da saudação (F6): enviada no **primeiro** contato de uma conversa por
    * canal (WhatsApp). Best-effort — falha vira "sem mídia". Retorna `null` se a
-   * clínica não configurou saudação com mídia.
+   * empresa não configurou saudação com mídia.
    */
   private async loadGreetingMedia(
     clinicId: string,
@@ -278,14 +278,14 @@ export class ChatService {
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `Falha ao carregar mídia de saudação (clínica ${clinicId}): ${detail}`,
+        `Falha ao carregar mídia de saudação (empresa ${clinicId}): ${detail}`,
       );
       return null;
     }
   }
 
   /**
-   * Carrega o que já se sabe do paciente da conversa: lead vinculado (nome,
+   * Carrega o que já se sabe do cliente da conversa: lead vinculado (nome,
    * telefone, e-mail), identidade do canal (`contactPhone` no WhatsApp) e os
    * últimos agendamentos do lead (sinal de recorrência). Best-effort — qualquer
    * falha vira "nenhum dado conhecido" e o turno segue normal.
@@ -387,7 +387,7 @@ export class ChatService {
   }
 
   /**
-   * Resolve o texto do turno do paciente. Texto → passa direto; áudio (base64)
+   * Resolve o texto do turno do cliente. Texto → passa direto; áudio (base64)
    * → transcreve via `ai/transcribe` (speech-to-text) e usa a transcrição como
    * mensagem — o restante do fluxo (histórico, tools, tagging) é idêntico, e o
    * canal (web hoje, WhatsApp depois) não precisa conhecer o STT.
@@ -426,7 +426,7 @@ export class ChatService {
   }
 
   /**
-   * Monta o system prompt da clínica (BE-1.3): identidade + settings (opcional)
+   * Monta o system prompt da empresa (BE-1.3): identidade + settings (opcional)
    * + catálogo de procedimentos ativos. Tudo escopado por `clinicId`.
    */
   private async buildPrompt(
@@ -442,14 +442,14 @@ export class ChatService {
       }),
     ]);
     if (!clinic)
-      throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
+      throw new NotFoundException(`Empresa ${clinicId} não encontrada.`);
     return buildSystemPrompt({ clinic, settings, procedures, contact });
   }
 
   /**
-   * Resolve a conversa do turno, sempre escopada na clínica do tenant:
-   * - com `conversationId`: valida que pertence à clínica (404 se não);
-   * - sem ele: abre uma nova conversa na clínica.
+   * Resolve a conversa do turno, sempre escopada na empresa do tenant:
+   * - com `conversationId`: valida que pertence à empresa (404 se não);
+   * - sem ele: abre uma nova conversa na empresa.
    */
   private async resolveConversation(
     input: ChatRequest,

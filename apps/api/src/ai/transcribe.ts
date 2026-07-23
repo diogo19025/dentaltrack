@@ -10,7 +10,7 @@ import {
 } from './model';
 
 /**
- * Speech-to-text (channel-agnostic): transcreve o áudio do paciente para
+ * Speech-to-text (channel-agnostic): transcreve o áudio do cliente para
  * texto, que então segue o fluxo normal do chat (tools, tagging, persistência).
  * Mesmo hardening do `generate-reply`: timeout + retries do SDK no provider
  * primário, uma tentativa no fallback e `AiUnavailableError` padronizado.
@@ -36,7 +36,7 @@ const OPENAI_TRANSCRIBE_MODEL =
   process.env.OPENAI_TRANSCRIBE_MODEL ?? 'whisper-1';
 
 /** Transcript determinístico do provider mock — contém "agendar" para acionar o roteiro de conversão do mock model. */
-export const MOCK_TRANSCRIPT = 'Quero agendar uma consulta de avaliação.';
+export const MOCK_TRANSCRIPT = 'Quero agendar um atendimento de avaliação.';
 
 /**
  * Instrução de transcrição (Gemini multimodal). Pede só o texto — sem
@@ -95,7 +95,7 @@ async function callProvider(
 }
 
 /**
- * Transcreve o áudio do paciente para texto (PT-BR). `mediaType` é o MIME do
+ * Transcreve o áudio do cliente para texto (PT-BR). `mediaType` é o MIME do
  * arquivo (ex.: `audio/webm`, `audio/mp4`). Falhas viram `AiUnavailableError`
  * — o adapter (controller) decide como traduzir para o canal (no web: 503).
  */

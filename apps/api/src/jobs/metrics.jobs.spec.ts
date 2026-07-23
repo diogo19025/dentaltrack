@@ -38,7 +38,7 @@ describe('MetricsJobs (cron BE-3.4)', () => {
     expect(arg.data).toEqual({ status: 'abandonada' });
   });
 
-  it('aggregateDaily: faz upsert de daily_metric por clínica para o dia anterior', async () => {
+  it('aggregateDaily: faz upsert de daily_metric por empresa para o dia anterior', async () => {
     prismaMock.clinic.findMany.mockResolvedValueOnce([{ id: CLINIC }]);
     prismaMock.message.count.mockResolvedValue(5); // bot e user
     prismaMock.lead.count.mockResolvedValueOnce(2);

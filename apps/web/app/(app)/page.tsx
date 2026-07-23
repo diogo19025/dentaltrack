@@ -37,7 +37,7 @@ import { initials, timeAgo } from "@/lib/format";
 
 /**
  * Dashboard (FE-3.2..3.5) — réplica 1:1 de `screen_dashboard.jsx`: filtro de
- * período + 6 KPI cards (com sparkline) + linha (bot×paciente) + donut de
+ * período + 6 KPI cards (com sparkline) + linha (bot×cliente) + donut de
  * status + funil + top tags + tabela de conversas recentes. Dados reais via
  * TanStack Query (GET /metrics, GET /conversations). Métricas: context.md §10.
  */
@@ -71,7 +71,7 @@ export default function DashboardPage() {
     <>
       <PageHeader
         title="Dashboard"
-        subtitle="Visão geral do atendimento e da conversão da sua clínica."
+        subtitle="Visão geral do atendimento e da conversão da sua empresa."
       >
         <Segmented
           aria-label="Período do dashboard"
@@ -109,7 +109,7 @@ export default function DashboardPage() {
               label="Taxa de resposta"
               value={pctFmt(data.kpis.responseRate.value)}
               kpi={data.kpis.responseRate}
-              hint="Pacientes que responderam o bot"
+              hint="Clientes que responderam o bot"
             />
             <KpiCard
               icon={Target}
@@ -141,7 +141,7 @@ export default function DashboardPage() {
                 <div>
                   <div className="text-base font-semibold tracking-[-0.01em]">Volume de mensagens</div>
                   <div className="mt-[3px] text-[13px] text-muted-foreground">
-                    Bot × paciente por dia · últimos {RANGE_DAYS_LABEL[range]} dias
+                    Bot × cliente por dia · últimos {RANGE_DAYS_LABEL[range]} dias
                   </div>
                 </div>
                 <Legend />
@@ -182,7 +182,7 @@ export default function DashboardPage() {
             </Card>
           </div>
 
-          {/* Abandono × recorrência — perdas × pacientes que voltaram a agendar */}
+          {/* Abandono × recorrência — perdas × clientes que voltaram a agendar */}
           <div className="mb-[18px]">
             <RetentionSection retention={data.retention} rangeDaysLabel={RANGE_DAYS_LABEL[range]} />
           </div>
@@ -222,7 +222,7 @@ export default function DashboardPage() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Paciente</th>
+                      <th>Cliente</th>
                       <th>Procedimento</th>
                       <th>Tags</th>
                       <th>Status</th>
@@ -252,7 +252,7 @@ export default function DashboardPage() {
                                 {initials(c.leadName, "P")}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="font-medium">{c.leadName ?? "Paciente"}</span>
+                            <span className="font-medium">{c.leadName ?? "Cliente"}</span>
                           </div>
                         </td>
                         <td>
@@ -298,13 +298,13 @@ export default function DashboardPage() {
   );
 }
 
-/** Legenda do gráfico de linha (Bot · Paciente). */
+/** Legenda do gráfico de linha (Bot · Cliente). */
 function Legend() {
   return (
     <div className="flex gap-4">
       {[
         { c: "var(--chart-1)", l: "Bot" },
-        { c: "var(--chart-3)", l: "Paciente" },
+        { c: "var(--chart-3)", l: "Cliente" },
       ].map((it) => (
         <span key={it.l} className="flex items-center gap-[7px] text-[13px] text-muted-foreground">
           <span className="size-2.5 rounded-[3px]" style={{ background: it.c }} />

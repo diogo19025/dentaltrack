@@ -23,7 +23,7 @@ import { SendReminderDialog } from "./send-reminder-dialog";
 /**
  * Painel "ver mais" de uma conversa, aberto ao clicar numa linha de "Conversas
  * recentes" do dashboard. Mostra canal, status, tags detectadas (com confiança)
- * e o histórico de mensagens (paciente × bot), via `GET /conversations/:id`.
+ * e o histórico de mensagens (cliente × bot), via `GET /conversations/:id`.
  */
 export function ConversationDetailDialog({
   conversationId,
@@ -165,7 +165,7 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
   );
 }
 
-/** Bolha de mensagem — espelha o estilo do chat (paciente à direita, bot à esquerda). */
+/** Bolha de mensagem — espelha o estilo do chat (cliente à direita, bot à esquerda). */
 function MessageBubble({ message }: { message: ChatMessageDto }) {
   const isUser = message.role === "user";
   return (

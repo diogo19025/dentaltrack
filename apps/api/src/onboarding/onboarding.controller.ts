@@ -11,10 +11,10 @@ export class OnboardingController {
   constructor(private readonly onboarding: OnboardingService) {}
 
   /**
-   * POST /onboarding/bootstrap — idempotente. Garante clínica + membership do
+   * POST /onboarding/bootstrap — idempotente. Garante empresa + membership do
    * usuário autenticado (protegido pelo SupabaseJwtGuard global). **Sem
    * TenantGuard** de propósito: é justamente o passo que cria o tenant. O nome
-   * da clínica vem do `clinic_name` enviado no signup (metadata do JWT).
+   * da empresa vem do `clinic_name` enviado no signup (metadata do JWT).
    */
   @Post('bootstrap')
   bootstrap(@CurrentUser() user: AuthUser): Promise<EnsureClinicResult> {

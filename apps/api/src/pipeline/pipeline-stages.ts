@@ -20,7 +20,7 @@ export interface PipelineStageRow {
 }
 
 /**
- * Garante as 5 colunas do sistema da clínica (idempotente e race-safe: o
+ * Garante as 5 colunas do sistema da empresa (idempotente e race-safe: o
  * unique (clinicId, systemStage) segura criações concorrentes de turnos
  * paralelos) e retorna todas as colunas ordenadas por posição.
  */

@@ -10,7 +10,7 @@ const NOW = new Date('2026-06-07T00:00:00.000Z');
 function makeClinic(over = {}) {
   return {
     id: CLINIC_ID,
-    name: 'Clínica Demo',
+    name: 'Empresa Demo',
     createdAt: NOW,
     updatedAt: NOW,
     ...over,
@@ -44,21 +44,21 @@ describe('SettingsService', () => {
 
     const dto = await service.getSettings(CLINIC_ID);
 
-    expect(dto.clinicName).toBe('Clínica Demo');
+    expect(dto.clinicName).toBe('Empresa Demo');
     expect(dto.tone).toBe('amigavel');
     expect(dto.specialty).toBe('');
     expect(dto.offerEnabled).toBe(false);
     expect(dto.availability).toEqual(DEFAULT_AVAILABILITY);
   });
 
-  it('getSettings lança 404 quando a clínica não existe', async () => {
+  it('getSettings lança 404 quando a empresa não existe', async () => {
     prismaMock.clinic.findUnique.mockResolvedValueOnce(null);
     await expect(service.getSettings(CLINIC_ID)).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
 
-  it('updateSettings grava o nome na clínica e o restante em settings (upsert)', async () => {
+  it('updateSettings grava o nome na empresa e o restante em settings (upsert)', async () => {
     prismaMock.clinic.findUnique.mockResolvedValueOnce(makeClinic());
     const updatedClinic = makeClinic({ name: 'Novo Nome' });
     const settingsRow = {

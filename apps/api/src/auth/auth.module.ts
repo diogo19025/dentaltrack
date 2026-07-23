@@ -5,7 +5,7 @@ import { TenantGuard } from './tenant.guard';
 
 /**
  * Auth global: o SupabaseJwtGuard protege todas as rotas (menos @Public).
- * O TenantGuard fica exportado para uso por rota (escopo de clínica).
+ * O TenantGuard fica exportado para uso por rota (escopo de empresa).
  */
 @Module({
   providers: [{ provide: APP_GUARD, useClass: SupabaseJwtGuard }, TenantGuard],

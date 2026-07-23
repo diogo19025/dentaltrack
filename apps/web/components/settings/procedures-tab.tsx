@@ -110,7 +110,7 @@ export function ProceduresTab() {
         <EmptyState
           icon={<ClipboardList className="size-5" />}
           title="Nenhum procedimento cadastrado"
-          desc="Adicione os serviços da clínica para o bot poder sugeri-los e informar valores."
+          desc="Adicione os serviços da empresa para o bot poder sugeri-los e informar valores."
         />
       ) : (
         <table className="w-full text-sm">
@@ -278,7 +278,7 @@ function ProcedureDialog({
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div>
             <Label htmlFor="proc-name" className="mb-2 text-[13px]">Nome</Label>
-            <Input id="proc-name" {...register("name", { required: true })} placeholder="Ex.: Consulta de avaliação" autoFocus />
+            <Input id="proc-name" {...register("name", { required: true })} placeholder="Ex.: Atendimento de avaliação" autoFocus />
           </div>
           <div>
             <Label htmlFor="proc-description" className="mb-2 text-[13px]">Descrição</Label>
@@ -334,7 +334,7 @@ function ProcedureDialog({
               </div>
             )}
             <p className="mt-1.5 text-[12px] text-muted-foreground">
-              Ajudam o agente a sugerir este procedimento conforme o interesse do paciente.
+              Ajudam o agente a sugerir este procedimento conforme o interesse do cliente.
             </p>
           </div>
 
@@ -349,7 +349,7 @@ function ProcedureDialog({
               placeholder="Ex.: 10% de desconto à vista neste mês."
             />
             <p className="mt-1.5 text-[12px] text-muted-foreground">
-              O agente apresenta esta oferta quando o paciente se interessa por este procedimento
+              O agente apresenta esta oferta quando o cliente se interessa por este procedimento
               (ou por uma das suas tags).
             </p>
           </div>

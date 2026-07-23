@@ -64,7 +64,7 @@ function toDto(row: ProcedureRow): ProcedureDto {
 export class ProceduresService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Lista os procedimentos da clínica (ordem alfabética), com as tags. */
+  /** Lista os procedimentos da empresa (ordem alfabética), com as tags. */
   async list(clinicId: string): Promise<ProcedureDto[]> {
     const rows = await this.prisma.procedure.findMany({
       where: { clinicId },
@@ -74,7 +74,7 @@ export class ProceduresService {
     return rows.map(toDto);
   }
 
-  /** Cria um procedimento na clínica, associando as tags informadas. */
+  /** Cria um procedimento na empresa, associando as tags informadas. */
   async create(
     clinicId: string,
     input: CreateProcedureInput,
@@ -92,7 +92,7 @@ export class ProceduresService {
     return toDto(row);
   }
 
-  /** Atualiza um procedimento da clínica (404 se não pertencer ao tenant). */
+  /** Atualiza um procedimento da empresa (404 se não pertencer ao tenant). */
   async update(
     clinicId: string,
     id: string,
@@ -113,14 +113,14 @@ export class ProceduresService {
     return toDto(row);
   }
 
-  /** Remove um procedimento da clínica (404 se não pertencer ao tenant). */
+  /** Remove um procedimento da empresa (404 se não pertencer ao tenant). */
   async remove(clinicId: string, id: string): Promise<{ id: string }> {
     await this.ensureExists(clinicId, id);
     await this.prisma.procedure.delete({ where: { id } });
     return { id };
   }
 
-  /** Garante que o procedimento existe e pertence à clínica do tenant. */
+  /** Garante que o procedimento existe e pertence à empresa do tenant. */
   private async ensureExists(clinicId: string, id: string): Promise<void> {
     const found = await this.prisma.procedure.findFirst({
       where: { id, clinicId },
@@ -130,7 +130,7 @@ export class ProceduresService {
       throw new NotFoundException(`Procedimento ${id} não encontrado.`);
   }
 
-  /** Garante que todas as tags informadas pertencem à clínica (anti cross-tenant). */
+  /** Garante que todas as tags informadas pertencem à empresa (anti cross-tenant). */
   private async assertTagsOwned(
     clinicId: string,
     tagIds?: string[],
@@ -142,7 +142,7 @@ export class ProceduresService {
     });
     if (count !== unique.length) {
       throw new BadRequestException(
-        'Uma ou mais tags não pertencem à clínica.',
+        'Uma ou mais tags não pertencem à empresa.',
       );
     }
   }

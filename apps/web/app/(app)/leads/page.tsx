@@ -72,7 +72,7 @@ export default function LeadsPage() {
     <>
       <PageHeader
         title="Leads"
-        subtitle="Pacientes em potencial capturados pelo agente nas conversas."
+        subtitle="Clientes em potencial capturados pelo agente nas conversas."
       >
         <Button variant="secondary" onClick={() => exportCsv(filtered)} disabled={filtered.length === 0}>
           <Download className="size-4" /> Exportar CSV

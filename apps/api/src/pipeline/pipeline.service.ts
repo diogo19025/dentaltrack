@@ -53,7 +53,7 @@ type CardRow = {
 };
 
 /**
- * Funil de atendimento (F7): board kanban com colunas por clínica e um card
+ * Funil de atendimento (F7): board kanban com colunas por empresa e um card
  * por contato. As 5 colunas do sistema são provisionadas automaticamente
  * (`ensurePipelineStages`) e recebem os movimentos do detector; o dono cria/
  * renomeia/exclui colunas personalizadas (até MAX_PIPELINE_STAGES) e move os
@@ -146,7 +146,7 @@ export class PipelineService {
 
   /**
    * Coluna personalizada do dono (no fim do board). Limite de
-   * MAX_PIPELINE_STAGES colunas por clínica; nome único → 409.
+   * MAX_PIPELINE_STAGES colunas por empresa; nome único → 409.
    */
   async createStage(
     clinicId: string,
@@ -243,7 +243,7 @@ export class PipelineService {
     if (!stage) throw new NotFoundException(`Coluna ${id} não encontrada.`);
   }
 
-  /** P2002 (nome duplicado na clínica) → 409; o resto propaga. */
+  /** P2002 (nome duplicado na empresa) → 409; o resto propaga. */
   private asConflict(err: unknown, name: string): unknown {
     if (
       err &&

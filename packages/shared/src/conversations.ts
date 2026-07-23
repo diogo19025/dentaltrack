@@ -6,7 +6,7 @@ import { tagColorSchema } from "./tags";
 /**
  * Contrato de conversas (F3). `GET /conversations` alimenta a tabela "Conversas
  * recentes" do dashboard; `GET /conversations/:id` alimenta o rail de tags do
- * chat (tags detectadas pelo auto-tagging). Escopado por clínica.
+ * chat (tags detectadas pelo auto-tagging). Escopado por empresa.
  */
 
 /** Tag detectada numa conversa, com a confiança do auto-tagging (0..1). */
@@ -40,11 +40,11 @@ export const conversationDetailSchema = z.object({
   channel: channelSchema,
   createdAt: z.string(),
   messageCount: z.number(),
-  /** Telefone do contato (WhatsApp = número do paciente; web = telefone do lead, se houver). */
+  /** Telefone do contato (WhatsApp = número do cliente; web = telefone do lead, se houver). */
   contactPhone: z.string().nullable(),
   tags: z.array(detectedTagSchema),
   /**
-   * Últimas idas e voltas (ordem cronológica) — paciente × bot, limitadas no
+   * Últimas idas e voltas (ordem cronológica) — cliente × bot, limitadas no
    * servidor. `messageCount` mantém o total para sinalizar truncamento.
    */
   messages: z.array(chatMessageSchema),

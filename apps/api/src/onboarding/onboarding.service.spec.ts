@@ -19,7 +19,7 @@ function makeTx(over: {
       create: jest
         .fn()
         .mockResolvedValue(
-          over.clinic ?? { id: 'clinic-novo', name: 'Minha clínica' },
+          over.clinic ?? { id: 'clinic-novo', name: 'Minha empresa' },
         ),
     },
   };
@@ -43,7 +43,7 @@ describe('OnboardingService.ensureClinic', () => {
     service = moduleRef.get(OnboardingService);
   });
 
-  it('idempotente: já tem membership → devolve a clínica existente, sem abrir transação', async () => {
+  it('idempotente: já tem membership → devolve a empresa existente, sem abrir transação', async () => {
     prismaMock.membership.findFirst.mockResolvedValueOnce({
       clinicId: 'clinic-existente',
     });
@@ -54,21 +54,21 @@ describe('OnboardingService.ensureClinic', () => {
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
-  it('sem membership → adquire o lock, cria clínica + membership (owner)', async () => {
+  it('sem membership → adquire o lock, cria empresa + membership (owner)', async () => {
     prismaMock.membership.findFirst.mockResolvedValueOnce(null); // caminho rápido
-    const tx = makeTx({ clinic: { id: 'clinic-novo', name: 'Clínica Teste' } });
+    const tx = makeTx({ clinic: { id: 'clinic-novo', name: 'Empresa Teste' } });
     prismaMock.$transaction.mockImplementationOnce(
       (cb: (t: typeof tx) => unknown) => cb(tx),
     );
 
     const res = await service.ensureClinic({
       userId: USER_ID,
-      clinicName: 'Clínica Teste',
+      clinicName: 'Empresa Teste',
     });
 
     expect(tx.$executeRaw).toHaveBeenCalled(); // advisory lock
     expect(tx.clinic.create).toHaveBeenCalledWith({
-      data: { name: 'Clínica Teste' },
+      data: { name: 'Empresa Teste' },
     });
     expect(tx.membership.create).toHaveBeenCalledWith({
       data: { userId: USER_ID, clinicId: 'clinic-novo' },
@@ -91,7 +91,7 @@ describe('OnboardingService.ensureClinic', () => {
 
   it('usa nome padrão quando não vem clinicName', async () => {
     prismaMock.membership.findFirst.mockResolvedValueOnce(null);
-    const tx = makeTx({ clinic: { id: 'c2', name: 'Minha clínica' } });
+    const tx = makeTx({ clinic: { id: 'c2', name: 'Minha empresa' } });
     prismaMock.$transaction.mockImplementationOnce(
       (cb: (t: typeof tx) => unknown) => cb(tx),
     );
@@ -99,7 +99,7 @@ describe('OnboardingService.ensureClinic', () => {
     await service.ensureClinic({ userId: USER_ID });
 
     expect(tx.clinic.create).toHaveBeenCalledWith({
-      data: { name: 'Minha clínica' },
+      data: { name: 'Minha empresa' },
     });
   });
 });

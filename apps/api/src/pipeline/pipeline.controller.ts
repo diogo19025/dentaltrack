@@ -26,7 +26,7 @@ import { PipelineService } from './pipeline.service';
 
 /**
  * Funil de atendimento (F7). Protegido: SupabaseJwtGuard (global) +
- * TenantGuard resolve o `clinicId`. Toda operação é escopada por clínica.
+ * TenantGuard resolve o `clinicId`. Toda operação é escopada por empresa.
  */
 @Controller('pipeline')
 @UseGuards(TenantGuard)

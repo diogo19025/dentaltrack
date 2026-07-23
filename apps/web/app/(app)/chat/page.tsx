@@ -43,13 +43,13 @@ const GREETING: UIMessage = {
   parts: [
     {
       type: "text",
-      text: "Olá! Sou a assistente virtual da clínica. Posso tirar dúvidas sobre procedimentos, recomendar o tratamento ideal e agendar sua avaliação. Como posso te ajudar hoje?",
+      text: "Olá! Sou a assistente virtual da empresa. Posso tirar dúvidas sobre procedimentos, recomendar o tratamento ideal e agendar sua avaliação. Como posso te ajudar hoje?",
     },
   ],
 };
 
 const QUICK = [
-  "Quero agendar uma consulta",
+  "Quero agendar um atendimento",
   "Ver procedimentos",
   "Saber valores",
   "Tirar uma dúvida",
@@ -162,7 +162,7 @@ export default function ChatPage() {
       // um 2º invalidate com folga cobre essa latência.
       if (currentConversationId) setConversationId(currentConversationId);
       // Turno por áudio: anexa a transcrição (header X-Transcript) à bolha de
-      // voz — o paciente vê o que o bot entendeu.
+      // voz — o cliente vê o que o bot entendeu.
       const transcript = consumeTranscript();
       if (transcript) {
         setMessages((prev) => {
@@ -195,7 +195,7 @@ export default function ChatPage() {
 
   // Detalhe da conversa (status + tags detectadas) para o rail.
   const { data: detail } = useConversationDetail(conversationId);
-  // Identidade da clínica (header) + oferta ativa (card de sugestão), como no mock.
+  // Identidade da empresa (header) + oferta ativa (card de sugestão), como no mock.
   const { data: settings } = useSettings();
 
   useEffect(() => {
@@ -223,7 +223,7 @@ export default function ChatPage() {
           </div>
           <div className="flex-1">
             <div className="text-[15px] font-semibold">
-              Assistente · {settings?.clinicName || "sua clínica"}
+              Assistente · {settings?.clinicName || "sua empresa"}
             </div>
             <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
               <span className="size-1.5 rounded-full bg-success" /> Online · responde em segundos
@@ -445,8 +445,8 @@ export default function ChatPage() {
                 style={{ color: "var(--primary-active)", opacity: 0.85 }}
               >
                 {settings?.offerEnabled && settings.offerText
-                  ? `Paciente com interesse inicial — conduza para a ${settings.offerText.replace(/\.$/, "")}.`
-                  : "Conduza o paciente para uma avaliação inicial sempre que houver interesse em um procedimento."}
+                  ? `Cliente com interesse inicial — conduza para a ${settings.offerText.replace(/\.$/, "")}.`
+                  : "Conduza o cliente para uma avaliação inicial sempre que houver interesse em um procedimento."}
               </div>
             </div>
           </div>

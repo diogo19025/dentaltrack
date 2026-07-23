@@ -40,7 +40,7 @@ function makeConvo(
         ? '5511999998888'
         : overrides.contactPhone,
     clinic: {
-      name: overrides.clinicName ?? 'Clínica Sorria',
+      name: overrides.clinicName ?? 'Empresa Sorria',
       settings:
         overrides.settings === undefined
           ? {
@@ -105,13 +105,13 @@ describe('RemindersService', () => {
 
     it('buildReminderDraft: usa primeiro nome + interesse + oferta vigente', () => {
       const draft = buildReminderDraft({
-        clinicName: 'Clínica Sorria',
+        clinicName: 'Empresa Sorria',
         leadName: 'Maria Silva',
         interest: 'Implante',
         offer: 'Avaliação gratuita em junho!',
       });
       expect(draft).toContain('Olá, Maria!');
-      expect(draft).toContain('Clínica Sorria');
+      expect(draft).toContain('Empresa Sorria');
       expect(draft).toContain('Implante');
       expect(draft).toContain('Avaliação gratuita em junho!');
     });
@@ -162,7 +162,7 @@ describe('RemindersService', () => {
       });
     });
 
-    it('com telefone mas clínica sem instância → reason whatsapp_not_configured', async () => {
+    it('com telefone mas empresa sem instância → reason whatsapp_not_configured', async () => {
       prismaMock.conversation.findFirst.mockResolvedValueOnce(
         makeConvo({
           settings: {
@@ -195,7 +195,7 @@ describe('RemindersService', () => {
       expect(ctx.phone).toBe('(11) 98888-7777');
     });
 
-    it('conversa de outra clínica (ou inexistente) → 404', async () => {
+    it('conversa de outra empresa (ou inexistente) → 404', async () => {
       prismaMock.conversation.findFirst.mockResolvedValueOnce(null);
       await expect(
         service.getContext(CLINIC_ID, CONVERSATION_ID),
@@ -277,7 +277,7 @@ describe('RemindersService', () => {
       expect(conversationsMock.appendMessage).not.toHaveBeenCalled();
     });
 
-    it('clínica sem instância de WhatsApp → 400 e não envia', async () => {
+    it('empresa sem instância de WhatsApp → 400 e não envia', async () => {
       prismaMock.conversation.findFirst.mockResolvedValueOnce(
         makeConvo({
           settings: {

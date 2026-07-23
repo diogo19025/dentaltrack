@@ -91,15 +91,15 @@ describe('ProceduresService', () => {
     });
   });
 
-  it('create rejeita tag de outra clínica (400) sem gravar', async () => {
-    prismaMock.tag.count.mockResolvedValueOnce(0); // nenhuma das tags pertence à clínica
+  it('create rejeita tag de outra empresa (400) sem gravar', async () => {
+    prismaMock.tag.count.mockResolvedValueOnce(0); // nenhuma das tags pertence à empresa
     await expect(
       service.create(CLINIC_ID, { name: 'X', tagIds: [TAG_ID] }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prismaMock.procedure.create).not.toHaveBeenCalled();
   });
 
-  it('update valida posse antes de gravar (404 quando não pertence à clínica)', async () => {
+  it('update valida posse antes de gravar (404 quando não pertence à empresa)', async () => {
     prismaMock.procedure.findFirst.mockResolvedValueOnce(null);
     await expect(
       service.update(CLINIC_ID, PROC_ID, { name: 'X' }),

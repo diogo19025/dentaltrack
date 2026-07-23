@@ -16,7 +16,7 @@ import { getModel } from './model';
  *
  * Regras do board:
  * - Todo turno garante um card para a conversa (nasce na coluna `novo_contato`
- *   da clínica — as colunas são registros por clínica; só as do sistema, com
+ *   da empresa — as colunas são registros por empresa; só as do sistema, com
  *   `systemStage`, recebem movimento automático).
  * - O detector **só avança** o card no funil (por `position` da coluna) —
  *   nunca regride. É o que faz o movimento manual do dono ser respeitado (um
@@ -38,7 +38,7 @@ const TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS ?? 30_000);
 const MAX_MESSAGES = 8;
 
 /**
- * Gatilhos por estágio (pré-filtro barato; o LLM confirma). Cobrem paciente
+ * Gatilhos por estágio (pré-filtro barato; o LLM confirma). Cobrem cliente
  * ("quero agendar") e bot ("qual seria a melhor data?") — a pergunta do
  * assistente também sinaliza a etapa da conversa. Sem acento junto da forma
  * acentuada para cobrir a digitação informal do WhatsApp.
@@ -123,7 +123,7 @@ const STAGE_PROMPT_LABELS: Record<FunnelStage, string> = {
   interessado:
     'interessado — pergunta sobre procedimentos, preços ou como funciona',
   quero_agendar:
-    'quero_agendar — expressou que quer marcar/agendar uma consulta',
+    'quero_agendar — expressou que quer marcar/agendar um atendimento',
   escolha_data:
     'escolha_data — já quer agendar e está negociando dia/horário',
   agendado: 'agendado — agendamento confirmado',
@@ -157,7 +157,7 @@ export async function detectFunnelStage(
     });
     if (!convo) return;
 
-    // 1. Colunas da clínica (provisiona as do sistema se faltarem) + card do
+    // 1. Colunas da empresa (provisiona as do sistema se faltarem) + card do
     // turno (nasce na coluna novo_contato), mantendo o vínculo com o lead
     // (capturado pelas tools a qualquer momento da conversa).
     const stages = await ensurePipelineStages(prisma, clinicId);
@@ -219,7 +219,7 @@ export async function detectFunnelStage(
       .slice()
       .reverse()
       .map(
-        (m) => `${m.role === 'user' ? 'Paciente' : 'Assistente'}: ${m.content}`,
+        (m) => `${m.role === 'user' ? 'Cliente' : 'Assistente'}: ${m.content}`,
       )
       .join('\n');
     const allowed = candidates
@@ -232,7 +232,7 @@ export async function detectFunnelStage(
       maxRetries: 1,
       abortSignal: AbortSignal.timeout(TIMEOUT_MS),
       system: [
-        'Você classifica em que etapa do funil de agendamento está uma conversa entre um paciente e o assistente de uma clínica.',
+        'Você classifica em que etapa do funil de agendamento está uma conversa entre um cliente e o assistente de uma empresa.',
         'Escolha exatamente um estágio da lista permitida — o mais avançado que a conversa realmente atingiu — ou null se nenhum se aplicar.',
         'Atribua um confidence de 0 a 1. Não invente estágios fora da lista.',
       ].join(' '),

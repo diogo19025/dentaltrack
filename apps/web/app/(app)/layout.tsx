@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  // Onboarding idempotente: garante clínica + membership do usuário no 1º acesso
+  // Onboarding idempotente: garante empresa + membership do usuário no 1º acesso
   // (cobre signup, login e Google OAuth). Aguarda antes de renderizar para não
   // haver corrida com o /chat. Não bloqueia o app se a API estiver fora.
   const {

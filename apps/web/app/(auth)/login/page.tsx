@@ -109,19 +109,19 @@ export default function LoginPage() {
             <Sparkles className="size-[13px]" /> Assistente de atendimento com IA
           </span>
           <h1 className="text-[34px] font-semibold leading-[1.2] tracking-[-0.025em]">
-            Um atendimento que nunca dorme para a sua clínica.
+            Um atendimento que nunca dorme para a sua empresa.
           </h1>
           <p className="mt-[18px] text-[15.5px] leading-[1.6] text-white/[0.82]">
-            Um assistente que responde seus pacientes na hora, esclarece dúvidas e já marca a
-            consulta — a qualquer hora do dia. Você acompanha tudo num painel simples e fácil de
+            Um assistente que responde seus clientes na hora, esclarece dúvidas e já marca o
+            atendimento — a qualquer hora do dia. Você acompanha tudo num painel simples e fácil de
             entender.
           </p>
           <div className="mt-[34px] flex gap-[26px]">
             {(
               [
                 ["Acompanhamento de clientes", Users],
-                ["Consultas marcadas", Calendar],
-                ["Interesses dos pacientes", Tag],
+                ["Atendimentos marcados", Calendar],
+                ["Interesses dos clientes", Tag],
               ] as const
             ).map(([label, Icon]) => (
               <div key={label} className="flex items-center gap-[9px] text-[13.5px] text-white/90">
@@ -145,19 +145,19 @@ export default function LoginPage() {
           </h2>
           <p className="mb-7 text-sm text-muted-foreground">
             {isSignup
-              ? "Configure o assistente da sua clínica em minutos."
-              : "Entre para acessar o painel da sua clínica."}
+              ? "Configure o assistente da sua empresa em minutos."
+              : "Entre para acessar o painel da sua empresa."}
           </p>
 
           <form onSubmit={onSubmit} className="flex flex-col gap-4">
             {isSignup && (
-              <Field label="Nome da clínica" htmlFor="clinic">
+              <Field label="Nome da empresa" htmlFor="clinic">
                 <IconInput
                   id="clinic"
                   icon={Building2}
                   value={clinic}
                   onChange={(e) => setClinic(e.target.value)}
-                  placeholder="Ex.: Clínica Bem-Estar"
+                  placeholder="Ex.: Empresa Bem-Estar"
                   required
                 />
               </Field>

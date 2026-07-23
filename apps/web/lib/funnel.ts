@@ -3,7 +3,7 @@ import type { FunnelStage, PipelineStageDto } from "@dentaltrack/shared";
 /**
  * Apresentação das colunas do Funil de atendimento (F7). Tints existentes do
  * tema (paleta de tags) — nenhuma cor literal nova, seguindo o precedente da
- * temperatura de leads. Os NOMES vêm do servidor (colunas por clínica,
+ * temperatura de leads. Os NOMES vêm do servidor (colunas por empresa,
  * renomeáveis); aqui ficam as cores e os hints das colunas do sistema.
  */
 
@@ -54,5 +54,5 @@ const CUSTOM_PALETTE = [
 export function stageMeta(stage: PipelineStageDto): StageMeta {
   if (stage.systemStage) return SYSTEM_META[stage.systemStage];
   const color = CUSTOM_PALETTE[stage.position % CUSTOM_PALETTE.length];
-  return { hint: "Coluna criada pela clínica (movimento manual)", ...color };
+  return { hint: "Coluna criada pela empresa (movimento manual)", ...color };
 }

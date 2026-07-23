@@ -16,11 +16,11 @@ Esta é a distinção central. Entender isso evita 90% dos erros ao mexer em mar
 
 | Nível | Fonte de verdade | Onde aparece | Muda por |
 |---|---|---|---|
-| **Marca da plataforma** | [`apps/web/lib/brand.ts`](../apps/web/lib/brand.ts) (env `NEXT_PUBLIC_APP_*`) | tela de **login**, `<title>` da aba, **fallback** do shell | **deploy/servidor** |
-| **Marca da clínica** | banco → `Clinic.name` → `GET /settings` → `useSettings()` | **dentro do app**: sidebar, topbar, monograma | **login/tenant** |
+| **Marca da plataforma (produto)** | [`apps/web/lib/brand.ts`](../apps/web/lib/brand.ts) (env `NEXT_PUBLIC_APP_*`) | tela de **login**, `<title>` da aba, **topbar** (raiz do breadcrumb), fallback do shell | **deploy/servidor** |
+| **Marca da empresa (tenant)** | banco → `Clinic.name` → `GET /settings` → `useSettings()` | **sidebar** (wordmark + rodapé) e monograma | **login/tenant** |
 
-- **Pré-login não tem tenant.** A tela de login e o `<title>` não sabem qual clínica é, então usam a marca da plataforma. É por isso que ela existe e é configurável por env.
-- **Pós-login a marca é da clínica.** [`sidebar.tsx`](../apps/web/components/shell/sidebar.tsx) e [`topbar.tsx`](../apps/web/components/shell/topbar.tsx) leem `settings.clinicName` via `useSettings()`, com truncamento (nomes de clínica podem ser longos) e fallback para `brand.name`.
+- **Pré-login não tem tenant.** A tela de login e o `<title>` não sabem qual empresa é, então usam a marca da plataforma. É por isso que ela existe e é configurável por env.
+- **Pós-login: sidebar = empresa, topbar = produto.** [`sidebar.tsx`](../apps/web/components/shell/sidebar.tsx) lê `settings.clinicName` via `useSettings()` (wordmark + rodapé, com truncamento e fallback para `brand.name`). A [`topbar.tsx`](../apps/web/components/shell/topbar.tsx) mostra **sempre `brand.name`** (o produto) na raiz do breadcrumb — nunca o nome da empresa.
 
 ### O logo
 
@@ -38,13 +38,13 @@ Ao escrever **código novo**, especialmente prompts de IA e copy:
 2. **Nunca hardcode o nome do produto na UI.** Use `brand.name` (plataforma) ou `settings.clinicName` (clínica).
 3. **Placeholders e exemplos são neutros.** Use "orçamento", "consulta de avaliação", "agendamento" — não "implante", "clareamento", "sorriso".
 4. **Ícones não são do segmento.** `Stethoscope`/dente saíram; use genéricos (`Building2`, `ClipboardList`).
-5. **Rota nova → registre o título** em `TITLES` da [`topbar.tsx`](../apps/web/components/shell/topbar.tsx). Sem isso, o breadcrumb cai no fallback e repete o nome da clínica (foi o caso de `/funil`).
+5. **Rota nova → registre o título** em `TITLES` da [`topbar.tsx`](../apps/web/components/shell/topbar.tsx). Sem isso, o breadcrumb cai no fallback e mostra o nome do produto no lugar do título da página (foi o caso de `/funil`).
 
 ## O que foi mantido de propósito
 
 Não é omissão — é decisão:
 
-- **Vocabulário de domínio** (`clínica`, `paciente`, `consulta`): o produto **é** um CRM de clínica; o que se removeu foi o recorte **odontológico**. Trocar isso seria reescrever a UI inteira e o schema.
+- **Vocabulário de-verticalizado**: copy, prompts e comentários usam **empresa / cliente / atendimento** (não mais clínica/paciente/consulta) — para servir qualquer empreendimento. O adjetivo "informações clínicas" (no prompt fallback) foi preservado de propósito. Os **identificadores de código** (`clinicName`, model `Clinic`, `@dentaltrack/*`) ficam como estão; renomeá-los seria refactor de schema arriscado e sem ganho visível.
 - **Nomes de pacote `@dentaltrack/*`** e identificadores internos (`dentaltrack-mock`, `application/x-dentaltrack-card`, instância Evolution): não são visíveis ao usuário; renomear o escopo npm é alto risco e zero ganho.
 - **Design system teal** (`theme.css`): as cores continuam fixas. Cor por clínica **não** está implementado.
 
@@ -56,7 +56,7 @@ Não é omissão — é decisão:
 pnpm dev   # shared + web(:3000) + api(:3001)
 ```
 
-Crie duas contas (cada uma vira uma clínica no onboarding) e nomeie em **Configurações → Identidade → Nome da clínica** — ex.: `Clínica Sorriso Odonto` e `Studio Bella Estética`. Abra em janelas/perfis diferentes: **cada uma exibe a própria marca e monograma**. É o argumento whitelabel na prática.
+Crie duas contas (cada uma vira uma empresa no onboarding) e nomeie em **Configurações → Identidade → Nome da empresa** — ex.: `Barbearia Navalha` e `Studio Bella Estética`. Abra em janelas/perfis diferentes: **cada uma exibe a própria marca e monograma**. É o argumento whitelabel na prática.
 
 > Para demo sem chave de LLM: `LLM_PROVIDER=mock` no `apps/api/.env`.
 

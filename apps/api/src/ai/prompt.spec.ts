@@ -10,7 +10,7 @@ const NOW = new Date('2026-06-05T00:00:00.000Z');
 function makeClinic(over: Partial<Clinic> = {}): Clinic {
   return {
     id: 'c1',
-    name: 'Clínica Sorriso',
+    name: 'Empresa Sorriso',
     createdAt: NOW,
     updatedAt: NOW,
     ...over,
@@ -63,9 +63,9 @@ function makeProcedure(over: Partial<Procedure> = {}): Procedure {
 }
 
 describe('buildSystemPrompt', () => {
-  it('inclui o nome da clínica', () => {
+  it('inclui o nome da empresa', () => {
     const prompt = buildSystemPrompt({ clinic: makeClinic(), procedures: [] });
-    expect(prompt).toContain('Clínica Sorriso');
+    expect(prompt).toContain('Empresa Sorriso');
   });
 
   it('inclui especialidade, persona, saudação e instruções quando há settings', () => {
@@ -122,8 +122,8 @@ describe('buildSystemPrompt', () => {
       settings: null,
       procedures: [],
     });
-    expect(semSettings).toContain('Clínica Sorriso');
-    expect(settingsNull).toContain('Clínica Sorriso');
+    expect(semSettings).toContain('Empresa Sorriso');
+    expect(settingsNull).toContain('Empresa Sorriso');
     // não deve vazar "undefined"/"null" no texto.
     expect(semSettings).not.toMatch(/undefined|null/);
     expect(settingsNull).not.toMatch(/undefined|null/);
@@ -184,7 +184,7 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Não invente preços');
   });
 
-  describe('dados já conhecidos do paciente (memória do contato)', () => {
+  describe('dados já conhecidos do cliente (memória do contato)', () => {
     it('inclui nome/telefone conhecidos e instrui a não re-perguntar', () => {
       const prompt = buildSystemPrompt({
         clinic: makeClinic(),
@@ -194,10 +194,10 @@ describe('buildSystemPrompt', () => {
       expect(prompt).toContain('Nome: João Silva');
       expect(prompt).toContain('Telefone: 5511999998888');
       expect(prompt).toContain('NÃO pergunte novamente');
-      expect(prompt).toContain('Cumprimente o paciente pelo nome');
+      expect(prompt).toContain('Cumprimente o cliente pelo nome');
     });
 
-    it('marca o paciente como recorrente quando há agendamento anterior', () => {
+    it('marca o cliente como recorrente quando há agendamento anterior', () => {
       const prompt = buildSystemPrompt({
         clinic: makeClinic(),
         procedures: [],
@@ -225,7 +225,7 @@ describe('buildSystemPrompt', () => {
         contact: { phone: '5511999998888' },
       });
       expect(prompt).toContain('Telefone: 5511999998888');
-      expect(prompt).not.toContain('Cumprimente o paciente pelo nome');
+      expect(prompt).not.toContain('Cumprimente o cliente pelo nome');
     });
 
     it('contact vazio/null não gera a seção', () => {

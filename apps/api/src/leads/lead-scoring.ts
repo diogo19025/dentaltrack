@@ -3,14 +3,14 @@ import type { ConversationStatus, LeadTemperature } from '@dentaltrack/shared';
 /**
  * Score de temperatura do lead (BE-3.5) — função pura, calculada on-read no
  * GET /leads (sem persistência/migration). Modelo aditivo simples: conversão
- * (agendou) + engajamento (mensagens do paciente) + interesse (tags) +
+ * (agendou) + engajamento (mensagens do cliente) + interesse (tags) +
  * recência (última atividade), com penalidade de abandono. 0–100 → faixa
  * quente/médio/fraco para o dono priorizar quem tem mais chance de converter.
  */
 
 /** Conversão: lead com agendamento (appointment ou conversa `agendada`). */
 const CONVERSION_POINTS = 30;
-/** Engajamento: até +35, saturando em 8 mensagens do paciente. */
+/** Engajamento: até +35, saturando em 8 mensagens do cliente. */
 const ENGAGEMENT_MAX_POINTS = 35;
 const ENGAGEMENT_SATURATION_MESSAGES = 8;
 /** Interesse: +12 por unidade de confiança de tag, com teto de +20. */
@@ -28,7 +28,7 @@ const ABANDONMENT_PENALTY = 20;
 const HOT_THRESHOLD = 60;
 const WARM_THRESHOLD = 30;
 
-/** Sinais por lead, agregados das suas conversas (escopadas por clínica). */
+/** Sinais por lead, agregados das suas conversas (escopadas por empresa). */
 export interface LeadScoreSignals {
   /** Lead tem appointment OU alguma conversa `agendada`. */
   hasAppointment: boolean;

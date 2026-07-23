@@ -14,7 +14,7 @@ import {
 const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" } as const;
 
 /**
- * Linha de 2 séries (bot × paciente) — FE-3.1, espelha `LineChart` do
+ * Linha de 2 séries (bot × cliente) — FE-3.1, espelha `LineChart` do
  * charts.jsx: traçado linear (ponto a ponto) com marcador em todo ponto,
  * grid horizontal pontilhado, eixos discretos, cores chart-1/3.
  */
@@ -60,7 +60,7 @@ export function LineChart({ data, height = 250 }: { data: LineSeries; height?: n
         <Line
           type="linear"
           dataKey="patient"
-          name="Paciente"
+          name="Cliente"
           stroke="var(--chart-3)"
           strokeWidth={2.4}
           dot={{ r: 2.6, fill: "var(--chart-3)", stroke: "var(--card)", strokeWidth: 1.4 }}

@@ -28,7 +28,7 @@ describe("RetentionSection", () => {
     render(<RetentionSection retention={makeRetention()} rangeDaysLabel="30" />);
 
     expect(screen.getByText("Abandono × Recorrência")).toBeInTheDocument();
-    expect(screen.getByText("Pacientes recorrentes")).toBeInTheDocument();
+    expect(screen.getByText("Clientes recorrentes")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByText("Atendimentos abandonados")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();

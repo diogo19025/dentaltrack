@@ -30,7 +30,7 @@ const SESSION_WINDOW_HOURS = Number(process.env.WHATSAPP_SESSION_HOURS ?? 24);
 
 /**
  * Quantas mensagens o detalhe da conversa retorna (as mais recentes). 20 ≈ 10
- * idas e voltas paciente×bot — o suficiente para o painel "ver mais" do dashboard.
+ * idas e voltas cliente×bot — o suficiente para o painel "ver mais" do dashboard.
  */
 const DETAIL_THREAD_LIMIT = 20;
 
@@ -64,7 +64,7 @@ function sanitizeContactName(
 export class ConversationsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Abre uma conversa para a clínica (status inicial = em_andamento). */
+  /** Abre uma conversa para a empresa (status inicial = em_andamento). */
   createConversation(clinicId: string, input: CreateConversationInput = {}) {
     return this.prisma.conversation.create({
       data: {
@@ -116,7 +116,7 @@ export class ConversationsService {
    * telefone (WhatsApp): o telefone está sempre disponível e o nome de perfil
    * (pushName) quando houver. Idempotente e seguro de chamar a cada turno:
    *  1. conversa já tem lead → backfill do que estiver faltando (não sobrescreve);
-   *  2. sem lead, mas existe lead com o mesmo telefone na clínica → reusa (dedupe)
+   *  2. sem lead, mas existe lead com o mesmo telefone na empresa → reusa (dedupe)
    *     e vincula a conversa a ele;
    *  3. caso contrário → cria o lead a partir do contato e vincula.
    * O nome de perfil que é só o próprio número é descartado (não é um nome útil).
@@ -250,7 +250,7 @@ export class ConversationsService {
   }
 
   /**
-   * Conversas recentes da clínica (F3 · tabela do dashboard). Mais recente
+   * Conversas recentes da empresa (F3 · tabela do dashboard). Mais recente
    * primeiro (por `lastMessageAt`, depois `createdAt`). Inclui lead, tags
    * detectadas e o procedimento do último agendamento.
    */
@@ -320,7 +320,7 @@ export class ConversationsService {
             tag: { select: { id: true, name: true, color: true } },
           },
         },
-        // Últimas N mensagens (paciente × bot) — buscadas em ordem decrescente e
+        // Últimas N mensagens (cliente × bot) — buscadas em ordem decrescente e
         // revertidas abaixo para exibição cronológica. ~10 idas e voltas.
         messages: {
           where: { role: { not: 'system' } },
