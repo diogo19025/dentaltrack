@@ -12,7 +12,7 @@ build/
 # Test / coverage
 coverage/
 
-# Env (never commit secrets) — keep the *.example files
+# Env — keep the *.example files
 .env
 .env.*
 !.env.example

@@ -107,8 +107,8 @@ export default function SettingsPage() {
   const availability = useWatch({ control, name: "availability" });
 
   // Sincroniza o form com o servidor só quando o usuário NÃO está editando —
-  // evita que um refetch/atualização da cache de ["settings"] (agora assinada
-  // também por Sidebar/Topbar) apague o que está sendo digitado.
+  // evita que um refetch/atualização da cache de ["settings"] (assinada também
+  // por Sidebar/Topbar) apague o que está sendo digitado.
   useEffect(() => {
     if (data && !formState.isDirty) reset(data);
   }, [data, formState.isDirty, reset]);
