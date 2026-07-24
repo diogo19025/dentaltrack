@@ -57,7 +57,7 @@ describe('WhatsappService', () => {
     service = moduleRef.get(WhatsappService);
   });
 
-  it('resolve a clínica pela instância, roda o motor e envia a resposta', async () => {
+  it('resolve a empresa pela instância, roda o motor e envia a resposta', async () => {
     await service.handleWebhook(payload());
 
     expect(prismaMock.clinicSettings.findUnique).toHaveBeenCalledWith({
@@ -137,7 +137,7 @@ describe('WhatsappService', () => {
     );
   });
 
-  it('ignora instância sem clínica mapeada (não roda o motor nem envia)', async () => {
+  it('ignora instância sem empresa mapeada (não roda o motor nem envia)', async () => {
     prismaMock.clinicSettings.findUnique.mockResolvedValueOnce(null);
     await service.handleWebhook(payload());
     expect(chatMock.processInboundMessage).not.toHaveBeenCalled();

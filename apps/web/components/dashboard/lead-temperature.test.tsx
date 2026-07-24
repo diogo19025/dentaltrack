@@ -7,7 +7,7 @@ import { LeadTemperatureSection } from "./lead-temperature";
 let seq = 0;
 const makeLead = (overrides: Partial<LeadDto> = {}): LeadDto => ({
   id: `00000000-0000-0000-0000-${String(++seq).padStart(12, "0")}`,
-  name: "Paciente",
+  name: "Cliente",
   phone: null,
   email: null,
   interest: null,

@@ -3,7 +3,7 @@ import { OnboardingController } from './onboarding.controller';
 import { OnboardingService } from './onboarding.service';
 
 /**
- * Módulo de onboarding (provisionamento de clínica + membership no 1º acesso).
+ * Módulo de onboarding (provisionamento de empresa + membership no 1º acesso).
  * Usa o PrismaService (global). Ver OnboardingService.
  */
 @Module({

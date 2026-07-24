@@ -39,13 +39,13 @@ export class AiUnavailableError extends Error {
 }
 
 /**
- * System prompt genérico (fallback quando não há dados da clínica). O prompt
+ * System prompt genérico (fallback quando não há dados da empresa). O prompt
  * builder com persona/ofertas/catálogo está em `ai/prompt.ts` (BE-1.3).
  */
 export const DEFAULT_SYSTEM_PROMPT = [
-  'Você é o assistente virtual de uma clínica no Brasil.',
+  'Você é o assistente virtual de uma empresa no Brasil.',
   'Responda sempre em português do Brasil, de forma cordial, clara e breve.',
-  'Tire dúvidas sobre procedimentos e conduza gentilmente o paciente para agendar uma avaliação quando fizer sentido.',
+  'Tire dúvidas sobre procedimentos e conduza gentilmente o cliente para agendar uma avaliação quando fizer sentido.',
   'Não invente preços exatos, diagnósticos ou informações clínicas específicas; em caso de dúvida, sugira uma avaliação presencial.',
 ].join(' ');
 

@@ -101,7 +101,7 @@ describe("SendReminderDialog", () => {
       <SendReminderDialog conversationId="c-1" open onOpenChange={() => {}} />,
     );
 
-    expect(screen.getByText(/Conecte o WhatsApp da clínica/i)).toBeInTheDocument();
+    expect(screen.getByText(/Conecte o WhatsApp da empresa/i)).toBeInTheDocument();
     expect(submitButton()).toBeDisabled();
   });
 

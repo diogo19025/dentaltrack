@@ -115,7 +115,7 @@ describe('tagConversation (auto-tagging BE-3.1)', () => {
     expect(prisma.conversationTag.upsert).not.toHaveBeenCalled();
   });
 
-  it('sem tags na clínica → no-op', async () => {
+  it('sem tags na empresa → no-op', async () => {
     const prisma = makePrisma();
     prisma.tag.findMany.mockResolvedValueOnce([]);
     prisma.message.findMany.mockResolvedValueOnce([

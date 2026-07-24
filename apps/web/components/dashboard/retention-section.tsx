@@ -6,9 +6,9 @@ import { Card } from "@/components/ui/card";
 
 /**
  * Seção "Abandono × Recorrência" do dashboard — fora do handoff, seguindo o
- * design system. Compara por dia os atendimentos abandonados com os pacientes
+ * design system. Compara por dia os atendimentos abandonados com os clientes
  * que voltaram para agendar de novo (recorrentes), com os totais do período e a
- * taxa de recorrência da clínica (GET /metrics · `retention`).
+ * taxa de recorrência da empresa (GET /metrics · `retention`).
  */
 export function RetentionSection({
   retention,
@@ -29,7 +29,7 @@ export function RetentionSection({
         <div>
           <div className="text-base font-semibold tracking-[-0.01em]">Abandono × Recorrência</div>
           <div className="mt-[3px] text-[13px] text-muted-foreground">
-            Atendimentos abandonados × pacientes que voltaram a agendar · últimos {rangeDaysLabel}{" "}
+            Atendimentos abandonados × clientes que voltaram a agendar · últimos {rangeDaysLabel}{" "}
             dias
           </div>
         </div>
@@ -38,7 +38,7 @@ export function RetentionSection({
 
       <div className="mb-[18px] grid grid-cols-3 gap-[18px] max-[680px]:grid-cols-1">
         <RetentionStat
-          label="Pacientes recorrentes"
+          label="Clientes recorrentes"
           value={retention.recurrentLeads.toLocaleString("pt-BR")}
           hint="Voltaram e agendaram de novo no período"
           color="var(--chart-1)"
@@ -52,7 +52,7 @@ export function RetentionSection({
         <RetentionStat
           label="Taxa de recorrência"
           value={pct}
-          hint="Dos pacientes que já agendaram, quantos voltaram"
+          hint="Dos clientes que já agendaram, quantos voltaram"
         />
       </div>
 
@@ -60,8 +60,8 @@ export function RetentionSection({
         <RetentionLine data={retention} />
       ) : (
         <p className="py-6 text-center text-[13px] text-muted-foreground">
-          Sem abandonos nem retornos no período. Os retornos aparecem quando um paciente que já
-          agendou volta para marcar outra consulta.
+          Sem abandonos nem retornos no período. Os retornos aparecem quando um cliente que já
+          agendou volta para marcar outro atendimento.
         </p>
       )}
     </Card>

@@ -31,7 +31,7 @@ export function tagColor(name: string): TagColor {
 }
 
 /**
- * Contrato do CRUD de tags (F2 · BE-2.3). Escopado por clínica (o `clinicId`
+ * Contrato do CRUD de tags (F2 · BE-2.3). Escopado por empresa (o `clinicId`
  * vem do TenantGuard). `keywords` são os gatilhos do auto-tagging (F3).
  */
 export const tagSchema = z.object({

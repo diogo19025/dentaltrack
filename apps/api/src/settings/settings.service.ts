@@ -11,31 +11,31 @@ import {
 import type { Clinic, ClinicSettings } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-/** Tom padrão quando a clínica ainda não escolheu (espelha o design). */
+/** Tom padrão quando a empresa ainda não escolheu (espelha o design). */
 const DEFAULT_TONE: Tone = 'amigavel';
 
 /**
  * Serviço de Configurações do bot (BE-2.1). Tudo escopado por `clinicId`.
  * Os dados alimentam o system prompt (BE-1.3) — ver `ai/prompt.ts`. O nome da
- * clínica mora em `Clinic`; o restante em `ClinicSettings` (1:1, opcional).
+ * empresa mora em `Clinic`; o restante em `ClinicSettings` (1:1, opcional).
  */
 @Injectable()
 export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Lê as configurações da clínica, preenchendo defaults p/ campos vazios. */
+  /** Lê as configurações da empresa, preenchendo defaults p/ campos vazios. */
   async getSettings(clinicId: string): Promise<ClinicSettingsDto> {
     const clinic = await this.prisma.clinic.findUnique({
       where: { id: clinicId },
       include: { settings: true },
     });
     if (!clinic)
-      throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
+      throw new NotFoundException(`Empresa ${clinicId} não encontrada.`);
     return this.toDto(clinic, clinic.settings);
   }
 
   /**
-   * Atualiza as configurações (parcial). O nome da clínica vai para `Clinic`;
+   * Atualiza as configurações (parcial). O nome da empresa vai para `Clinic`;
    * o restante para `ClinicSettings` (criado on-demand via upsert).
    */
   async updateSettings(
@@ -46,7 +46,7 @@ export class SettingsService {
       where: { id: clinicId },
     });
     if (!clinic)
-      throw new NotFoundException(`Clínica ${clinicId} não encontrada.`);
+      throw new NotFoundException(`Empresa ${clinicId} não encontrada.`);
 
     const { clinicName, availability, ...rest } = input;
 

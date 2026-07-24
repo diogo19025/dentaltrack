@@ -10,7 +10,7 @@ const ABANDON_AFTER_HOURS = Number(process.env.ABANDON_AFTER_HOURS ?? 24);
  * - **markAbandoned** (de hora em hora): conversas `em_andamento` sem atividade
  *   por N horas viram `abandonada` (context.md §10 — "sem atividade por N horas").
  * - **aggregateDaily** (1x/dia): pré-agrega `daily_metric` do dia anterior por
- *   clínica (alimenta o dashboard rápido; o GET /metrics calcula ao vivo no MVP).
+ *   empresa (alimenta o dashboard rápido; o GET /metrics calcula ao vivo no MVP).
  *
  * Os métodos são públicos para serem testáveis sem o scheduler.
  */
@@ -35,7 +35,7 @@ export class MetricsJobs {
     return count;
   }
 
-  /** Pré-agrega as métricas do dia anterior em `daily_metric` (por clínica). */
+  /** Pré-agrega as métricas do dia anterior em `daily_metric` (por empresa). */
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
   async aggregateDaily(): Promise<void> {
     const today0 = startOfDay(new Date());
@@ -81,7 +81,7 @@ export class MetricsJobs {
       });
     }
     this.logger.log(
-      `aggregateDaily: ${clinics.length} clínica(s) agregada(s) para ${day.toISOString().slice(0, 10)}.`,
+      `aggregateDaily: ${clinics.length} empresa(s) agregada(s) para ${day.toISOString().slice(0, 10)}.`,
     );
   }
 }

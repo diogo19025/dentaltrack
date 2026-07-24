@@ -253,7 +253,7 @@ describe('LeadsService', () => {
             conversationTags: [
               { confidence: 0.9, tag: { name: 'implante', color: 'teal' } },
             ],
-            // 5 do paciente (score) + 4 do bot → 9 exibidas no painel.
+            // 5 do cliente (score) + 4 do bot → 9 exibidas no painel.
             messages: [
               ...Array.from({ length: 5 }, () => ({ role: 'user' })),
               ...Array.from({ length: 4 }, () => ({ role: 'assistant' })),
@@ -301,7 +301,7 @@ describe('LeadsService', () => {
       ]);
     });
 
-    it('lança 404 quando o lead não existe ou é de outra clínica', async () => {
+    it('lança 404 quando o lead não existe ou é de outra empresa', async () => {
       prismaMock.lead.findFirst.mockResolvedValueOnce(null);
 
       await expect(service.detail(CLINIC, LEAD_ID)).rejects.toBeInstanceOf(

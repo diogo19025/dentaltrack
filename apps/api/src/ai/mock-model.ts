@@ -31,12 +31,12 @@ const USAGE: LanguageModelV3Usage = {
 };
 
 export const MOCK_INFO_REPLY =
-  'Claro! Posso te apresentar os procedimentos do catálogo da clínica e, quando você quiser, registrar o seu agendamento. Me conte o que procura.';
+  'Claro! Posso te apresentar os procedimentos do catálogo da empresa e, quando você quiser, registrar o seu agendamento. Me conte o que procura.';
 
 export const MOCK_BOOKING_CONFIRMATION =
   'Perfeito! Registrei seu contato e o seu pedido de agendamento — nossa equipe confirma o horário em seguida. Posso ajudar em mais alguma coisa?';
 
-/** Texto da última mensagem do paciente no prompt. */
+/** Texto da última mensagem do cliente no prompt. */
 function lastUserText(prompt: LanguageModelV3Prompt): string {
   for (let i = prompt.length - 1; i >= 0; i--) {
     const message = prompt[i];
@@ -84,7 +84,7 @@ function textParts(text: string): LanguageModelV3StreamPart[] {
 function bookingParts(text: string): LanguageModelV3StreamPart[] {
   const nome =
     /(?:meu nome é|me chamo)\s+([^,.\n]+)/i.exec(text)?.[1]?.trim() ??
-    'Paciente Demo';
+    'Cliente Demo';
   const telefone =
     /(\(?\d{2}\)?\s*9?\d{4}[-\s]?\d{4})/.exec(text)?.[1] ?? '(11) 90000-0000';
   const preferencia =

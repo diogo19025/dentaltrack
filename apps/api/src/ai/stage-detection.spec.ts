@@ -15,7 +15,7 @@ const CONVO = '00000000-0000-0000-0000-00000000c001';
 const CARD = '00000000-0000-0000-0000-00000000f001';
 const LEAD = '00000000-0000-0000-0000-00000000d001';
 
-/** As 5 colunas do sistema da clínica (posições 0..4). */
+/** As 5 colunas do sistema da empresa (posições 0..4). */
 const STAGES = FUNNEL_STAGES.map((systemStage, position) => ({
   id: `00000000-0000-0000-0000-00000000b00${position}`,
   name: FUNNEL_STAGE_DEFAULT_NAMES[systemStage],
@@ -258,7 +258,7 @@ describe('detectFunnelStage (funil F7)', () => {
     expect(prisma.pipelineCard.update).not.toHaveBeenCalled();
   });
 
-  it('conversa fora da clínica → no-op (escopo por tenant)', async () => {
+  it('conversa fora da empresa → no-op (escopo por tenant)', async () => {
     const prisma = makePrisma();
     prisma.conversation.findFirst.mockResolvedValueOnce(null);
 

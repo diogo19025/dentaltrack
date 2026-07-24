@@ -22,7 +22,7 @@ interface ConvoLite {
   messages: { role: string; createdAt: Date }[];
 }
 
-/** Eventos de retorno (recorrência) da clínica, agregados por lead. */
+/** Eventos de retorno (recorrência) da empresa, agregados por lead. */
 interface LeadReturns {
   events: { leadId: string; date: Date }[];
   /** Leads com pelo menos um retorno (all-time). */
@@ -44,7 +44,7 @@ interface WindowStats {
 /**
  * Métricas do dashboard (BE-3.2/3.3). Escopado por `clinicId`. Definições em
  * docs/context.md §10. Calcula KPIs (com delta vs. janela anterior + sparkline),
- * séries (linha bot×paciente/dia), funil, top tags e distribuição de status.
+ * séries (linha bot×cliente/dia), funil, top tags e distribuição de status.
  * Tudo ao vivo no MVP (a pré-agregação `daily_metric` é alimentada pela cron).
  */
 @Injectable()
@@ -190,7 +190,7 @@ export class MetricsService {
   }
 
   /**
-   * Eventos de retorno da clínica (all-time): um agendamento de um lead que já
+   * Eventos de retorno da empresa (all-time): um agendamento de um lead que já
    * tinha agendamento anterior, criado em OUTRA conversa (agendar duas vezes na
    * mesma conversa não é retorno). Agendamentos sem lead não são rastreáveis.
    */
@@ -316,7 +316,7 @@ export class MetricsService {
   }
 }
 
-/** Uma conversa "engajou" se o paciente respondeu após a 1ª mensagem do bot. */
+/** Uma conversa "engajou" se o cliente respondeu após a 1ª mensagem do bot. */
 function isEngaged(c: ConvoLite): boolean {
   const firstAssistant = c.messages.find((m) => m.role === 'assistant');
   if (!firstAssistant) return false;

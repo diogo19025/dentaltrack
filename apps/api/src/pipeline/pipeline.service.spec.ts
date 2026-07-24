@@ -71,7 +71,7 @@ function row(overrides: Record<string, unknown> = {}) {
 describe('PipelineService (funil F7)', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('list: colunas + cards escopados por clínica, DTO com contato derivado', async () => {
+  it('list: colunas + cards escopados por empresa, DTO com contato derivado', async () => {
     const prisma = makePrisma();
     prisma.pipelineCard.findMany.mockResolvedValueOnce([
       row(),
@@ -119,7 +119,7 @@ describe('PipelineService (funil F7)', () => {
   it('list: provisiona as colunas do sistema que faltarem (1º acesso)', async () => {
     const prisma = makePrisma();
     prisma.pipelineStage.findMany
-      .mockResolvedValueOnce([]) // antes: clínica sem colunas
+      .mockResolvedValueOnce([]) // antes: empresa sem colunas
       .mockResolvedValueOnce(SYSTEM_STAGES); // depois do provisionamento
     prisma.pipelineCard.findMany.mockResolvedValueOnce([]);
     const service = makeService(prisma);
@@ -182,7 +182,7 @@ describe('PipelineService (funil F7)', () => {
     expect(card).toMatchObject({ source: 'manual' });
   });
 
-  it('createManual: coluna informada que não é da clínica → 404', async () => {
+  it('createManual: coluna informada que não é da empresa → 404', async () => {
     const prisma = makePrisma();
     const service = makeService(prisma);
 
@@ -220,7 +220,7 @@ describe('PipelineService (funil F7)', () => {
     expect(card.stageSource).toBe('manual');
   });
 
-  it('move/remove: card de outra clínica → 404 (posse cross-tenant)', async () => {
+  it('move/remove: card de outra empresa → 404 (posse cross-tenant)', async () => {
     const prisma = makePrisma();
     prisma.pipelineCard.findFirst.mockResolvedValue(null);
     const service = makeService(prisma);

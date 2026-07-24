@@ -7,7 +7,7 @@ const MAX_AUDIO_BASE64 = 14_000_000;
 /**
  * Contrato do endpoint POST /chat (BE-1.6, streaming).
  * O `clinicId` NÃO vem no body: é resolvido pelo TenantGuard a partir do JWT.
- * A entrada do paciente é texto (`message`) OU áudio (`audio` + `audioType`) —
+ * A entrada do cliente é texto (`message`) OU áudio (`audio` + `audioType`) —
  * exatamente um dos dois. O áudio é transcrito no servidor (speech-to-text) e a
  * transcrição segue o fluxo normal do turno (persistência, tools, tagging),
  * voltando ao cliente no header `X-Transcript` (URI-encoded).
@@ -18,14 +18,14 @@ export const chatRequestSchema = z
   .object({
     /** Conversa existente. Ausente → cria uma nova. */
     conversationId: z.string().uuid().optional(),
-    /** Mensagem de texto do paciente (exclusivo com `audio`). */
+    /** Mensagem de texto do cliente (exclusivo com `audio`). */
     message: z
       .string()
       .trim()
       .min(1, "Mensagem não pode ser vazia.")
       .max(4000)
       .optional(),
-    /** Áudio do paciente em base64, sem o prefixo `data:` (exclusivo com `message`). */
+    /** Áudio do cliente em base64, sem o prefixo `data:` (exclusivo com `message`). */
     audio: z.string().min(1).max(MAX_AUDIO_BASE64).optional(),
     /** MIME do áudio (ex.: `audio/webm`) — obrigatório junto com `audio`. */
     audioType: z

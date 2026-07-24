@@ -18,7 +18,7 @@ import { ProceduresService } from './procedures.service';
 /**
  * CRUD do catálogo de procedimentos (BE-2.2). Protegido: SupabaseJwtGuard
  * (global) + TenantGuard resolve o `clinicId`. Toda operação é escopada por
- * clínica — o `clinicId` nunca vem do cliente.
+ * empresa — o `clinicId` nunca vem do cliente.
  */
 @Controller('procedures')
 @UseGuards(TenantGuard)

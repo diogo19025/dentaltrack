@@ -37,9 +37,9 @@ function firstName(name: string | null): string | null {
 }
 
 /**
- * Monta o rascunho determinístico do lembrete a partir do contexto do paciente
+ * Monta o rascunho determinístico do lembrete a partir do contexto do cliente
  * (sem IA — ver decisão de produto). Texto plano, curto e amistoso, próprio para
- * WhatsApp: cumprimento + clínica + interesse + (oferta vigente) + chamada para
+ * WhatsApp: cumprimento + empresa + interesse + (oferta vigente) + chamada para
  * agendar. O operador pode editar antes de enviar.
  */
 export function buildReminderDraft(input: {
@@ -77,7 +77,7 @@ export class RemindersService {
 
   /**
    * Contexto da caixa de envio (GET): elegibilidade, telefone resolvido e um
-   * rascunho pré-preenchido. Lança 404 se a conversa não for da clínica.
+   * rascunho pré-preenchido. Lança 404 se a conversa não for da empresa.
    */
   async getContext(
     clinicId: string,
@@ -95,7 +95,7 @@ export class RemindersService {
    * Envia o lembrete e o persiste na conversa (POST). **Envia primeiro**: só
    * grava a mensagem se o WhatsApp aceitou — evita registrar um lembrete que não
    * saiu. Reabre a conversa se estava `abandonada` (transição documentada) para
-   * que a resposta do paciente caia no mesmo fio.
+   * que a resposta do cliente caia no mesmo fio.
    */
   async send(
     clinicId: string,
@@ -111,7 +111,7 @@ export class RemindersService {
     }
     if (!loaded.instance || !this.evolution.isConfigured()) {
       throw new BadRequestException(
-        'O WhatsApp não está configurado para esta clínica.',
+        'O WhatsApp não está configurado para esta empresa.',
       );
     }
 
@@ -169,7 +169,7 @@ export class RemindersService {
 
   /**
    * Carrega tudo o que o lembrete precisa numa conversa escopada por tenant:
-   * status, telefone (do canal ou do lead), instância da clínica e o rascunho
+   * status, telefone (do canal ou do lead), instância da empresa e o rascunho
    * pronto. Lança 404 (cross-tenant também cai aqui).
    */
   private async load(clinicId: string, conversationId: string) {

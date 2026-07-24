@@ -10,7 +10,7 @@ import type { PrismaService } from '../prisma/prisma.service';
 
 /**
  * Tools do agente (BE-1.4) — function calling via Vercel AI SDK.
- * São construídas por requisição, capturando o contexto (clínica + conversa),
+ * São construídas por requisição, capturando o contexto (empresa + conversa),
  * então cada execução já é escopada por `clinicId`. Channel-agnostic.
  *
  * Usamos `dynamicTool` + `jsonSchema` (em vez de `tool`/`zodSchema`) de propósito:
@@ -154,7 +154,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
    * Escolhe a oferta mais pertinente (F6) para o momento da conversa:
    *  1. procedimento nomeado com oferta própria (mais específico);
    *  2. interesse → tags casadas → procedimento com oferta (personalização por tag);
-   *  3. oferta global da clínica (se ativa), como fallback.
+   *  3. oferta global da empresa (se ativa), como fallback.
    * Retorna o texto + mídia opcional; `null` se não houver nada a oferecer.
    */
   async function selectOffer(
@@ -216,7 +216,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
       }
     }
 
-    // 3. Oferta global da clínica (fallback).
+    // 3. Oferta global da empresa (fallback).
     const settings = await prisma.clinicSettings.findUnique({
       where: { clinicId },
       select: {
@@ -256,8 +256,8 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
   /**
    * Sugestão por interesse: combina a busca textual com os procedimentos cujas
-   * TAGS de interesse casam com o relato do paciente (nome da tag ou alguma
-   * keyword aparece no texto). As tags são poucas por clínica, então buscá-las
+   * TAGS de interesse casam com o relato do cliente (nome da tag ou alguma
+   * keyword aparece no texto). As tags são poucas por empresa, então buscá-las
    * todas e filtrar em memória é barato — e é o elo tags↔procedimentos (BE-2.2).
    */
   async function suggestByInterest(interesse: string) {
@@ -305,7 +305,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
   const tools: Record<string, unknown> = {
     searchProcedures: dynamicTool({
       description:
-        "Busca procedimentos no catálogo da clínica por um termo (ex.: 'implante', 'clareamento'). Use para responder sobre descrição, preço e duração. Não invente procedimentos fora do catálogo.",
+        "Busca procedimentos no catálogo da empresa por um termo (ex.: 'implante', 'clareamento'). Use para responder sobre descrição, preço e duração. Não invente procedimentos fora do catálogo.",
       inputSchema: jsonSchema<SearchInput>({
         type: 'object',
         properties: {
@@ -323,13 +323,13 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
     suggestProcedures: dynamicTool({
       description:
-        "Sugere procedimentos do catálogo com base no interesse/sintoma relatado pelo paciente (ex.: 'dente amarelo', 'dor'). Retorna opções pertinentes para recomendar.",
+        "Sugere procedimentos do catálogo com base no interesse/sintoma relatado pelo cliente (ex.: 'dente amarelo', 'dor'). Retorna opções pertinentes para recomendar.",
       inputSchema: jsonSchema<SuggestInput>({
         type: 'object',
         properties: {
           interesse: {
             type: 'string',
-            description: 'O que o paciente quer/relata.',
+            description: 'O que o cliente quer/relata.',
           },
         },
         required: ['interesse'],
@@ -344,7 +344,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
     presentOffer: dynamicTool({
       description:
-        'Apresenta a oferta/promoção mais pertinente ao paciente (F6). Chame quando ele demonstrar interesse num procedimento ou tema. Informe `procedimento` (nome do procedimento de interesse) e/ou `interesse` (o que o paciente relata). Retorna o texto da oferta para você adaptar na resposta; se houver mídia (imagem/vídeo/áudio/catálogo), ela é enviada automaticamente pelo canal — mencione que está enviando o material, sem inventar links.',
+        'Apresenta a oferta/promoção mais pertinente ao cliente (F6). Chame quando ele demonstrar interesse num procedimento ou tema. Informe `procedimento` (nome do procedimento de interesse) e/ou `interesse` (o que o cliente relata). Retorna o texto da oferta para você adaptar na resposta; se houver mídia (imagem/vídeo/áudio/catálogo), ela é enviada automaticamente pelo canal — mencione que está enviando o material, sem inventar links.',
       inputSchema: jsonSchema<PresentOfferInput>({
         type: 'object',
         properties: {
@@ -354,7 +354,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
           },
           interesse: {
             type: 'string',
-            description: 'O que o paciente relata/procura.',
+            description: 'O que o cliente relata/procura.',
           },
         },
         additionalProperties: false,
@@ -380,11 +380,11 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
     captureLead: dynamicTool({
       description:
-        'Registra (ou atualiza) os dados de contato do paciente quando ele demonstrar interesse. Chame assim que tiver o nome e, de preferência, o telefone.',
+        'Registra (ou atualiza) os dados de contato do cliente quando ele demonstrar interesse. Chame assim que tiver o nome e, de preferência, o telefone.',
       inputSchema: jsonSchema<CaptureLeadInput>({
         type: 'object',
         properties: {
-          nome: { type: 'string', description: 'Nome do paciente.' },
+          nome: { type: 'string', description: 'Nome do cliente.' },
           telefone: {
             type: 'string',
             description: 'Telefone/WhatsApp, se informado.',
@@ -417,15 +417,15 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 
     bookAppointment: dynamicTool({
       description:
-        'Registra um pedido de agendamento (a conversão). Use quando o paciente confirmar que quer marcar. Garanta antes nome e telefone. Informe o procedimento e a preferência de dia/horário em texto livre.',
+        'Registra um pedido de agendamento (a conversão). Use quando o cliente confirmar que quer marcar. Garanta antes nome e telefone. Informe o procedimento e a preferência de dia/horário em texto livre.',
       inputSchema: jsonSchema<BookInput>({
         type: 'object',
         properties: {
           nome: {
             type: 'string',
-            description: 'Nome do paciente (se ainda não capturado).',
+            description: 'Nome do cliente (se ainda não capturado).',
           },
-          telefone: { type: 'string', description: 'Telefone do paciente.' },
+          telefone: { type: 'string', description: 'Telefone do cliente.' },
           procedimento: {
             type: 'string',
             description: 'Procedimento desejado.',
@@ -492,7 +492,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
   return tools as unknown as ToolSet;
 }
 
-/** Cria ou atualiza o lead da conversa (escopo por clínica) e o vincula. */
+/** Cria ou atualiza o lead da conversa (escopo por empresa) e o vincula. */
 async function upsertLead(
   prisma: PrismaService,
   args: {

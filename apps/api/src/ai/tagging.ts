@@ -49,7 +49,7 @@ export async function tagConversation(
 ): Promise<void> {
   const { prisma, clinicId, conversationId } = ctx;
   try {
-    // 1. Tags da clínica + mensagens recentes da conversa.
+    // 1. Tags da empresa + mensagens recentes da conversa.
     const [tags, messages] = await Promise.all([
       prisma.tag.findMany({
         where: { clinicId },
@@ -85,7 +85,7 @@ export async function tagConversation(
       .slice()
       .reverse()
       .map(
-        (m) => `${m.role === 'user' ? 'Paciente' : 'Assistente'}: ${m.content}`,
+        (m) => `${m.role === 'user' ? 'Cliente' : 'Assistente'}: ${m.content}`,
       )
       .join('\n');
     const allowed = candidates.map((t) => t.name);
@@ -96,7 +96,7 @@ export async function tagConversation(
       maxRetries: 1,
       abortSignal: AbortSignal.timeout(TIMEOUT_MS),
       system: [
-        'Você classifica conversas de uma clínica pelo interesse demonstrado pelo paciente.',
+        'Você classifica conversas de uma empresa pelo interesse demonstrado pelo cliente.',
         'Escolha apenas tags da lista permitida que realmente reflitam o interesse da conversa.',
         'Atribua um confidence de 0 a 1 para cada tag escolhida. Não invente tags fora da lista.',
         'Se nada se aplicar, retorne uma lista vazia.',

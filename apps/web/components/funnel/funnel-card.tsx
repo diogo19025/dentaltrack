@@ -23,7 +23,7 @@ export const CARD_DRAG_TYPE = "application/x-dentaltrack-card";
  * Card de um contato no board do funil (F7). Arrastável entre colunas
  * (drag-and-drop nativo) e com menu "Mover para" como caminho acessível por
  * teclado — as duas vias chamam o mesmo `onMove`. A lista de colunas vem do
- * servidor (colunas por clínica, incl. personalizadas).
+ * servidor (colunas por empresa, incl. personalizadas).
  */
 export function FunnelCard({
   card,

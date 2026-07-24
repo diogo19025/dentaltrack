@@ -50,7 +50,7 @@ export const envSchema = z.object({
   // para o mesmo telefone; fora dela abre-se uma nova conversa (WA-2). Default 24.
   WHATSAPP_SESSION_HOURS: z.coerce.number().int().positive().optional(),
   // Endereço da Evolution API (ex.: http://localhost:8080). Sem ela, o WhatsApp
-  // fica inativo (o webhook ignora mensagens sem clínica mapeada). (WA-3)
+  // fica inativo (o webhook ignora mensagens sem empresa mapeada). (WA-3)
   EVOLUTION_API_URL: z.string().url().optional(),
   // Chave global da Evolution (header `apikey` nas chamadas de saída). (WA-3)
   EVOLUTION_API_KEY: z.string().optional(),

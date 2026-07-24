@@ -39,7 +39,7 @@ describe('ConversationsService', () => {
   });
 
   describe('createConversation', () => {
-    it('abre a conversa escopada na clínica, canal web por padrão', async () => {
+    it('abre a conversa escopada na empresa, canal web por padrão', async () => {
       prismaMock.conversation.create.mockResolvedValueOnce({
         id: CONVERSATION_ID,
       });

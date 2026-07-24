@@ -17,7 +17,7 @@ import { TagsService } from './tags.service';
 
 /**
  * CRUD das tags de interesse (BE-2.3). Protegido: SupabaseJwtGuard (global) +
- * TenantGuard resolve o `clinicId`. Toda operação é escopada por clínica.
+ * TenantGuard resolve o `clinicId`. Toda operação é escopada por empresa.
  */
 @Controller('tags')
 @UseGuards(TenantGuard)

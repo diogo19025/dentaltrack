@@ -33,7 +33,7 @@ describe('buildChatTools', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
-  it('searchProcedures: retorna procedimentos da clínica com preço formatado', async () => {
+  it('searchProcedures: retorna procedimentos da empresa com preço formatado', async () => {
     prismaMock.procedure.findMany.mockResolvedValueOnce([
       {
         id: 'p1',
@@ -48,7 +48,7 @@ describe('buildChatTools', () => {
 
     const res = await exec(tools().searchProcedures, { query: 'implante' });
 
-    // escopado por clínica + ativo
+    // escopado por empresa + ativo
     expect(prismaMock.procedure.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ clinicId: CLINIC_ID, active: true }),

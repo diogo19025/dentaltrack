@@ -84,10 +84,10 @@ describe('ChatService.streamMessage', () => {
       return { pipeUIMessageStreamToResponse: pipeMock };
     });
     conversationsMock.appendMessage.mockResolvedValue({ id: 'msg' });
-    // Defaults do buildPrompt (clínica existe, sem settings/procedimentos).
+    // Defaults do buildPrompt (empresa existe, sem settings/procedimentos).
     prismaMock.clinic.findUnique.mockResolvedValue({
       id: CLINIC_ID,
-      name: 'Clínica Demo',
+      name: 'Empresa Demo',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -103,7 +103,7 @@ describe('ChatService.streamMessage', () => {
     service = moduleRef.get(ChatService);
   });
 
-  it('sem conversationId: abre conversa na clínica, persiste user, streama e devolve o header', async () => {
+  it('sem conversationId: abre conversa na empresa, persiste user, streama e devolve o header', async () => {
     conversationsMock.createConversation.mockResolvedValueOnce({
       id: CONVERSATION_ID,
     });
@@ -126,10 +126,10 @@ describe('ChatService.streamMessage', () => {
       {},
       CLINIC_ID,
     );
-    // streamAssistantReply recebe histórico (só user/assistant) + system da clínica + tools.
+    // streamAssistantReply recebe histórico (só user/assistant) + system da empresa + tools.
     expect(streamMock).toHaveBeenCalledWith(
       [{ role: 'user', content: 'Olá' }],
-      expect.stringContaining('Clínica Demo'),
+      expect.stringContaining('Empresa Demo'),
       expect.objectContaining({
         captureLead: expect.anything(),
         bookAppointment: expect.anything(),
@@ -185,7 +185,7 @@ describe('ChatService.streamMessage', () => {
     expect(conversationsMock.appendMessage).toHaveBeenCalledTimes(1);
   });
 
-  it('com conversationId da clínica: valida o escopo e não cria nova conversa', async () => {
+  it('com conversationId da empresa: valida o escopo e não cria nova conversa', async () => {
     prismaMock.conversation.findFirst.mockResolvedValueOnce({
       id: CONVERSATION_ID,
     });
@@ -228,7 +228,7 @@ describe('ChatService.streamMessage', () => {
     );
   });
 
-  it('conversationId de outra clínica (ou inexistente) → 404, sem streamar nem persistir', async () => {
+  it('conversationId de outra empresa (ou inexistente) → 404, sem streamar nem persistir', async () => {
     prismaMock.conversation.findFirst.mockResolvedValueOnce(null);
     await expect(
       service.streamMessage(
@@ -366,10 +366,10 @@ describe('ChatService.streamMessage', () => {
         {},
         CLINIC_ID,
       );
-      // Geração non-streaming com histórico + system da clínica + tools.
+      // Geração non-streaming com histórico + system da empresa + tools.
       expect(generateMock).toHaveBeenCalledWith(
         [{ role: 'user', content: 'Quero agendar' }],
-        expect.stringContaining('Clínica Demo'),
+        expect.stringContaining('Empresa Demo'),
         expect.objectContaining({
           captureLead: expect.anything(),
           bookAppointment: expect.anything(),

@@ -21,12 +21,12 @@ const BLOCKER_NOTE: Record<ReminderBlocker, string> = {
   no_phone:
     "Este contato não tem telefone capturado. Peça o contato na conversa para enviar um lembrete.",
   whatsapp_not_configured:
-    "Conecte o WhatsApp da clínica em Configurações para enviar lembretes pelo CRM.",
+    "Conecte o WhatsApp da empresa em Configurações para enviar lembretes pelo CRM.",
 };
 
 /**
  * Caixa de "Enviar lembrete" — envia uma mensagem proativa por WhatsApp, do
- * próprio CRM, referenciando a conversa do paciente. Pré-preenche um rascunho
+ * próprio CRM, referenciando a conversa do cliente. Pré-preenche um rascunho
  * editável (vindo do servidor) e mostra a elegibilidade. Compartilhada pelo
  * painel do lead e pelo painel de "Conversas recentes". Os painéis montam este
  * componente só quando aberto (a busca de contexto roda sob demanda).

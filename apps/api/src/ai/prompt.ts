@@ -6,11 +6,11 @@ import type {
 
 /**
  * Prompt builder (BE-1.3). Monta o system prompt da conversa a partir dos
- * dados da clínica, das configurações (opcionais) e do catálogo de procedimentos.
+ * dados da empresa, das configurações (opcionais) e do catálogo de procedimentos.
  * Pure function (sem I/O) — fácil de testar. Ainda sem tools/streaming.
  */
 /**
- * Dados já conhecidos do paciente da conversa (lead vinculado / identidade do
+ * Dados já conhecidos do cliente da conversa (lead vinculado / identidade do
  * canal, ex.: telefone do WhatsApp). Quando presentes, o bot NÃO deve pedi-los
  * de novo — é o que faz o agente "lembrar" de um contato recorrente.
  */
@@ -106,9 +106,9 @@ function formatAppointmentDate(d: Date): string {
 }
 
 /**
- * Seção "dados já conhecidos do paciente" — só entra quando há algo capturado.
+ * Seção "dados já conhecidos do cliente" — só entra quando há algo capturado.
  * Instrui o bot a usar (e não re-perguntar) nome/telefone e a acolher o
- * paciente recorrente que volta para agendar de novo.
+ * cliente recorrente que volta para agendar de novo.
  */
 function formatKnownContact(contact: KnownContact): string[] {
   const known: string[] = [];
@@ -120,14 +120,14 @@ function formatKnownContact(contact: KnownContact): string[] {
   const lines: string[] = [];
   lines.push('');
   lines.push(
-    'Dados já conhecidos do paciente desta conversa (capturados em contatos anteriores ou pelo canal):',
+    'Dados já conhecidos do cliente desta conversa (capturados em contatos anteriores ou pelo canal):',
   );
   lines.push(...known);
 
   const appointments = contact.appointments ?? [];
   if (appointments.length > 0) {
     lines.push(
-      'Este paciente JÁ AGENDOU antes nesta clínica (paciente recorrente):',
+      'Este cliente JÁ AGENDOU antes nesta empresa (cliente recorrente):',
     );
     for (const a of appointments) {
       const parts = [
@@ -144,7 +144,7 @@ function formatKnownContact(contact: KnownContact): string[] {
     '- NÃO pergunte novamente nome, telefone ou e-mail já listados acima; use-os diretamente, inclusive ao chamar `captureLead` e `bookAppointment`.',
   );
   if (contact.name?.trim()) {
-    lines.push('- Cumprimente o paciente pelo nome.');
+    lines.push('- Cumprimente o cliente pelo nome.');
   }
   if (appointments.length > 0) {
     lines.push(
@@ -152,7 +152,7 @@ function formatKnownContact(contact: KnownContact): string[] {
     );
   }
   lines.push(
-    '- Atualize os dados (via `captureLead`) apenas se o paciente informar que mudaram.',
+    '- Atualize os dados (via `captureLead`) apenas se o cliente informar que mudaram.',
   );
   return lines;
 }
@@ -165,14 +165,14 @@ export function buildSystemPrompt({
 }: BuildSystemPromptInput): string {
   const lines: string[] = [];
 
-  // Identidade da clínica.
+  // Identidade da empresa.
   const specialty = settings?.specialty?.trim();
   lines.push(
-    `Você é o assistente virtual de atendimento da clínica "${clinic.name}"` +
+    `Você é o assistente virtual de atendimento da empresa "${clinic.name}"` +
       (specialty ? `, especializada em ${specialty}.` : '.'),
   );
   if (settings?.description?.trim()) {
-    lines.push(`Sobre a clínica: ${settings.description.trim()}`);
+    lines.push(`Sobre a empresa: ${settings.description.trim()}`);
   }
 
   // Persona / tom.
@@ -181,11 +181,11 @@ export function buildSystemPrompt({
   }
   if (settings?.tone?.trim()) {
     lines.push(
-      `Use sempre um tom ${settings.tone.trim()} ao falar com o paciente.`,
+      `Use sempre um tom ${settings.tone.trim()} ao falar com o cliente.`,
     );
   }
 
-  // Saudação / instruções específicas da clínica.
+  // Saudação / instruções específicas da empresa.
   if (settings?.greeting?.trim()) {
     lines.push(
       `Saudação sugerida ao iniciar a conversa: "${settings.greeting.trim()}"`,
@@ -193,7 +193,7 @@ export function buildSystemPrompt({
   }
   if (settings?.instructions?.trim()) {
     lines.push(
-      `Instruções específicas da clínica: ${settings.instructions.trim()}`,
+      `Instruções específicas da empresa: ${settings.instructions.trim()}`,
     );
   }
 
@@ -228,7 +228,7 @@ export function buildSystemPrompt({
     lines.push(`Horários de atendimento: ${availability}`);
   }
 
-  // Dados já conhecidos do paciente (memória do contato — não re-perguntar).
+  // Dados já conhecidos do cliente (memória do contato — não re-perguntar).
   if (contact) {
     lines.push(...formatKnownContact(contact));
   }
@@ -236,11 +236,11 @@ export function buildSystemPrompt({
   // Catálogo de procedimentos.
   lines.push('');
   if (procedures.length > 0) {
-    lines.push('Catálogo de procedimentos oferecidos pela clínica:');
+    lines.push('Catálogo de procedimentos oferecidos pela empresa:');
     for (const proc of procedures) lines.push(formatProcedure(proc));
   } else {
     lines.push(
-      'A clínica ainda não cadastrou procedimentos. Não cite procedimentos ou preços específicos; ofereça uma avaliação inicial.',
+      'A empresa ainda não cadastrou procedimentos. Não cite procedimentos ou preços específicos; ofereça uma avaliação inicial.',
     );
   }
 
@@ -248,10 +248,10 @@ export function buildSystemPrompt({
   lines.push('');
   lines.push('Diretrizes de atendimento:');
   lines.push(
-    '- Responda sempre em português do Brasil, como um atendente de clínica: cordial, claro e objetivo.',
+    '- Responda sempre em português do Brasil, como um atendente de empresa: cordial, claro e objetivo.',
   );
   lines.push(
-    '- Quando o paciente demonstrar interesse em um procedimento ou em agendar, conduza-o gentilmente a deixar o nome e o telefone para contato — pedindo apenas o que ainda não for conhecido.',
+    '- Quando o cliente demonstrar interesse em um procedimento ou em agendar, conduza-o gentilmente a deixar o nome e o telefone para contato — pedindo apenas o que ainda não for conhecido.',
   );
   lines.push(
     '- Não invente preços, horários ou procedimentos que não estejam no catálogo acima. Se não tiver a informação, ofereça uma avaliação presencial.',
@@ -270,13 +270,13 @@ export function buildSystemPrompt({
     '- Para falar de procedimentos, preços ou duração, chame `searchProcedures` (ou `suggestProcedures`) e responda com base no resultado. Nunca invente.',
   );
   lines.push(
-    '- Quando o paciente demonstrar interesse e houver oferta pertinente, chame `presentOffer` (com o procedimento e/ou o interesse relatado). Ela cuida do material promocional (imagem/vídeo/áudio/catálogo). Use o texto retornado; não invente promoções nem links.',
+    '- Quando o cliente demonstrar interesse e houver oferta pertinente, chame `presentOffer` (com o procedimento e/ou o interesse relatado). Ela cuida do material promocional (imagem/vídeo/áudio/catálogo). Use o texto retornado; não invente promoções nem links.',
   );
   lines.push(
-    '- Assim que tiver o nome e o telefone do paciente, chame `captureLead` para registrar o contato.',
+    '- Assim que tiver o nome e o telefone do cliente, chame `captureLead` para registrar o contato.',
   );
   lines.push(
-    '- Quando o paciente confirmar que quer marcar, chame `bookAppointment` com o procedimento e a preferência de dia/horário. Só confirme o agendamento DEPOIS que a ferramenta retornar sucesso.',
+    '- Quando o cliente confirmar que quer marcar, chame `bookAppointment` com o procedimento e a preferência de dia/horário. Só confirme o agendamento DEPOIS que a ferramenta retornar sucesso.',
   );
   lines.push(
     '- Não afirme que registrou contato ou agendamento se você não chamou a ferramenta correspondente.',

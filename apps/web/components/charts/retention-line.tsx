@@ -52,7 +52,7 @@ export function RetentionLine({ data, height = 230 }: { data: Retention; height?
         <Line
           type="linear"
           dataKey="recurrent"
-          name="Pacientes recorrentes"
+          name="Clientes recorrentes"
           stroke="var(--chart-1)"
           strokeWidth={2.4}
           dot={{ r: 2.6, fill: "var(--chart-1)", stroke: "var(--card)", strokeWidth: 1.4 }}

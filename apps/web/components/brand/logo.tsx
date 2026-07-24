@@ -34,7 +34,7 @@ export function BrandMark({ name = brand.name, size = 22, style, className }: Br
 }
 
 type LogoProps = {
-  /** Nome exibido no wordmark (default: marca da plataforma; no shell, a clínica). */
+  /** Nome exibido no wordmark (default: marca da plataforma; no shell, a empresa). */
   name?: string;
   compact?: boolean;
   mark?: number;

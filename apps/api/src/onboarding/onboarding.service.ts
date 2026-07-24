@@ -13,11 +13,11 @@ export interface EnsureClinicResult {
 }
 
 /**
- * Onboarding multi-tenant: garante que o usuário autenticado tenha uma clínica
+ * Onboarding multi-tenant: garante que o usuário autenticado tenha uma empresa
  * e uma `membership` (owner). **Idempotente e seguro sob concorrência** — o
  * layout pode disparar o bootstrap em renders simultâneos (ex.: fluxo OAuth),
- * então usamos um advisory lock por usuário para não criar clínica duplicada.
- * Fecha o buraco de "usuário novo sem clínica".
+ * então usamos um advisory lock por usuário para não criar empresa duplicada.
+ * Fecha o buraco de "usuário novo sem empresa".
  */
 @Injectable()
 export class OnboardingService {
@@ -34,11 +34,11 @@ export class OnboardingService {
     });
     if (existing) return { clinicId: existing.clinicId, created: false };
 
-    const name = input.clinicName?.trim() || 'Minha clínica';
+    const name = input.clinicName?.trim() || 'Minha empresa';
 
     return this.prisma.$transaction(async (tx) => {
       // Lock por usuário (transaction-scoped): chamadas concorrentes do mesmo
-      // usuário serializam aqui, evitando provisionar duas clínicas.
+      // usuário serializam aqui, evitando provisionar duas empresas.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.userId}))`;
 
       // Re-checa dentro do lock: outra chamada pode ter provisionado enquanto
@@ -55,7 +55,7 @@ export class OnboardingService {
         data: { userId: input.userId, clinicId: clinic.id },
       });
       this.logger.log(
-        `Clínica provisionada para o usuário ${input.userId}: ${clinic.id}`,
+        `Empresa provisionada para o usuário ${input.userId}: ${clinic.id}`,
       );
       return { clinicId: clinic.id, created: true };
     });

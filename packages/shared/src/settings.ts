@@ -21,7 +21,7 @@ export const availabilitySlotSchema = z.object({
 });
 export type AvailabilitySlot = z.infer<typeof availabilitySlotSchema>;
 
-/** Disponibilidade padrão (usada quando a clínica ainda não configurou). */
+/** Disponibilidade padrão (usada quando a empresa ainda não configurou). */
 export const DEFAULT_AVAILABILITY: AvailabilitySlot[] = [
   { day: "Segunda a sexta", hours: "08:00 – 18:00", open: true },
   { day: "Sábado", hours: "08:00 – 12:00", open: true },
@@ -31,7 +31,7 @@ export const DEFAULT_AVAILABILITY: AvailabilitySlot[] = [
 /**
  * Configuração completa do bot (resposta de GET /settings). `clinicName` vem
  * de `Clinic.name`; o restante de `clinic_settings`. Campos textuais podem vir
- * vazios numa clínica recém-criada.
+ * vazios numa empresa recém-criada.
  */
 export const clinicSettingsSchema = z.object({
   clinicName: z.string(),
@@ -52,7 +52,7 @@ export const clinicSettingsSchema = z.object({
   offerStartsOn: z.string(),
   offerEndsOn: z.string(),
   availability: z.array(availabilitySlotSchema),
-  /** Instância Evolution que atende a clínica no WhatsApp (WA-1). Vazio = sem WhatsApp. */
+  /** Instância Evolution que atende a empresa no WhatsApp (WA-1). Vazio = sem WhatsApp. */
   whatsappInstance: z.string(),
 });
 export type ClinicSettingsDto = z.infer<typeof clinicSettingsSchema>;
@@ -62,7 +62,7 @@ export type ClinicSettingsDto = z.infer<typeof clinicSettingsSchema>;
  * parcial). Limites de tamanho protegem o prompt e o banco.
  */
 export const updateSettingsSchema = z.object({
-  clinicName: z.string().trim().min(1, "Informe o nome da clínica.").max(120).optional(),
+  clinicName: z.string().trim().min(1, "Informe o nome da empresa.").max(120).optional(),
   specialty: z.string().trim().max(120).optional(),
   description: z.string().trim().max(600).optional(),
   assistantName: z.string().trim().max(60).optional(),

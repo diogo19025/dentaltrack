@@ -21,7 +21,7 @@ const OPT_OUT_WORDS = new Set([
   'descadastrar',
 ]);
 
-/** Resposta quando a IA está indisponível (mantém o paciente informado). */
+/** Resposta quando a IA está indisponível (mantém o cliente informado). */
 const AI_FALLBACK =
   'Estou com uma instabilidade no momento e já volto a responder. Sua mensagem foi registrada. 🙏';
 
@@ -31,7 +31,7 @@ const OPT_OUT_REPLY =
 
 /**
  * Orquestra o canal WhatsApp (WA-3). Recebe o webhook já bruto da Evolution,
- * resolve a clínica pela instância, deduplica, roda o **mesmo** `ChatService`
+ * resolve a empresa pela instância, deduplica, roda o **mesmo** `ChatService`
  * (non-streaming) e devolve a resposta pela Evolution. Channel-agnostic: o motor
  * não muda — este serviço é só o adaptador de borda.
  */
@@ -60,7 +60,7 @@ export class WhatsappService {
       const clinicId = await this.resolveClinicId(inbound.instance);
       if (!clinicId) {
         this.logger.warn(
-          `Instância "${inbound.instance}" sem clínica mapeada — ignorando.`,
+          `Instância "${inbound.instance}" sem empresa mapeada — ignorando.`,
         );
         return;
       }
@@ -157,7 +157,7 @@ export class WhatsappService {
     return inbound.phone;
   }
 
-  /** Resolve a clínica dona da instância Evolution (WA-1). */
+  /** Resolve a empresa dona da instância Evolution (WA-1). */
   private async resolveClinicId(instance: string): Promise<string | null> {
     const settings = await this.prisma.clinicSettings.findUnique({
       where: { whatsappInstance: instance },

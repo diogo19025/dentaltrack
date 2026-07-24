@@ -4,7 +4,7 @@ import { tagColorSchema } from "./tags";
 
 /**
  * Contrato das métricas do dashboard (F3 · BE-3.2/3.3 ‖ FE-3.1..3.5).
- * Definições em docs/context.md §10. Escopado por clínica (o `clinicId` vem do
+ * Definições em docs/context.md §10. Escopado por empresa (o `clinicId` vem do
  * TenantGuard). Taxas vêm como fração 0..1 (o FE formata como %).
  */
 
@@ -44,7 +44,7 @@ export const metricsKpisSchema = z.object({
 });
 export type MetricsKpis = z.infer<typeof metricsKpisSchema>;
 
-/** Série de linha: mensagens por dia, bot × paciente. */
+/** Série de linha: mensagens por dia, bot × cliente. */
 export const lineSeriesSchema = z.object({
   labels: z.array(z.string()),
   bot: z.array(z.number()),
@@ -77,10 +77,10 @@ export type StatusSlice = z.infer<typeof statusSliceSchema>;
 
 /**
  * Abandono × recorrência (seção "Retenção" do dashboard). Séries diárias no
- * período: atendimentos abandonados × retornos de pacientes (novo agendamento
+ * período: atendimentos abandonados × retornos de clientes (novo agendamento
  * de um lead que já havia agendado antes, em outra conversa). Totais do
- * período + taxa de recorrência da clínica (all-time: pacientes recorrentes /
- * pacientes que já agendaram), como fração 0..1.
+ * período + taxa de recorrência da empresa (all-time: clientes recorrentes /
+ * clientes que já agendaram), como fração 0..1.
  */
 export const retentionSchema = z.object({
   labels: z.array(z.string()),
@@ -88,7 +88,7 @@ export const retentionSchema = z.object({
   recurrent: z.array(z.number()),
   /** Conversas abandonadas no período (mesma população do KPI "Não completadas"). */
   abandonedTotal: z.number(),
-  /** Pacientes distintos que retornaram para agendar de novo no período. */
+  /** Clientes distintos que retornaram para agendar de novo no período. */
   recurrentLeads: z.number(),
   /** Taxa de recorrência all-time (0..1). */
   recurrenceRate: z.number(),

@@ -13,7 +13,7 @@ import type { EvolutionWebhookPayload } from './webhook.types';
 import { WhatsappService } from './whatsapp.service';
 
 /**
- * Webhook de entrada da Evolution API (WA-3). **Público** (sem JWT) — a clínica
+ * Webhook de entrada da Evolution API (WA-3). **Público** (sem JWT) — a empresa
  * é resolvida pela instância no payload (WA-1). Valida um token opcional
  * (`x-evolution-token`) e **responde 200 imediatamente**, processando em
  * background (a Evolution reentrega em caso de timeout/erro — o dedupe protege).

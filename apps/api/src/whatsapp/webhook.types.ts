@@ -1,7 +1,7 @@
 /**
  * Tipos e parser do webhook da Evolution API (WA-3). A Evolution posta eventos
  * (ex.: `messages.upsert`) num único endpoint; aqui normalizamos o payload para
- * o que o motor precisa: instância (→ clínica), telefone (identidade), texto ou
+ * o que o motor precisa: instância (→ empresa), telefone (identidade), texto ou
  * áudio. Tudo defensivo — payloads variam entre versões da Evolution.
  */
 

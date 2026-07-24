@@ -60,7 +60,7 @@ const SPECIALTIES = [
   "Atendimento geral",
   "Vendas e agendamentos",
   "Estética e bem-estar",
-  "Consultas e avaliações",
+  "Atendimentos e avaliações",
 ];
 
 const BLANK: ClinicSettingsDto = {
@@ -338,7 +338,7 @@ function IdentityFields({
 
   return (
     <>
-      <SectionCard title="Identidade da clínica" desc="Como o agente se apresenta aos pacientes.">
+      <SectionCard title="Identidade da empresa" desc="Como o agente se apresenta aos clientes.">
         <div className="mb-[18px] flex items-center gap-[18px]">
           <div className="flex size-[76px] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-[16px] border-[1.5px] border-dashed border-border-strong bg-muted text-muted-foreground">
             <Upload className="size-[18px]" />
@@ -354,8 +354,8 @@ function IdentityFields({
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
-          <Field label="Nome da clínica" htmlFor="set-clinic-name">
-            <Input id="set-clinic-name" {...register("clinicName")} placeholder="Nome da sua clínica" />
+          <Field label="Nome da empresa" htmlFor="set-clinic-name">
+            <Input id="set-clinic-name" {...register("clinicName")} placeholder="Nome da sua empresa" />
           </Field>
           <Field label="Especialidade" htmlFor="set-specialty">
             <Select value={specialty || undefined} onValueChange={setSpecialty}>
@@ -386,12 +386,12 @@ function IdentityFields({
           <Input id="set-assistant" {...register("assistantName")} placeholder="Ex.: Sofia" />
         </Field>
         <div className="h-[18px]" />
-        <Field label="Mensagem de saudação" hint="Primeira mensagem que o paciente recebe." htmlFor="set-greeting">
+        <Field label="Mensagem de saudação" hint="Primeira mensagem que o cliente recebe." htmlFor="set-greeting">
           <Textarea
             id="set-greeting"
             rows={3}
             {...register("greeting")}
-            placeholder="Olá! Sou a assistente virtual da clínica…"
+            placeholder="Olá! Sou a assistente virtual da empresa…"
           />
         </Field>
         <MediaFields
@@ -462,7 +462,7 @@ function OffersFields({
             id="set-offer-text"
             rows={3}
             {...register("offerText")}
-            placeholder="Ex.: Avaliação inicial gratuita neste mês para novos pacientes."
+            placeholder="Ex.: Avaliação inicial gratuita neste mês para novos clientes."
           />
         </Field>
         <div className="mt-[18px] grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
@@ -488,7 +488,7 @@ function OffersFields({
         desc="Regras injetadas no comportamento do agente a cada conversa."
       >
         <Field
-          label="Diretrizes da clínica"
+          label="Diretrizes da empresa"
           hint="Ex.: 'sempre ofereça a avaliação antes de orçar', 'não passe valores fechados por mensagem'."
           htmlFor="set-instructions"
         >
@@ -565,7 +565,7 @@ function BotPreview({
   offerText: string;
 }) {
   const name = assistantName.trim() || "assistente";
-  const clinic = clinicName.trim() || "sua clínica";
+  const clinic = clinicName.trim() || "sua empresa";
   const greet =
     greeting.trim() ||
     `Olá! Sou ${assistantName.trim() ? `a ${name}, assistente` : "o assistente"} da ${clinic}. Como posso ajudar você hoje?`;
@@ -590,7 +590,7 @@ function BotPreview({
           {offerEnabled && offer && (
             <PreviewBubble>
               Aproveite: temos <strong className="text-primary">{offer}</strong> para novos
-              pacientes. Quer que eu já agende a sua?
+              clientes. Quer que eu já agende a sua?
             </PreviewBubble>
           )}
           <div className="max-w-[80%] self-end rounded-[14px_14px_4px_14px] bg-primary px-[13px] py-2.5 text-[13.5px] text-white">

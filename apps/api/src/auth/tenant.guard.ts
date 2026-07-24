@@ -10,7 +10,7 @@ import type { AuthenticatedRequest } from './types';
 
 /**
  * Resolve o `clinicId` do usuário autenticado via Membership (multi-tenant).
- * Aplicar (com @UseGuards) nas rotas que exigem escopo de clínica.
+ * Aplicar (com @UseGuards) nas rotas que exigem escopo de empresa.
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -26,7 +26,7 @@ export class TenantGuard implements CanActivate {
       orderBy: { createdAt: 'asc' },
     });
     if (!membership) {
-      throw new ForbiddenException('Usuário sem clínica vinculada.');
+      throw new ForbiddenException('Usuário sem empresa vinculada.');
     }
 
     request.clinicId = membership.clinicId;

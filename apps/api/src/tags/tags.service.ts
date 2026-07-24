@@ -8,15 +8,15 @@ import { Prisma, type Tag } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
- * Tags de interesse da clínica (BE-2.3). CRUD escopado por `clinicId`. As
- * `keywords` alimentam o auto-tagging (F3). Nome é único por clínica
+ * Tags de interesse da empresa (BE-2.3). CRUD escopado por `clinicId`. As
+ * `keywords` alimentam o auto-tagging (F3). Nome é único por empresa
  * (`@@unique([clinicId, name])`) → duplicata vira 409.
  */
 @Injectable()
 export class TagsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Lista as tags da clínica (ordem alfabética). */
+  /** Lista as tags da empresa (ordem alfabética). */
   list(clinicId: string): Promise<Tag[]> {
     return this.prisma.tag.findMany({
       where: { clinicId },
@@ -24,14 +24,14 @@ export class TagsService {
     });
   }
 
-  /** Cria uma tag na clínica (409 se o nome já existir). */
+  /** Cria uma tag na empresa (409 se o nome já existir). */
   create(clinicId: string, input: CreateTagInput): Promise<Tag> {
     return this.run(() =>
       this.prisma.tag.create({ data: { clinicId, ...input } }),
     );
   }
 
-  /** Atualiza uma tag da clínica (404 se não pertencer ao tenant, 409 se nome duplicado). */
+  /** Atualiza uma tag da empresa (404 se não pertencer ao tenant, 409 se nome duplicado). */
   async update(
     clinicId: string,
     id: string,
@@ -43,14 +43,14 @@ export class TagsService {
     );
   }
 
-  /** Remove uma tag da clínica (404 se não pertencer ao tenant). */
+  /** Remove uma tag da empresa (404 se não pertencer ao tenant). */
   async remove(clinicId: string, id: string): Promise<{ id: string }> {
     await this.ensureExists(clinicId, id);
     await this.prisma.tag.delete({ where: { id } });
     return { id };
   }
 
-  /** Garante que a tag existe e pertence à clínica do tenant. */
+  /** Garante que a tag existe e pertence à empresa do tenant. */
   private async ensureExists(clinicId: string, id: string): Promise<void> {
     const found = await this.prisma.tag.findFirst({
       where: { id, clinicId },

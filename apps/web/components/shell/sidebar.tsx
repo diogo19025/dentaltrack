@@ -48,7 +48,7 @@ export function Sidebar({
   const { data: leadsData } = useLeads();
   const { data: settings } = useSettings();
   const leadsBadge = leadsData?.summary.total || 0;
-  // Marca do shell = nome da clínica (multi-tenant); fallback: marca da plataforma.
+  // Marca do shell = nome da empresa (multi-tenant); fallback: marca da plataforma.
   const brandName = clinicName?.trim() || settings?.clinicName?.trim() || brand.name;
 
   async function logout() {
@@ -134,7 +134,7 @@ export function Sidebar({
             className="mb-[10px] text-xs leading-[1.45]"
             style={{ color: "var(--primary-active)", opacity: 0.82 }}
           >
-            O bot está online e respondendo pacientes no canal Web.
+            O bot está online e respondendo clientes no canal Web.
           </p>
           <Link
             href="/settings"
