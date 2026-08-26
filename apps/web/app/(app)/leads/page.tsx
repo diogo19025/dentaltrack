@@ -1,25 +1,53 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { LeadDto } from "@dentaltrack/shared";
-import { Calendar, Clock, Download, Filter, Inbox, MoreHorizontal, Phone, Search, Users } from "lucide-react";
+import { useRef, useMemo, useState } from "react";
+import type { LeadDto, LeadImportResult } from "@dentaltrack/shared";
+import {
+  Calendar,
+  Clock,
+  Download,
+  Filter,
+  Inbox,
+  Loader2,
+  MoreHorizontal,
+  Phone,
+  Search,
+  Upload,
+  Users,
+} from "lucide-react";
 import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
 import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tag } from "@/components/ui/tag";
-import { useLeads } from "@/hooks/use-leads";
+import { useImportLeads, useLeads } from "@/hooks/use-leads";
+import { apiDownload, ApiError } from "@/lib/api-client";
 import { formatCaptured, initials, sourceLabel } from "@/lib/format";
 
 /**
  * Leads (FE-3.6) — réplica 1:1 de `screen_leads.jsx`: 4 cards-resumo + tabela
  * com busca, filtro de status (segmented) e paginação. Dados reais via TanStack
- * Query (GET /leads). "Exportar CSV" gera o arquivo no cliente.
+ * Query (GET /leads). F8: "Exportar" (CSV no cliente · Excel/PDF pelo backend)
+ * e "Importar" (planilha .xlsx/.csv → POST /leads/import + dialog de resultado).
  */
 
 const STATUS_FILTERS = [
@@ -38,6 +66,11 @@ export default function LeadsPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [importResult, setImportResult] = useState<LeadImportResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const importLeads = useImportLeads();
 
   const leads = useMemo(() => data?.leads ?? [], [data]);
   const summary = data?.summary ?? { total: 0, agendada: 0, andamento: 0, abandonada: 0 };
@@ -68,15 +101,74 @@ export default function LeadsPage() {
     setPage(0);
   }
 
+  async function onExport(format: "xlsx" | "pdf") {
+    setExporting(true);
+    try {
+      await apiDownload(`/leads/export?format=${format}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function onImportFile(file: File | undefined) {
+    if (!file) return;
+    setImportError(null);
+    importLeads.mutate(file, {
+      onSuccess: (result) => setImportResult(result),
+      onError: (error) => setImportError(importErrorMessage(error)),
+    });
+  }
+
   return (
     <>
       <PageHeader
         title="Leads"
         subtitle="Clientes em potencial capturados pelo agente nas conversas."
       >
-        <Button variant="secondary" onClick={() => exportCsv(filtered)} disabled={filtered.length === 0}>
-          <Download className="size-4" /> Exportar CSV
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv,.xlsx"
+          className="sr-only"
+          aria-label="Planilha de leads (.xlsx ou .csv)"
+          onChange={(e) => {
+            onImportFile(e.target.files?.[0]);
+            e.target.value = "";
+          }}
+        />
+        <Button
+          variant="secondary"
+          disabled={importLeads.isPending}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {importLeads.isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Upload className="size-4" />
+          )}{" "}
+          Importar
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" disabled={exporting || filtered.length === 0}>
+              {exporting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Download className="size-4" />
+              )}{" "}
+              Exportar
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => exportCsv(filtered)}>
+              CSV (leads filtrados)
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void onExport("xlsx")}>
+              Excel (.xlsx)
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void onExport("pdf")}>PDF</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </PageHeader>
 
       {/* Cards-resumo */}
@@ -245,8 +337,93 @@ export default function LeadsPage() {
           if (!open) setSelectedLeadId(null);
         }}
       />
+
+      {/* Resultado (ou erro) da importação de planilha (F8). */}
+      <Dialog
+        open={importResult !== null || importError !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setImportResult(null);
+            setImportError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {importError ? "Falha na importação" : "Importação concluída"}
+            </DialogTitle>
+            <DialogDescription>
+              {importError
+                ? importError
+                : importResult
+                  ? `${importResult.imported} de ${importResult.total} linha(s) viraram leads.`
+                  : null}
+            </DialogDescription>
+          </DialogHeader>
+          {importResult && (
+            <div className="space-y-3 text-sm">
+              <ul className="space-y-1 text-muted-foreground">
+                <li>
+                  <strong className="text-foreground">{importResult.imported}</strong> importado(s)
+                </li>
+                <li>
+                  <strong className="text-foreground">{importResult.duplicates}</strong> pulado(s)
+                  por já existirem (mesmo telefone ou e-mail)
+                </li>
+                <li>
+                  <strong className="text-foreground">{importResult.invalid}</strong> inválido(s)
+                </li>
+              </ul>
+              {importResult.errors.length > 0 && (
+                <div className="max-h-40 overflow-y-auto rounded-md border border-border bg-muted/40 p-3">
+                  <ul className="space-y-1 text-[13px] text-muted-foreground">
+                    {importResult.errors.map((err) => (
+                      <li key={`${err.line}-${err.reason}`}>
+                        Linha {err.line}: {err.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          {importError && (
+            <p className="text-sm text-muted-foreground">
+              A planilha precisa de um cabeçalho na 1ª linha com colunas
+              &quot;Nome&quot;, &quot;Telefone&quot; e/ou &quot;E-mail&quot; (.xlsx ou .csv).
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setImportResult(null);
+                setImportError(null);
+              }}
+            >
+              Fechar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
+}
+
+/** Mensagem amigável do erro de importação (extrai o `message` do NestJS). */
+function importErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    try {
+      const body = JSON.parse(error.message) as { message?: string | string[] };
+      const message = Array.isArray(body.message) ? body.message[0] : body.message;
+      if (message) return message;
+    } catch {
+      // corpo não-JSON → usa o texto cru abaixo
+    }
+    return error.message || "Não foi possível importar a planilha.";
+  }
+  return "Não foi possível importar a planilha.";
 }
 
 /** Card de resumo (ícone em quadrado secondary + número + label). */

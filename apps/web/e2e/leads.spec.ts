@@ -21,5 +21,6 @@ test("leads: cards-resumo, tabela e busca", async ({ page }) => {
   await search.fill("Paciente E2E");
   await expect(page.getByText("Paciente E2E").first()).toBeVisible();
 
-  await expect(page.getByRole("button", { name: "Exportar CSV" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Exportar" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Importar" })).toBeVisible();
 });
