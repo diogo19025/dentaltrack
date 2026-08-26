@@ -181,6 +181,13 @@
     background: var(--primary-tint-strong);
     color: var(--primary-active);
   }
+  /* O preflight do Tailwind v4 deixou botões com cursor default; o design
+     (theme.css: .btn, .segmented button, .switch, .select) pede pointer em
+     controles clicáveis habilitados. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 /* ===== Scrollbar sóbria ===== */

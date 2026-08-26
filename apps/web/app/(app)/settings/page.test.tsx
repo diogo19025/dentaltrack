@@ -1,5 +1,5 @@
 import { DEFAULT_AVAILABILITY, type ClinicSettingsDto } from "@dentaltrack/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "./page";
 
@@ -87,5 +87,36 @@ describe("SettingsPage — edição do nome da empresa", () => {
     expect(
       (screen.getByLabelText("Nome da empresa") as HTMLInputElement).value,
     ).toBe("Empresa Inicial");
+  });
+});
+
+describe("SettingsPage — salvar com Selects preenchidos (bubble input do Radix)", () => {
+  /**
+   * Regressão: com o dropdown fechado, o <select> nativo escondido do Radix
+   * (renderizado porque o Select está num <form>) não tem as options dos
+   * SelectItem; quando o reset() do RHF muda o value programaticamente, o
+   * nativo coagia para "" e o onValueChange("") corrompia o form —
+   * `greetingMediaType: ""` reprovava no zodResolver e o PATCH nunca saía
+   * (sem erro visível), além de apagar `specialty`. Ver o guard no
+   * components/ui/select.tsx.
+   */
+  it("dispara o PATCH preservando specialty e greetingMediaType", async () => {
+    state.data = makeSettings({
+      clinicName: "Clínica Demo",
+      specialty: "odontologia geral e estética",
+      greetingMediaUrl: "https://cdn.example/boas-vindas.jpg",
+      greetingMediaType: "image",
+    });
+    render(<SettingsPage />);
+
+    const input = screen.getByLabelText("Nome da empresa") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "Clínica Renomeada" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+    await waitFor(() => expect(state.update.mutate).toHaveBeenCalled());
+    const [payload] = state.update.mutate.mock.calls[0] as [ClinicSettingsDto];
+    expect(payload.clinicName).toBe("Clínica Renomeada");
+    expect(payload.specialty).toBe("odontologia geral e estética");
+    expect(payload.greetingMediaType).toBe("image");
   });
 });

@@ -7,9 +7,25 @@ import { Select as SelectPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 function Select({
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+  // Dentro de <form>, o Radix sincroniza um <select> nativo escondido com as
+  // options dos SelectItem MONTADOS (só existem com o dropdown aberto). Quando
+  // o value muda programaticamente (ex.: reset() do react-hook-form) sem o
+  // dropdown nunca ter aberto, o <select> nativo coage o valor para "" e o
+  // Radix propaga onValueChange("") — corrompendo o estado controlado. Como
+  // SelectItem proíbe value="", "" nunca é uma seleção legítima: ignoramos.
+  const handleValueChange = React.useMemo(
+    () =>
+      onValueChange
+        ? (value: string) => {
+            if (value !== "") onValueChange(value)
+          }
+        : undefined,
+    [onValueChange]
+  )
+  return <SelectPrimitive.Root data-slot="select" onValueChange={handleValueChange} {...props} />
 }
 
 function SelectGroup({

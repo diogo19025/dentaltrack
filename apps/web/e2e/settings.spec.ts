@@ -9,7 +9,7 @@ test("configurações: editar, salvar e persistir", async ({ page }) => {
   await page.goto("/settings");
 
   const clinicName = `Clínica E2E ${Date.now() % 100_000}`;
-  const nameInput = page.getByPlaceholder("Nome da sua clínica");
+  const nameInput = page.getByPlaceholder("Nome da sua empresa");
   await expect(nameInput).toBeVisible();
 
   const save = page.getByRole("button", { name: "Salvar alterações" });
@@ -23,7 +23,7 @@ test("configurações: editar, salvar e persistir", async ({ page }) => {
   await expect(save).toBeDisabled(); // reset(saved) limpa o isDirty
 
   await page.reload();
-  await expect(page.getByPlaceholder("Nome da sua clínica")).toHaveValue(clinicName);
+  await expect(page.getByPlaceholder("Nome da sua empresa")).toHaveValue(clinicName);
 
   // As 4 abas do segmented existem (Identidade/Ofertas + catálogo da F2).
   for (const tab of ["Identidade & Persona", "Ofertas & Instruções", "Procedimentos", "Tags"]) {
