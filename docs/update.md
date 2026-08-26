@@ -949,3 +949,34 @@ Board com colunas dinâmicas do servidor (`lib/funnel.ts`: tints fixos p/ as col
 - **Aplicar a migration ao vivo**: `pnpm --filter @dentaltrack/api db:deploy` no Supabase.
 - **Backfill**: conversas antigas só entram no board quando tiverem um novo turno (o card nasce no turno). Se quiser popular com o histórico, um script one-shot resolve.
 - **Reordenar colunas** (drag do cabeçalho / setas) e **keywords próprias** por coluna personalizada (para o detector movê-las também) são extensões naturais — o schema já tem `position` e o detector já compara por posição.
+
+---
+
+# Update — Exportação e importação de leads — F8 (2026-08-26)
+
+## Visão geral
+
+A tela **Leads** ganhou **saída e entrada de dados**: o dono agora **exporta** a base em **CSV, Excel (.xlsx) ou PDF** e **importa** leads de qualquer planilha (.xlsx/.csv) — ex.: base antiga de outra ferramenta ou lista de contatos da clínica. Sem mudança de schema (usa o modelo `Lead` existente) e sem migration; mergeado na `main` via PR #21 e já em produção (deploy automático Vercel + Railway).
+
+## O que foi feito
+
+### Contrato (`packages/shared/src/leads.ts`)
+`LEAD_EXPORT_FORMATS` (`csv|xlsx|pdf`) + `leadImportResultSchema` — resultado da importação com `total`, `imported`, `duplicates`, `invalid` e `errors[]` (nº da linha como no Excel + motivo, máx. 20).
+
+### BE — exportação (`leads/leads-export.service.ts` · `GET /leads/export?format=…`)
+Gera o arquivo **em memória** a partir dos mesmos DTOs da tela (`LeadsService.list` → interesse, tags, status, origem, temperatura, score, data em pt-BR/São Paulo): **CSV** UTF-8 com BOM (acentos ok no Excel), **XLSX** via `exceljs` (cabeçalho em negrito + congelado, larguras por coluna) e **PDF** via `pdfkit` (A4 paisagem, título com o nome da clínica, cabeçalho repetido a cada página, altura de linha dinâmica). Download com `Content-Disposition` (`leads-YYYY-MM-DD.ext`). Rota literal declarada **antes** de `:id` (não colide com o `ParseUUIDPipe`); tudo sob `TenantGuard`.
+
+### BE — importação (`leads/leads-import.service.ts` · `POST /leads/import`)
+Multipart (`FileInterceptor`, campo `file`, limite **5 MB / 2000 linhas**). Aceita **.xlsx** (`exceljs`, normalizando richText/fórmula/hyperlink/data) e **.csv** (parser próprio RFC 4180 com aspas + detecção de `,`/`;` — Excel PT-BR usa `;`). **Cabeçalho flexível** na 1ª linha (PT/EN, sem acento, qualquer ordem; extras ignoradas): Nome/Paciente/Cliente…, Telefone/Celular/WhatsApp…, E-mail. Validações por linha (precisa de nome ou contato; e-mail e telefone plausíveis) com o **nº real da linha** no erro (linhas em branco contam na numeração). **Dedupe** por telefone normalizado (só dígitos) e e-mail lower-case — contra os leads da clínica **e** dentro do próprio arquivo. Cria via `createMany` com `source="import"`. Erros de arquivo (formato, cabeçalho, vazio, corrompido) → 400 com mensagem amigável.
+
+### FE — tela Leads
+- **Exportar** virou `DropdownMenu`: *CSV (leads filtrados)* — client-side, comportamento anterior — · *Excel (.xlsx)* · *PDF* (via `apiDownload`, novo helper autenticado no `api-client` que respeita o filename do backend; + `apiUpload` p/ FormData sem Content-Type manual).
+- **Importar**: botão com input de arquivo oculto (`.csv,.xlsx`), spinner durante o upload e **dialog de resultado** (importados/duplicados/inválidos + lista das linhas rejeitadas) ou de erro com a dica do formato esperado. `useImportLeads` (mutation) invalida `["leads"]` → tabela atualiza na hora.
+- `sourceLabel` ganhou `manual` → "Manual" e `import` → "Importado" (badge de origem na tabela).
+
+### Qualidade / validação
+API **207 testes** (2 suites novas: export — csv escape/BOM, xlsx relido pelo exceljs, PDF multi-página; import — cabeçalho PT/ordem livre, `;`, xlsx real, dedupe clínica+arquivo, linhas inválidas com nº certo, formatos recusados) · web **93 testes** (+`sourceLabel`) · e2e da tela atualizado (botões Exportar/Importar) · typecheck/lint/build verdes nos 3 pacotes. **Validado manualmente pelo dono** antes do merge.
+
+### Pendências / próximos passos
+- Template de planilha para download (facilita o 1º import) e opção de **atualizar** leads existentes em vez de pular duplicatas.
+- Exportação respeitando os **filtros ativos** da tela também no Excel/PDF (hoje só o CSV client-side filtra).
