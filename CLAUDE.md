@@ -44,7 +44,7 @@
 - **IA:** Vercel **AI SDK v6** + **OpenAI GPT (API paga, default `gpt-4o-mini`)** como provider primário; **Gemini (free tier)** e **Groq** como fallback/alternativa via factory `getModel()` (`LLM_PROVIDER`).
 - **Dados & Auth:** **Supabase** (Postgres gerenciado + Supabase Auth).
 - **ORM:** Prisma · **Cron:** `@nestjs/schedule` · **UI:** Tailwind v4 + shadcn/ui + Recharts + lucide-react, fontes **Geist/Geist Mono**, **tema light-only** · **Dados no front:** TanStack Query.
-- **Deploy:** web → **Vercel** · api → **Railway/Render/Fly** · Supabase gerenciado.
+- **Deploy:** web → **Vercel** · api + Evolution → **Railway** (decisão 2026-08-26; ver `docs/DEPLOY.md`) · Supabase gerenciado.
 
 ## Decisões & princípios
 
