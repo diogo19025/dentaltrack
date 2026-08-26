@@ -24,8 +24,9 @@
 - Docs: [`docs/context.md`](docs/context.md) · [`docs/plan.md`](docs/plan.md) · [`docs/update.md`](docs/update.md) · design em [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) · deploy em [`docs/DEPLOY.md`](docs/DEPLOY.md) · WhatsApp em [`docs/WHATSAPP.md`](docs/WHATSAPP.md) · **whitelabel em [`docs/WHITELABEL.md`](docs/WHITELABEL.md)**.
 - **Whitelabel (marca):** a marca visível vem da **clínica** (multi-tenant, `settings.clinicName`); a marca da **plataforma** (pré-login/`<title>`) vem de [`apps/web/lib/brand.ts`](apps/web/lib/brand.ts). **Não hardcode o nome do produto nem defaults odontológicos** (prompts de IA, copy, placeholders, ícones) — a especialização vem do campo `specialty` da clínica. Ver [`docs/WHITELABEL.md`](docs/WHITELABEL.md).
 - **Rodar local:** preencher `apps/api/.env` (inclui `OPENAI_API_KEY`; Gemini/Groq como fallback) e `apps/web/.env.local` (ver `.env.example`) → `pnpm dev`. **F3 ao vivo:** `db:deploy` → `db:seed` → `db:seed:demo`. **E2E:** `pnpm --filter @dentaltrack/web e2e`.
-- **Deferido:** CI (GitHub Actions, F0.8); **execução do deploy** (runbook pronto em `docs/DEPLOY.md`; configs: `apps/web/vercel.json`, `apps/api/Dockerfile`, `render.yaml`); **1ª rodada ao vivo do E2E** (pré-requisito único no Supabase: `SUPABASE_SERVICE_ROLE_KEY` no `.env` **ou** confirmar o usuário e2e — o runner imprime as instruções).
-- **Próximo passo natural:** executar o **deploy em produção** (seguir `docs/DEPLOY.md` §0–§5) e desbloquear o E2E; depois, o F0.8 (CI) fecha o MVP.
+- **DEPLOY EXECUTADO (2026-08-26) — produção no ar:** web → Vercel (`dentaltrack-web.vercel.app`) · API → Railway (`dentaltrack-api-production.up.railway.app`, build via `railway.json` + `apps/api/Dockerfile`) · Evolution → Railway (`evolution-api-production-1b4c.up.railway.app`, imagem v2.3.7 + volume `/evolution/instances` + Postgres/Redis próprios) · Supabase compartilhado dev/prod. Instância `dentaltrack` pareada no Railway (Evolution local desativada), webhook → API pública, CORS e redirects do Supabase Auth apontando para a Vercel. Validado ao vivo: login, dashboard, chat streaming e bot no WhatsApp.
+- **Deferido:** CI (GitHub Actions, F0.8); **1ª rodada ao vivo do E2E** (pré-requisito único no Supabase: `SUPABASE_SERVICE_ROLE_KEY` no `.env` **ou** confirmar o usuário e2e — o runner imprime as instruções).
+- **Próximo passo natural:** desbloquear o E2E e fechar o F0.8 (CI) — o MVP está em produção.
 
 ## Comece por aqui (leitura obrigatória)
 
@@ -74,7 +75,7 @@
   - **WA-0** infra dev — `docker-compose.evolution.yml` (Evolution + Postgres + Redis) + `.env.evolution.example`.
 - **`channel='whatsapp'`** entra nas mesmas tabelas → dashboard, leads e tagging funcionam sem mudança. Bot 100% automático; notifica pelo painel (lead-scoring).
 - **Validado ao vivo (2026-06-14):** Evolution `evoapicloud/evolution-api:v2.3.7` (Docker), QR pareado num número dedicado e `whatsapp_instance` setado na clínica → mensagem de outro número fez o bot responder com a persona; conversa/lead/tags gravados com `canal = whatsapp`. Percalços resolvidos e comandos no runbook (`docs/WHATSAPP.md`).
-- **Pendente p/ produção:** a Evolution precisa de um host acessível pelo webhook — trocar `host.docker.internal` pela URL pública da API.
+- **Em produção (2026-08-26):** Evolution roda no Railway com webhook na URL pública da API (`host.docker.internal` só no dev local).
 - **Próxima etapa (pós-validação):** multi-instância com pareamento por QR na tela de Configurações (schema já suporta) + opt-out persistido.
 
 ## Ambiente
