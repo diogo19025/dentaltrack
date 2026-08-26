@@ -12,9 +12,7 @@ export class CreatePipelineCardDto extends createZodDto(
 ) {}
 
 /** Corpo de PATCH /pipeline/cards/:id. */
-export class MovePipelineCardDto extends createZodDto(
-  movePipelineCardSchema,
-) {}
+export class MovePipelineCardDto extends createZodDto(movePipelineCardSchema) {}
 
 /** Corpo de POST /pipeline/stages. */
 export class CreatePipelineStageDto extends createZodDto(
