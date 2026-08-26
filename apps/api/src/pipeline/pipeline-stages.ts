@@ -54,9 +54,9 @@ export async function ensurePipelineStages(
       // Corrida (outro turno criou a mesma coluna) ou nome já usado — segue.
     }
   }
-  return (await prisma.pipelineStage.findMany({
+  return await prisma.pipelineStage.findMany({
     where: { clinicId },
     orderBy: { position: 'asc' },
     select: { id: true, name: true, position: true, systemStage: true },
-  })) as PipelineStageRow[];
+  });
 }

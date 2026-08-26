@@ -20,6 +20,15 @@ import { scoreLead, type LeadScoreSignals } from './lead-scoring';
 export class LeadsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /** Nome da clínica (cabeçalho do PDF exportado — F8). */
+  async clinicName(clinicId: string): Promise<string | undefined> {
+    const clinic = await this.prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { name: true },
+    });
+    return clinic?.name ?? undefined;
+  }
+
   async list(clinicId: string): Promise<LeadsResponse> {
     const leads = await this.prisma.lead.findMany({
       where: { clinicId },

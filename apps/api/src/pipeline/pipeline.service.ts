@@ -15,10 +15,7 @@ import {
   type RenamePipelineStageInput,
 } from '@dentaltrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  ensurePipelineStages,
-  type PipelineStageRow,
-} from './pipeline-stages';
+import { ensurePipelineStages, type PipelineStageRow } from './pipeline-stages';
 
 /** `include` padrão de um card: contato do lead + canal/atividade da conversa. */
 const CARD_INCLUDE = {
@@ -160,10 +157,10 @@ export class PipelineService {
     }
     const position = Math.max(...stages.map((s) => s.position)) + 1;
     try {
-      const stage = (await this.prisma.pipelineStage.create({
+      const stage = await this.prisma.pipelineStage.create({
         data: { clinicId, name: input.name, position },
         select: { id: true, name: true, position: true, systemStage: true },
-      })) as PipelineStageRow;
+      });
       return toStageDto(stage);
     } catch (err) {
       throw this.asConflict(err, input.name);
@@ -178,11 +175,11 @@ export class PipelineService {
   ): Promise<PipelineStageDto> {
     await this.assertStageOwned(clinicId, id);
     try {
-      const stage = (await this.prisma.pipelineStage.update({
+      const stage = await this.prisma.pipelineStage.update({
         where: { id },
         data: { name: input.name },
         select: { id: true, name: true, position: true, systemStage: true },
-      })) as PipelineStageRow;
+      });
       return toStageDto(stage);
     } catch (err) {
       throw this.asConflict(err, input.name);

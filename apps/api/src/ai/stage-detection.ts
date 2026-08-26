@@ -124,8 +124,7 @@ const STAGE_PROMPT_LABELS: Record<FunnelStage, string> = {
     'interessado — pergunta sobre procedimentos, preços ou como funciona',
   quero_agendar:
     'quero_agendar — expressou que quer marcar/agendar um atendimento',
-  escolha_data:
-    'escolha_data — já quer agendar e está negociando dia/horário',
+  escolha_data: 'escolha_data — já quer agendar e está negociando dia/horário',
   agendado: 'agendado — agendamento confirmado',
 };
 
@@ -167,7 +166,7 @@ export async function detectFunnelStage(
     const entryStage = bySystem.get('novo_contato');
     if (!entryStage) return; // sem colunas do sistema → nada a fazer.
 
-    const card = (await prisma.pipelineCard.upsert({
+    const card = await prisma.pipelineCard.upsert({
       where: { conversationId },
       update: convo.leadId ? { leadId: convo.leadId } : {},
       create: {
@@ -177,7 +176,7 @@ export async function detectFunnelStage(
         stageId: entryStage.id,
       },
       select: { id: true, stageId: true },
-    })) as { id: string; stageId: string };
+    });
     const current = stages.find((s) => s.id === card.stageId);
     const currentPosition = current?.position ?? entryStage.position;
 

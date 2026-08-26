@@ -1,4 +1,8 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { FUNNEL_STAGES, FUNNEL_STAGE_DEFAULT_NAMES } from '@dentaltrack/shared';
 import type { PrismaService } from '../prisma/prisma.service';
 import { PipelineService } from './pipeline.service';

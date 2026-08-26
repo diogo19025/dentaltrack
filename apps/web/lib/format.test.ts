@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { formatCaptured, initials, timeAgo } from "./format";
+import { formatCaptured, initials, sourceLabel, timeAgo } from "./format";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -77,5 +77,18 @@ describe("initials", () => {
     expect(initials(null)).toBe("?");
     expect(initials("   ")).toBe("?");
     expect(initials(undefined, "•")).toBe("•");
+  });
+});
+
+describe("sourceLabel", () => {
+  it("traduz as origens conhecidas", () => {
+    expect(sourceLabel("web")).toBe("Web");
+    expect(sourceLabel("whatsapp")).toBe("WhatsApp");
+    expect(sourceLabel("manual")).toBe("Manual");
+    expect(sourceLabel("import")).toBe("Importado");
+  });
+
+  it("origem desconhecida passa direto", () => {
+    expect(sourceLabel("outro")).toBe("outro");
   });
 });

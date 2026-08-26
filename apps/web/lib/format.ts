@@ -31,6 +31,8 @@ export function formatCaptured(iso: string): string {
 export function sourceLabel(source: string): string {
   if (source === "web") return "Web";
   if (source === "whatsapp") return "WhatsApp";
+  if (source === "manual") return "Manual";
+  if (source === "import") return "Importado";
   return source;
 }
 

@@ -102,3 +102,34 @@ export const leadDetailSchema = leadSchema.extend({
   appointments: z.array(leadAppointmentSchema),
 });
 export type LeadDetail = z.infer<typeof leadDetailSchema>;
+
+/**
+ * Exportação/importação de leads (F8). Export: GET /leads/export?format=…
+ * (arquivo binário, Content-Disposition). Import: POST /leads/import
+ * (multipart, planilha .xlsx ou .csv) → resultado abaixo.
+ */
+export const LEAD_EXPORT_FORMATS = ["csv", "xlsx", "pdf"] as const;
+export const leadExportFormatSchema = z.enum(LEAD_EXPORT_FORMATS);
+export type LeadExportFormat = (typeof LEAD_EXPORT_FORMATS)[number];
+
+/** Erro de uma linha rejeitada na importação (1-based, contando o cabeçalho). */
+export const leadImportErrorSchema = z.object({
+  line: z.number(),
+  reason: z.string(),
+});
+export type LeadImportError = z.infer<typeof leadImportErrorSchema>;
+
+/** Resposta de POST /leads/import. */
+export const leadImportResultSchema = z.object({
+  /** Linhas de dados encontradas na planilha. */
+  total: z.number(),
+  /** Leads criados. */
+  imported: z.number(),
+  /** Linhas puladas por já existirem (mesmo telefone ou e-mail na clínica/arquivo). */
+  duplicates: z.number(),
+  /** Linhas puladas por dados inválidos (sem contato, e-mail malformado…). */
+  invalid: z.number(),
+  /** Detalhe das primeiras linhas rejeitadas (máx. 20). */
+  errors: z.array(leadImportErrorSchema),
+});
+export type LeadImportResult = z.infer<typeof leadImportResultSchema>;
