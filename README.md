@@ -1,118 +1,106 @@
 # DentalTrack
 
-> CRM conversacional com **agente de IA** para clínicas odontológicas de pequeno e médio porte.
-> O bot atende pacientes na linha de frente (tira dúvidas, sugere procedimentos do catálogo e
-> **registra agendamentos**), captura **leads**, classifica conversas por **tags** de interesse e
-> alimenta um **dashboard** de gestão para o dono da clínica — tudo configurável sem código.
+**Um atendente de IA que trabalha 24 horas por dia para a sua clínica.**
 
-O mesmo agente atende em **dois canais**, graças à arquitetura *channel-agnostic*: **chat web**
-(streaming) e **WhatsApp** (via **Evolution API / Baileys** — não-oficial, **sem a API da Meta** —
-validado ao vivo). Os 4 pilares: **chatbot** · **dashboard** · **configurações do bot** · **sistema de tags**.
+Clínicas de pequeno e médio porte perdem clientes todos os dias pelo mesmo motivo: a mensagem chega fora do horário, a recepção está ocupada, a resposta demora — e a pessoa marca no concorrente. O DentalTrack coloca um agente de IA na linha de frente do seu atendimento, no site e no WhatsApp, para que nenhuma conversa fique sem resposta e nenhum interessado se perca no caminho.
 
-> **Status:** MVP (fases F0–F4) concluído e validado ao vivo; o **canal WhatsApp** foi integrado na
-> última leva (MVP 1 número / 1 clínica). Detalhes e decisões em [`CLAUDE.md`](CLAUDE.md) e o registro
-> cronológico em [`docs/update.md`](docs/update.md).
+Não é um robô de menu com botões. É um atendente que conversa de verdade, conhece seus serviços e seus preços, faz a oferta certa na hora certa e conduz o cliente até o agendamento — enquanto você acompanha tudo por um painel simples.
 
-## Stack
+---
 
-| Camada | Tecnologia |
+## O que o DentalTrack faz por você
+
+### Atende na hora, do jeito certo
+
+O agente responde imediatamente, a qualquer hora, com o tom de voz que você definir. Ele conhece seu catálogo de procedimentos, tira dúvidas sobre preços e duração, e sugere o serviço certo a partir do que o cliente conta. Reconhece quem já conversou antes — cumprimenta pelo nome e não pergunta de novo o que já sabe. Se o cliente mandar áudio, ele entende também.
+
+### Vende enquanto conversa
+
+Cadastre suas ofertas e promoções e o agente as apresenta no momento certo da conversa — com foto, vídeo ou áudio no WhatsApp. Quando o cliente demonstra interesse, o agente coleta nome e contato naturalmente, sem parecer formulário, e registra o pedido de agendamento.
+
+### Organiza seus contatos sozinho
+
+Cada conversa vira um lead classificado automaticamente:
+
+- **Tags de interesse** — o sistema identifica o que a pessoa procura (implante, clareamento, avaliação…) e etiqueta a conversa sozinho.
+- **Funil visual** — um quadro kanban mostra cada contato no estágio em que está: novo contato, interessado, quer agendar, escolhendo data, agendado. Os cards andam sozinhos conforme a conversa evolui, e você pode arrastar, criar colunas e adicionar contatos manualmente.
+- **Temperatura do lead** — cada contato ganha uma nota de quente, médio ou frio pelo comportamento na conversa, para você saber em quem focar primeiro.
+
+### Mostra o que está acontecendo
+
+O painel responde as perguntas que importam: quantas pessoas chegaram, o que elas procuram, quantas viraram agendamento, quantas abandonaram e quantas voltaram. Sua base de leads pode ser exportada em Excel, CSV ou PDF a qualquer momento — e se você já tem uma planilha de contatos, importa direto.
+
+### Funciona onde seu cliente está
+
+O mesmo atendente trabalha no **chat do seu site** e no **WhatsApp** da clínica. As conversas dos dois canais caem no mesmo painel, no mesmo funil, na mesma base de leads.
+
+### Configura em minutos, sem código
+
+Nome da clínica, especialidade, tom de voz, saudação, ofertas, regras de atendimento, catálogo de serviços, horários — tudo se ajusta numa tela de configurações. E a plataforma é **whitelabel**: a marca que aparece é a da sua clínica, e o agente se adapta ao seu segmento — funciona igualmente bem para uma clínica odontológica, uma barbearia ou um estúdio de estética.
+
+---
+
+## As telas
+
+| Tela | Para quê |
 |---|---|
-| Monorepo | pnpm workspaces + Turborepo |
-| Frontend (`apps/web`) | Next.js 16 (App Router) · React 19 · Tailwind v4 · shadcn/ui · Recharts · TanStack Query · AI SDK UI (`useChat`) |
-| Backend (`apps/api`) | NestJS 11 · Prisma 7 · Vercel AI SDK v6 · `@nestjs/schedule` (cron) |
-| IA | **OpenAI GPT** (API paga, default `gpt-4o-mini`) como provider primário · **Gemini** (free) / **Groq** como fallback — trocável por env (`LLM_PROVIDER`) · STT via Whisper (`whisper-1`) |
-| Canais | **Chat web** (SSE streaming) + **WhatsApp** via **Evolution API / Baileys** (não-oficial, sem a API da Meta) — o mesmo motor nos dois |
-| Dados & Auth | **Supabase** (Postgres gerenciado + Supabase Auth) · multi-tenant por `clinic_id` |
-| Contrato BE↔FE | `packages/shared` (schemas Zod + tipos) |
+| **Dashboard** | Visão geral do atendimento: KPIs, funil de conversão, tags mais frequentes, abandono × recorrência. |
+| **Chat** | Converse com o agente e acompanhe as conversas, com as tags surgindo ao vivo. |
+| **Funil** | Quadro kanban dos contatos por estágio, com arrastar-e-soltar. |
+| **Leads** | Base de contatos com temperatura, detalhe de cada lead, exportação e importação. |
+| **Configurações** | Identidade, ofertas, catálogo de procedimentos e tags — tudo que molda o comportamento do agente. |
 
-## Estrutura
+---
 
-```
-apps/
-├─ api/        # NestJS — motor do agente (channel-agnostic): REST + /chat SSE, adapter WhatsApp (/whatsapp/webhook), cron, Prisma
-└─ web/        # Next.js — réplica 1:1 do design hi-fi (docs/design_handoff_dentaltrack/)
-packages/
-└─ shared/     # Zod + tipos compartilhados (chat, settings, procedures, tags, metrics, leads…)
-docs/          # context.md (o quê) · plan.md (o como) · update.md (progresso) · DEPLOY.md · WHATSAPP.md (runbook do canal)
-docker-compose.evolution.yml   # Evolution API (WhatsApp) para dev local
-```
+## Para desenvolvedores
 
-## Rodar local
+<details>
+<summary><strong>Stack, setup local e documentação técnica</strong></summary>
 
-Pré-requisitos: **Node ≥ 20**, **pnpm 11** e um projeto **Supabase** (Postgres + Auth).
+### Stack
+
+Monorepo pnpm + Turborepo com três pacotes: `apps/web` (Next.js 16, Tailwind v4, shadcn/ui, TanStack Query, Recharts), `apps/api` (NestJS 11, Prisma 7, Vercel AI SDK v6) e `packages/shared` (schemas Zod compartilhados). Dados e auth no Supabase (Postgres, multi-tenant por `clinic_id`). IA via OpenAI `gpt-4o-mini` como provider primário, com Gemini/Groq de fallback — trocável por env (`LLM_PROVIDER`). O canal WhatsApp usa a Evolution API (Baileys, não-oficial). Em produção: web na Vercel, API + Evolution no Railway.
+
+O motor do agente é *channel-agnostic* — web e WhatsApp são adaptadores de borda sobre o mesmo núcleo (prompt dinâmico por clínica, tools de catálogo/lead/agendamento/oferta, tagging e detecção de estágio em segundo plano).
+
+### Rodar local
+
+Pré-requisitos: Node 20+, pnpm 11 e um projeto Supabase.
 
 ```bash
 pnpm install
 
 # 1. Envs (copie dos exemplos e preencha)
-#    apps/api/.env          → DATABASE_URL, SUPABASE_*, OPENAI_API_KEY…
-#    apps/web/.env.local    → NEXT_PUBLIC_SUPABASE_*, NEXT_PUBLIC_API_URL
+#    apps/api/.env        → DATABASE_URL, SUPABASE_*, OPENAI_API_KEY…
+#    apps/web/.env.local  → NEXT_PUBLIC_SUPABASE_*, NEXT_PUBLIC_API_URL
 
-# 2. Banco (migrations + catálogo demo)
+# 2. Banco
 pnpm --filter @dentaltrack/api db:deploy
 pnpm --filter @dentaltrack/api db:seed
-pnpm --filter @dentaltrack/api db:seed:demo   # opcional: ~90 conversas p/ dashboard/leads
+pnpm --filter @dentaltrack/api db:seed:demo   # opcional: dados de demonstração
 
-# 3. Sobe web (:3000) + api (:3001)
+# 3. Sobe web (:3000) e api (:3001)
 pnpm dev
 ```
 
-Crie uma conta em `/login` — o **onboarding** cria a clínica automaticamente no 1º acesso.
-A chave da IA primária (`OPENAI_API_KEY`) vai no `apps/api/.env`; sem ela, defina `LLM_PROVIDER=gemini`
-(ou `groq`) e a respectiva key para usar o fallback gratuito.
+Crie uma conta em `/login` — o onboarding cria a clínica no primeiro acesso. Sem chave de IA, `LLM_PROVIDER=mock` responde de forma determinística. Para o WhatsApp em dev (Evolution em Docker + pareamento por QR), siga [`docs/WHATSAPP.md`](docs/WHATSAPP.md).
 
-## WhatsApp (canal via Evolution/Baileys)
-
-Além do chat web, o **mesmo agente** atende no **WhatsApp** — via **Evolution API (Baileys,
-não-oficial, sem a API da Meta)**. É um *adapter* de borda: a Evolution recebe a mensagem e chama o
-mesmo `ChatService`; como `channel='whatsapp'` entra nas mesmas tabelas, **dashboard, leads e tags
-funcionam sem nenhuma mudança**.
-
-```
-WhatsApp do paciente
-   → Evolution API (Docker)
-   → POST /whatsapp/webhook  (API NestJS · público)
-   → mesmo motor do agente (sem streaming)
-   → resposta via Evolution.sendText
-```
-
-- Identidade do paciente = **telefone** (sem login); a conversa é reusada por `WHATSAPP_SESSION_HOURS` (default 24h).
-- Infra dev: `docker-compose.evolution.yml` + `.env.evolution.example`; envs da API: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_WEBHOOK_TOKEN`.
-- MVP **1 número → 1 clínica** (mapeado por `ClinicSettings.whatsappInstance`); validado ao vivo com um número dedicado.
-
-Passo a passo (subir a Evolution, parear o QR, ligar à clínica e testar E2E):
-[`docs/WHATSAPP.md`](docs/WHATSAPP.md). ⚠️ Use um **número dedicado** (higiene anti-banimento).
-
-## Qualidade
+### Qualidade
 
 ```bash
-pnpm test          # Jest (API, 130 testes) + Vitest (web, 64 testes)
-pnpm typecheck     # tsc nos 3 pacotes
-pnpm lint
-pnpm build
-
-pnpm --filter @dentaltrack/web e2e   # Playwright (5 fluxos) — sobe api em modo mock
+pnpm test && pnpm typecheck && pnpm lint && pnpm build
+pnpm --filter @dentaltrack/web e2e   # Playwright, roda offline em modo mock
 ```
 
-O E2E usa o provider **mock** da IA (`LLM_PROVIDER=mock`, determinístico/offline) em portas
-dedicadas (3100/3101) e um usuário de teste no Supabase. Pré-requisito único (uma vez):
-preencher `SUPABASE_SERVICE_ROLE_KEY` em `apps/api/.env` (criação automática do usuário)
-**ou** confirmar o e-mail do usuário e2e no dashboard do Supabase — o próprio runner
-imprime as instruções se faltar.
+### Documentação
 
-## Deploy
+- [`docs/context.md`](docs/context.md) — especificação de produto
+- [`docs/plan.md`](docs/plan.md) — plano de execução
+- [`docs/update.md`](docs/update.md) — registro do que foi implementado
+- [`docs/DEPLOY.md`](docs/DEPLOY.md) — runbook de deploy (Vercel + Railway + Supabase)
+- [`docs/WHATSAPP.md`](docs/WHATSAPP.md) — runbook do canal WhatsApp
+- [`docs/WHITELABEL.md`](docs/WHITELABEL.md) — modelo de marca e regras para código novo
+- [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) — design hi-fi (fonte de verdade visual)
+- [`CLAUDE.md`](CLAUDE.md) — guia canônico para agentes e devs
 
-Web → **Vercel** · API → **Render/Railway** (Docker) · dados/auth → **Supabase**.
-Passo a passo completo em [`docs/DEPLOY.md`](docs/DEPLOY.md) (configs prontas:
-[`apps/web/vercel.json`](apps/web/vercel.json), [`apps/api/Dockerfile`](apps/api/Dockerfile),
-[`render.yaml`](render.yaml)). O canal WhatsApp (Evolution) precisa de um host acessível pelo
-webhook em produção — ver [`docs/WHATSAPP.md`](docs/WHATSAPP.md).
-
-## Documentação
-
-1. [`CLAUDE.md`](CLAUDE.md) — guia canônico do projeto (status, decisões, o que **não** fazer).
-2. [`docs/context.md`](docs/context.md) — especificação de produto (o quê/porquê).
-3. [`docs/plan.md`](docs/plan.md) — plano de execução (fases F0–F4, tarefas, critérios de aceitação).
-4. [`docs/update.md`](docs/update.md) — registro cronológico do que foi implementado.
-5. [`docs/WHATSAPP.md`](docs/WHATSAPP.md) — runbook do canal WhatsApp (Evolution/Baileys).
-6. [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) — design hi-fi (fonte de verdade visual, réplica 1:1).
+</details>
