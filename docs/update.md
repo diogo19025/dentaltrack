@@ -1072,3 +1072,25 @@ API **386 testes** (+25: nome de instância derivado e único, criação com web
 - **Aplicar a migration** e validar o pareamento ao vivo — precisa da Evolution no ar e de um número dedicado à mão.
 - **`API_PUBLIC_URL`** precisa entrar no ambiente da API (dev: `http://host.docker.internal:3001`; produção: a URL pública). Sem ela o botão fica indisponível e a tela explica o motivo.
 - **Uma empresa segue com um número.** O pareamento já é multi-empresa (cada uma com a sua instância); vários números por empresa continua fora de escopo.
+
+---
+
+# Update — Central de notificações no sino do topbar — F11 (2026-09-01)
+
+## Visão geral
+
+O sino do topbar existia desde o handoff, mas era decorativo: clicável, com um ponto vermelho fixo, e nada por trás. Virou uma central de notificações de verdade, no padrão dos CRMs de referência (HubSpot/Pipedrive): badge com a contagem de não lidas, painel ancorado no botão com os eventos recentes da operação e clique levando para a tela onde se age sobre o evento.
+
+## O que foi feito
+
+- **Notificações derivadas, não gravadas.** Nenhuma tabela nova de eventos: `GET /notifications` (`notifications/notifications.service.ts`) mescla cinco fontes que o produto já grava — conversa iniciada (web/WhatsApp), lead capturado (exclui importação em massa, que afogaria o sino), agendamento criado, conversa abandonada (cron) e **mensagem automática que falhou** (o tipo mais acionável: sem ele a falha é invisível até o paciente faltar). Janela de 7 dias, teto de 30 itens, ordenado do mais novo para o mais velho.
+- **"Não lida" por empresa.** Migration `f11_notifications_seen` adiciona `clinic_settings.notifications_seen_at`; eventos posteriores ao marco contam como não lidos (NULL = nunca abriu o sino). `POST /notifications/seen` grava o marco — abrir o painel zera o badge (o sino é um resumo, não uma caixa de tarefas).
+- **Contrato em `shared/notifications.ts`** (`notificationsDtoSchema`, tipos e rótulos), endpoints sob `TenantGuard` como os demais.
+- **Web:** `NotificationsBell` (`components/shell/notifications-bell.tsx`) substitui o sino morto no topbar — badge satura em "9+", painel `Popover` (primitivo novo em `components/ui/popover.tsx`, Radix já presente) com ícone por tipo, contato, tempo relativo e ponto de não lida; estados de carregando/vazio; polling de 30s (`use-notifications.ts`); marcar-como-visto otimista que não some com os pontos na frente do usuário.
+- **Testes:** 7 no service (merge/ordenação, canal na manchete, marco do visto, filtro de import, falha de automação) + 6 no componente (contagem honesta do badge, visto só quando há o que ver, navegação por tipo, estado vazio) — API 393 · web 127, tudo verde.
+
+## O que ainda não deu para fazer
+
+- **"WhatsApp desconectado" como notificação** — o estado existe (`GET /whatsapp/connection`), mas não há registro de *quando* caiu; entra quando a conexão ganhar histórico.
+- **Notificação por item de destino direto** (abrir a conversa exata, não a tela) — o painel navega para a tela do contexto; deep-link por entidade fica para quando o chat tiver rota por conversa.
+- **Push/e-mail** ficam fora: o sino cobre o dono logado; avisar quem não está olhando é outra feature (e outro risco de spam).

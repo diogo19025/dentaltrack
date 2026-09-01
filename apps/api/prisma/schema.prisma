@@ -95,6 +95,9 @@ model ClinicSettings {
   /// perguntamos. Existe para não repetir a pergunta a cada login de quem
   /// respondeu "ainda não".
   whatsappOnboardingAnsweredAt DateTime? @map("whatsapp_onboarding_answered_at")
+  /// Último "marcar como visto" do sino de notificações (F11). NULL = nunca
+  /// abriu — tudo conta como não lido. Por empresa: o MVP é um dono por clínica.
+  notificationsSeenAt          DateTime? @map("notifications_seen_at")
   /// Nome da instância Evolution que atende esta clínica no WhatsApp (WA-1).
   /// Resolve `instância → clínica` no webhook (sem JWT). Único por instância.
   whatsappInstance             String?   @unique @map("whatsapp_instance")

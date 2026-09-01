@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Bell, ChevronRight, Plus, Search } from "lucide-react";
+import { ChevronRight, Plus, Search } from "lucide-react";
+import { NotificationsBell } from "@/components/shell/notifications-bell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -47,20 +48,7 @@ export function Topbar() {
         <Input aria-label="Buscar conversas e leads" placeholder="Buscar conversas, leads…" className="pl-10" />
       </div>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="relative inline-flex">
-            <Button variant="secondary" size="icon-sm" aria-label="Notificações">
-              <Bell />
-            </Button>
-            <span
-              className="absolute right-[6px] top-[6px] size-2 rounded-full"
-              style={{ background: "var(--destructive)", border: "2px solid var(--card)" }}
-            />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>Notificações</TooltipContent>
-      </Tooltip>
+      <NotificationsBell />
 
       <Tooltip>
         <TooltipTrigger asChild>

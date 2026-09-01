@@ -19,3 +19,4 @@ export * from "./automations";
 export * from "./integrations";
 export * from "./holidays";
 export * from "./whatsapp";
+export * from "./notifications";

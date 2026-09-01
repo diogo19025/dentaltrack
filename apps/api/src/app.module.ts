@@ -11,6 +11,7 @@ import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
 import { LeadsModule } from './leads/leads.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { PipelineModule } from './pipeline/pipeline.module';
 import { PrismaModule } from './prisma/prisma.module';
@@ -41,6 +42,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     ClinicorpModule,
     AgendaModule,
     AutomationsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}
