@@ -1,5 +1,5 @@
 import type { WhatsappConnection } from "@dentaltrack/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WhatsappConnectPanel } from "./connect-panel";
 import { WhatsappOnboarding } from "./whatsapp-onboarding";
@@ -21,6 +21,8 @@ const state = vi.hoisted(() => ({
     isError: false,
     error: null as Error | null,
     data: undefined as WhatsappConnection | undefined,
+    /** Instante em que o QR atual foi pedido — âncora da contagem regressiva. */
+    submittedAt: 0,
   },
   disconnect: { mutate: vi.fn(), isPending: false },
   reset: { mutate: vi.fn(), isPending: false },
@@ -56,6 +58,8 @@ afterEach(() => {
   state.data = null;
   state.connect.data = undefined;
   state.connect.isError = false;
+  state.connect.submittedAt = 0;
+  vi.useRealTimers();
 });
 
 describe("WhatsappOnboarding (pergunta do primeiro acesso)", () => {
@@ -178,5 +182,95 @@ describe("WhatsappConnectPanel", () => {
 
     expect(screen.getByText(/não está habilitado neste servidor/i)).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("WhatsappConnectPanel — validade do QR", () => {
+  /** Um QR recém-gerado, ancorado no relógio falso. */
+  function freshQr(issuedAt: number) {
+    const pending = connection({
+      state: "aguardando_leitura",
+      qrCode: "data:image/png;base64,AAA",
+    });
+    state.connect.data = pending;
+    state.connect.submittedAt = issuedAt;
+    return pending;
+  }
+
+  it("mostra quanto tempo falta para o código expirar", () => {
+    // O dono precisa saber se ainda dá tempo de pegar o celular, em vez de
+    // descobrir que o código morreu só depois de apontar a câmera.
+    vi.useFakeTimers();
+    const t0 = Date.now();
+    vi.setSystemTime(t0);
+
+    render(<WhatsappConnectPanel connection={freshQr(t0)} />);
+
+    expect(screen.getByText("0:40")).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(35_000);
+    });
+    expect(screen.getByText("0:05")).toBeInTheDocument();
+  });
+
+  it("ao expirar, avisa e destaca o botão de gerar um novo", () => {
+    vi.useFakeTimers();
+    const t0 = Date.now();
+    vi.setSystemTime(t0);
+
+    render(<WhatsappConnectPanel connection={freshQr(t0)} />);
+
+    act(() => {
+      vi.advanceTimersByTime(41_000);
+    });
+
+    expect(screen.getByText(/Código expirado/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Gerar novo QR code/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("renova o código sozinho antes de ele morrer", () => {
+    vi.useFakeTimers();
+    const t0 = Date.now();
+    vi.setSystemTime(t0);
+
+    render(<WhatsappConnectPanel connection={freshQr(t0)} />);
+    expect(state.connect.mutate).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(40_000);
+    });
+    expect(state.connect.mutate).toHaveBeenCalled();
+  });
+
+  it("o botão de gerar outro código está disponível antes de expirar", () => {
+    render(
+      <WhatsappConnectPanel
+        connection={connection({
+          state: "aguardando_leitura",
+          qrCode: "data:image/png;base64,AAA",
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Gerar outro código/i }));
+    expect(state.connect.mutate).toHaveBeenCalled();
+  });
+
+  it("o QR não some se a consulta de estado oscilar durante a espera", () => {
+    // A Evolution reporta `close` entre gerar o código e alguém lê-lo. Sumir
+    // com o QR bem nesse momento seria o pior desfecho possível.
+    state.connect.data = connection({
+      state: "aguardando_leitura",
+      qrCode: "data:image/png;base64,AAA",
+    });
+
+    render(
+      <WhatsappConnectPanel connection={connection({ state: "desconectado" })} />,
+    );
+
+    expect(screen.getByAltText(/QR code/i)).toBeInTheDocument();
   });
 });

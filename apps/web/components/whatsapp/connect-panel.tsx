@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { WhatsappConnection } from "@dentaltrack/shared";
 import {
   AlertTriangle,
@@ -19,8 +19,12 @@ import {
 } from "@/hooks/use-whatsapp-connection";
 import { cn } from "@/lib/utils";
 
-/** De quanto em quanto tempo o QR é renovado (ele expira em ~1 minuto). */
-const QR_REFRESH_MS = 40_000;
+/**
+ * Vida útil do QR na tela. O código do WhatsApp dura cerca de 1 minuto, então
+ * renovamos aos 40s — com margem para o dono levantar, pegar o celular e
+ * apontar a câmera sem o código morrer no meio do caminho.
+ */
+const QR_LIFETIME_MS = 40_000;
 
 /**
  * Painel de conexão do WhatsApp (F10) — o pareamento por QR.
@@ -43,16 +47,37 @@ export function WhatsappConnectPanel({
   const disconnect = useDisconnectWhatsapp();
   const reset = useResetWhatsapp();
 
-  const waiting = connection.state === "aguardando_leitura";
   const qrCode = connect.data?.qrCode ?? connection.qrCode;
 
-  // O QR expira em segundos. Enquanto o pareamento estiver pendente e a tela
-  // aberta, pedimos um código novo periodicamente — senão o dono lê um QR morto
-  // e conclui que o produto não funciona.
+  // Enquanto houver um QR recém-gerado, a tela segue em modo de pareamento
+  // mesmo que a consulta de estado oscile. A Evolution reporta `close` no
+  // intervalo entre gerar o código e alguém lê-lo, e sumir com o QR bem nesse
+  // momento seria o pior desfecho possível.
+  const waiting =
+    connection.state !== "conectado" &&
+    (connection.state === "aguardando_leitura" ||
+      Boolean(connect.data?.qrCode));
+
+  // Relógio de 1 em 1 segundo, só para a contagem regressiva do QR.
+  const [now, setNow] = useState(() => Date.now());
+  const issuedAt = connect.submittedAt || null;
+  const secondsLeft =
+    waiting && qrCode && issuedAt
+      ? Math.max(0, Math.ceil((issuedAt + QR_LIFETIME_MS - now) / 1000))
+      : null;
+  const expired = secondsLeft === 0;
+
+  // O QR morre em cerca de um minuto. Enquanto o pareamento estiver pendente e
+  // a tela aberta, pedimos um código novo antes disso — ler um QR vencido e
+  // concluir que "não funciona" era o desfecho fácil.
   useEffect(() => {
     if (!waiting) return;
-    const id = setInterval(() => connect.mutate(), QR_REFRESH_MS);
-    return () => clearInterval(id);
+    const tick = setInterval(() => setNow(Date.now()), 1_000);
+    const renew = setInterval(() => connect.mutate(), QR_LIFETIME_MS);
+    return () => {
+      clearInterval(tick);
+      clearInterval(renew);
+    };
     // `connect` é estável o suficiente para o efeito; só o estado importa aqui.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waiting]);
@@ -153,8 +178,27 @@ export function WhatsappConnectPanel({
             </Step>
             <Step n={3}>Aponte a câmera para este QR code.</Step>
             <li className="flex items-center gap-2 pt-1 text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
-              Esperando a leitura… o código se renova sozinho.
+              {expired ? (
+                <>
+                  <RefreshCw className="size-3.5 animate-spin" />
+                  Código expirado — gerando um novo…
+                </>
+              ) : (
+                <>
+                  <Loader2 className="size-3.5 animate-spin" />
+                  <span>
+                    Esperando a leitura
+                    {secondsLeft !== null && (
+                      <>
+                        {" · expira em "}
+                        <span className="tabular font-medium text-foreground">
+                          {formatSeconds(secondsLeft)}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </>
+              )}
             </li>
             {connection.pairingCode && (
               <li className="pt-2 text-muted-foreground">
@@ -203,13 +247,15 @@ export function WhatsappConnectPanel({
         <div className="flex justify-center">
           <Button
             type="button"
-            variant="ghost"
+            // Vencido, o botão deixa de ser secundário: nesse momento ele é a
+            // única coisa que o dono precisa ver.
+            variant={expired ? "default" : "ghost"}
             size="sm"
             onClick={() => connect.mutate()}
             disabled={connect.isPending}
           >
             <RefreshCw className={cn("size-4", connect.isPending && "animate-spin")} />
-            Gerar outro código
+            {expired ? "Gerar novo QR code" : "Gerar outro código"}
           </Button>
         </div>
       )}
@@ -251,6 +297,13 @@ function Notice({
       <span className="text-secondary-foreground">{children}</span>
     </div>
   );
+}
+
+/** Segundos restantes → "0:38". */
+function formatSeconds(total: number): string {
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 /** "5511999998888" → "+55 (11) 99999-8888". Só exibição. */
