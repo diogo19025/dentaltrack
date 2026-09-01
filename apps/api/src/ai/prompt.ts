@@ -31,6 +31,14 @@ export interface BuildSystemPromptInput {
   settings?: ClinicSettings | null;
   procedures: Procedure[];
   contact?: KnownContact | null;
+  /**
+   * Fuso IANA da empresa (F9). Ancora a data de hoje no prompt — sem ela o
+   * modelo não sabe resolver "quinta-feira" nem "semana que vem", e a agenda
+   * passa a receber datas erradas com toda a confianca do mundo.
+   */
+  timeZone?: string | null;
+  /** Relógio injetável — mantém o prompt determinístico nos testes. */
+  now?: Date;
 }
 
 /** Formata centavos como BRL (ex.: 150000 → "R$ 1.500"). */
@@ -162,6 +170,8 @@ export function buildSystemPrompt({
   settings,
   procedures,
   contact,
+  timeZone,
+  now,
 }: BuildSystemPromptInput): string {
   const lines: string[] = [];
 
@@ -222,6 +232,12 @@ export function buildSystemPrompt({
     }
   }
 
+  // Data de hoje no fuso da empresa (F9) — âncora de toda conversa sobre
+  // agenda. Sem ela o modelo resolve "quinta-feira" pelo dia do treinamento.
+  lines.push(
+    formatToday(now ?? new Date(), timeZone ?? DEFAULT_PROMPT_TIMEZONE),
+  );
+
   // Disponibilidade de atendimento (orienta o bot ao propor horários).
   const availability = formatAvailability(settings?.availability);
   if (availability) {
@@ -276,11 +292,29 @@ export function buildSystemPrompt({
     '- Assim que tiver o nome e o telefone do cliente, chame `captureLead` para registrar o contato.',
   );
   lines.push(
-    '- Quando o cliente confirmar que quer marcar, chame `bookAppointment` com o procedimento e a preferência de dia/horário. Só confirme o agendamento DEPOIS que a ferramenta retornar sucesso.',
+    '- ANTES de sugerir qualquer dia ou horário, chame `checkAvailability`. Ofereça no máximo 3 opções por vez, com dia da semana e hora. Se ela responder `agendaConectada: false`, NÃO invente horários: pergunte a preferência de dia e período e diga que a equipe confirma.',
+  );
+  lines.push(
+    '- Quando o cliente confirmar que quer marcar, chame `bookAppointment`. Se ele escolheu um horário da consulta, repasse o campo `dataHora` exatamente como veio; caso contrário, descreva a preferência em texto livre. Só confirme o agendamento DEPOIS que a ferramenta retornar sucesso, e siga a `orientacao` devolvida: com `confirmado: false` diga que a equipe confirma em seguida, nunca que já está marcado.',
   );
   lines.push(
     '- Não afirme que registrou contato ou agendamento se você não chamou a ferramenta correspondente.',
   );
 
   return lines.join('\n');
+}
+
+/** Fuso assumido quando a empresa ainda não configurou o dela. */
+const DEFAULT_PROMPT_TIMEZONE = 'America/Sao_Paulo';
+
+/** "Hoje é sexta-feira, 12/09/2026." no fuso da empresa. */
+function formatToday(now: Date, timeZone: string): string {
+  const formatted = new Intl.DateTimeFormat('pt-BR', {
+    timeZone,
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(now);
+  return `Hoje é ${formatted}. Use esta data como referência ao interpretar pedidos como "amanhã", "quinta-feira" ou "semana que vem".`;
 }

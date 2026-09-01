@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AgendaModule } from './agenda/agenda.module';
 import { AuthModule } from './auth/auth.module';
+import { AutomationsModule } from './automations/automations.module';
 import { ChatModule } from './chat/chat.module';
+import { ClinicorpModule } from './clinicorp/clinicorp.module';
 import { validateEnv } from './config/env.validation';
 import { ConversationsModule } from './conversations/conversations.module';
 import { HealthModule } from './health/health.module';
@@ -35,6 +38,9 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     JobsModule,
     WhatsappModule,
     RemindersModule,
+    ClinicorpModule,
+    AgendaModule,
+    AutomationsModule,
   ],
 })
 export class AppModule {}

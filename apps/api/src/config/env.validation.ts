@@ -46,6 +46,12 @@ export const envSchema = z.object({
   AI_STAGE_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).optional(),
 
   // ─── WhatsApp (WA) ───
+  // URL pública desta API, usada como destino do webhook ao criar a instância
+  // da empresa (F10). No dev com a Evolution em Docker, é
+  // http://host.docker.internal:3001; em produção, a URL da API na nuvem.
+  // Sem ela, o pareamento por QR na tela fica indisponível (o webhook não teria
+  // para onde apontar) e o runbook manual segue valendo.
+  API_PUBLIC_URL: z.string().url().optional(),
   // Janela (horas) em que uma conversa de WhatsApp ainda `em_andamento` é reusada
   // para o mesmo telefone; fora dela abre-se uma nova conversa (WA-2). Default 24.
   WHATSAPP_SESSION_HOURS: z.coerce.number().int().positive().optional(),
@@ -56,6 +62,28 @@ export const envSchema = z.object({
   EVOLUTION_API_KEY: z.string().optional(),
   // Segredo opcional para autenticar o webhook (header `x-evolution-token`). (WA-4)
   EVOLUTION_WEBHOOK_TOKEN: z.string().optional(),
+
+  // --- F9: agenda, integracao e automacoes ---
+  // Chave AES-256 (32 bytes: 64 hex ou 44 base64) que cifra as credenciais da
+  // integracao no banco. Sem ela a empresa nao consegue salvar credencial —
+  // falhar fechado e melhor do que guardar segredo em texto puro.
+  INTEGRATION_ENCRYPTION_KEY: z.string().optional(),
+  // Intervalo (minutos) da sincronizacao da agenda com o sistema de gestao.
+  // A API observada nao expoe webhook, entao a deteccao de falta/atraso depende
+  // deste polling. Default 10.
+  AGENDA_SYNC_INTERVAL_MINUTES: z.coerce.number().int().positive().optional(),
+  // Janela (dias) para tras e para frente sincronizada a cada rodada.
+  AGENDA_SYNC_PAST_DAYS: z.coerce.number().int().min(0).optional(),
+  AGENDA_SYNC_FUTURE_DAYS: z.coerce.number().int().positive().optional(),
+  // Pausa (ms) entre dois envios automaticos consecutivos — higiene anti-ban.
+  OUTBOUND_THROTTLE_MS: z.coerce.number().int().min(0).optional(),
+  // Quantas mensagens a fila despacha por rodada do worker.
+  OUTBOUND_BATCH_SIZE: z.coerce.number().int().positive().optional(),
+  // Desliga globalmente o envio automatico (kill switch de operacao).
+  AUTOMATIONS_ENABLED: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v !== 'false'),
 });
 
 export type Env = z.infer<typeof envSchema>;

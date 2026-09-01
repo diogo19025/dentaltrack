@@ -980,3 +980,95 @@ API **207 testes** (2 suites novas: export — csv escape/BOM, xlsx relido pelo 
 ### Pendências / próximos passos
 - Template de planilha para download (facilita o 1º import) e opção de **atualizar** leads existentes em vez de pular duplicatas.
 - Exportação respeitando os **filtros ativos** da tela também no Excel/PDF (hoje só o CSV client-side filtra).
+
+---
+
+# Update — Agenda, integração com o sistema de gestão e automações — F9 (2026-08-31)
+
+## Visão geral
+
+Cinco pedidos do dono de uma clínica, que na verdade são **um só problema**: o produto sabia conversar, mas não sabia **quando as coisas acontecem**. Lembrete 3 dias antes de quê? Faltou a qual consulta? Um `preferredTime` em texto livre ("semana que vem de tarde") não responde a nada disso.
+
+A F9 dá horário real ao agendamento, conecta a agenda do sistema de gestão da clínica (**Clinicorp**) e liga quatro automações de relacionamento em cima disso. Código, testes e migration `f9_agenda_automations` **criados; aplicar ao vivo pendente**.
+
+Decisão que organiza o resto: a integração roda em **três modos** (`desligado | mock | live`), o mesmo movimento do `LLM_PROVIDER=mock` que destravou o E2E do motor de IA. Foi assim que as cinco automações puderam ser construídas e testadas **antes de a credencial do cliente existir** — que é justamente a parte do projeto que não depende de nós.
+
+## O que foi feito
+
+### Contrato (`packages/shared`)
+`agenda.ts` (status normalizado `pedido|agendado|confirmado|compareceu|faltou|cancelado`, `AvailableSlot`, agenda), `automations.ts` (as seis regras + `renderTemplate` determinístico + estados/motivos da fila), `integrations.ts` (modos, credencial write-only, mapeamento de status, verificação passo a passo) e `holidays.ts`.
+
+### Schema (`f9_agenda_automations`)
+`Appointment` ganha `startsAt`/`endsAt`/`status`/`source`/`externalId`/profissional/unidade; `Lead.externalId` (dedupe com o sistema de gestão). Modelos novos: `ClinicIntegration` (credencial **cifrada AES-256-GCM**, mapeamento de status), `AutomationSettings`, `OutboundMessage` (fila com `dedupeKey` único por empresa), `ContactOptOut`, `Holiday`. Sem backfill: agendamentos antigos caem em `pedido`, que é exatamente o que eles são.
+
+### Conector (`apps/api/src/clinicorp/`)
+`AgendaProvider` é a **porta**; nada acima dela sabe que existe Clinicorp. Três implementações: `MockAgendaProvider` (agenda sintética determinística, com um caso vivo por automação e **telefones inválidos de propósito**), `ClinicorpAgendaProvider` (API real) e `null` (desligado → comportamento pré-F9).
+
+O risco assumido — escrever o adapter sem poder conferir o contrato real — foi confinado por desenho: **toda** leitura passa pelo `field-reader`, que tenta as grafias plausíveis de cada campo e desembrulha as formas usuais de lista. Uma divergência vira uma entrada numa lista, não uma revisão de cinco automações. Já tratadas: **HTTP 200 sem criar o agendamento** (`PatientNameAlreadyExists` → lança, porque transporte não é agendamento), ids de entidade como inteiro nativo, datas sem offset lidas no fuso da empresa e as grafias erradas do fornecedor reproduzidas literalmente (`get_avaliable_days`).
+
+### Agenda (`apps/api/src/agenda/`)
+`AgendaService` (disponibilidade, agendamento, listagem) e `AgendaSyncService` (**varredura a cada 10 min** — o inventário público da API não expõe webhook, e é este intervalo que define a frescura da detecção de falta e atraso). Status resolvido por ordem de autoridade: mapeamento confirmado → sugestão por nome → o que já estava aqui → `agendado`. Um status irreconhecível **nunca** reclassifica um agendamento sozinho.
+
+### Automações (`apps/api/src/automations/`)
+`AutomationPlannerService` decide o que precisa sair; `OutboundService` decide **quando e como** sai. Separar isso foi decisão, não conveniência: os quatro gatilhos são diferentes mas exigem a mesma higiene, e o canal é um WhatsApp não-oficial onde disparo mal calibrado **derruba o número da empresa inteira**. Numa camada só: janela de horário, feriado, teto diário, espaçamento com jitter, descadastro e idempotência.
+
+Detalhe que resolve remarcação sem código de remarcação: a chave de idempotência do lembrete **carrega o horário da consulta**. Mudou o horário, a chave nova não existe (o lembrete certo é enfileirado) e a antiga não bate mais com o agendamento (o velho é suprimido na revalidação).
+
+Travas deliberadas: **o aviso de atraso nasce desligado** e só alcança agendamentos vindos da integração (um agendamento criado pelo bot nunca recebe "chegou" — sem isso, todo mundo levaria aviso indevido); a **cadência de falta tem teto rígido** (máx. 3) e para na primeira resposta; o **retorno** só procura quem compareceu, fez manutenção e **não deixou a próxima marcada**.
+
+### Motor do agente
+Tool nova `checkAvailability` (o agente consulta antes de sugerir qualquer horário) e `bookAppointment` estendida com `dataHora`. Com agenda conectada, grava também no sistema de gestão e devolve `confirmado: true` — o único caso em que o bot pode dizer "está marcado"; sem isso, ele promete retorno. O prompt passou a incluir **a data de hoje no fuso da empresa**, sem a qual o modelo resolve "quinta-feira" pelo dia do treinamento.
+
+### Opt-out persistido (dívida da WA-4)
+Era uma resposta amigável em memória — bastava num bot **receptivo**. A partir do momento em que o sistema envia sozinho, virou obrigação: `ContactOptOut` por empresa, cancelando também o que já estava na fila.
+
+### FE
+`/settings` ganhou as abas **Automações** (regras com prévia do texto que o cliente recebe, janela de envio, teto diário e calendário de feriados) e **Integração** (assistente de conexão: credencial write-only, verificação só-leitura passo a passo e tradução dos status). Nova tela **/agenda**: os agendamentos sincronizados e o histórico das mensagens automáticas — inclusive **o que não saiu e por quê**, porque suprimida por descadastro é o sistema acertando e falha de envio é problema a investigar.
+
+### Ferramenta do dia D
+`pnpm --filter @dentaltrack/api clinicorp:smoke` percorre a cadeia só-leitura e imprime o que cada rota respondeu, com a sugestão de mapeamento de status. Verificado ponta a ponta contra um servidor falso (auth Basic, grafias mistas, fuso, e a armadilha "Não compareceu" → `faltou`).
+
+### Qualidade
+API **361 testes** (+154: fuso com horário de verão, leitura tolerante, heurística de status, cifra, provedor simulado, adapter real com fetch mockado, fila de saída, planejador das quatro automações, sincronização) · web **105** (+11) · typecheck/lint/build verdes nos 3 pacotes.
+
+## O que ainda não deu para fazer
+
+- **Aplicar a migration ao vivo** e a primeira sincronização real — depende do Supabase.
+- **A credencial do Clinicorp.** É o único bloqueio de verdade, e não é técnico: quem pede ao suporte é o assinante. Ver [`CLINICORP.md`](CLINICORP.md).
+- **Confirmar o contrato real da API.** O adapter foi escrito contra um inventário observado, não contra doc oficial. O `clinicorp:smoke` existe justamente para transformar isso em 1–2 dias de ajuste confinado, em vez de uma caçada.
+- **Webhook em vez de varredura**, se o fornecedor confirmar que existe (pergunta 6 do modelo de mensagem). Só o `AgendaSyncService` mudaria.
+- **Risco que precisa ir à mesa do dono:** com disparo ativo, o Baileys passa a ser exercitado no padrão que mais gera banimento. As mitigações estão todas embutidas (janela, jitter, teto, opt-out, idempotência, kill switch), mas a decisão de assumir o risco é dele — e é melhor assumi-la sabendo do que descobri-la depois.
+
+---
+
+# Update — Conexão do WhatsApp por QR code na tela — F10 (2026-09-01)
+
+## Visão geral
+
+Conectar o WhatsApp de uma empresa era um procedimento de terminal: `curl` para criar a instância, `curl` para pedir o QR, e um `UPDATE` à mão no banco para dizer qual instância pertence a qual empresa (`docs/WHATSAPP.md` §3–5). Funcionava para uma clínica — e era exatamente o que prendia o produto em "um número, uma clínica".
+
+Agora é um passo do produto: no primeiro acesso o app **pergunta** se a empresa já tem um número dedicado e, se tiver, mostra o QR ali mesmo.
+
+## O que foi feito
+
+### A pergunta vem antes do QR — e isso é a decisão de desenho
+Quem lê aquele código passa a ter o número operado pelo bot: ele responde sozinho a quem escrever. Mostrar o QR de cara faria alguém parear o número pessoal sem entender o que estava aceitando. Por isso o fluxo pergunta primeiro, explica que precisa ser um chip separado, e só então oferece o pareamento. Quem responde "ainda não tenho" **não é perguntado de novo** — a resposta fica na empresa (`ClinicSettings.whatsappOnboardingAnsweredAt`, migration `f10_whatsapp_onboarding`), porque repetir a pergunta a cada login seria implicância.
+
+### Backend (`whatsapp/connection.service.ts` + `connection.controller.ts`)
+`GET /whatsapp/connection` (estado), `POST` (cria a instância se preciso e devolve QR), `POST /onboarding` (resposta do dono), `POST /disconnect` e `DELETE` (trocar de número). O `EvolutionService` ganhou a gestão de instâncias (`create`/`connect`/`connectionState`/`fetchInstances`/`logout`/`delete`).
+
+Três detalhes que evitam estados quebrados:
+- a instância é criada **já com o webhook apontado** para `API_PUBLIC_URL` numa chamada só — sem isso existiria a janela em que o número está pareado e as mensagens não chegam a lugar nenhum;
+- o **nome da instância é derivado da empresa** (`slug-<id8>`) e nunca aceito do corpo: é ele que o webhook usa para resolver o tenant, então aceitá-lo do cliente deixaria uma empresa sequestrar as mensagens de outra;
+- com a Evolution fora do ar, o estado reportado é `desconectado` **com o motivo** — dizer "conectado" quando não dá para saber faria o dono tomar decisões achando que o bot está no ar.
+
+### Frontend
+`WhatsappConnectPanel` é um painel só, usado no diálogo do primeiro acesso e na nova aba **WhatsApp** das Configurações. O QR se renova a cada 40s enquanto a tela estiver aberta (ele expira em ~1min — ler um QR morto e concluir que "não funciona" era o desfecho fácil), e o estado é consultado a cada 3s, então a tela vira para "Conectado" sozinha. Conectado, mostra o número e oferece desconectar ou trocar de número.
+
+### Qualidade
+API **386 testes** (+25: nome de instância derivado e único, criação com webhook, reconexão sem recriar, já-conectado, Evolution fora do ar, desconectar × trocar de número, leitura tolerante das respostas) · web **116** (+11: a pergunta antes do QR, o aviso sobre número pessoal, não reaparecer para quem já respondeu, servidor sem suporte).
+
+## O que ainda não deu para fazer
+- **Aplicar a migration** e validar o pareamento ao vivo — precisa da Evolution no ar e de um número dedicado à mão.
+- **`API_PUBLIC_URL`** precisa entrar no ambiente da API (dev: `http://host.docker.internal:3001`; produção: a URL pública). Sem ela o botão fica indisponível e a tela explica o motivo.
+- **Uma empresa segue com um número.** O pareamento já é multi-empresa (cada uma com a sua instância); vários números por empresa continua fora de escopo.

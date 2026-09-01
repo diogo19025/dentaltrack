@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { AiUnavailableError } from '../ai/generate-reply';
+import { OptOutService } from '../automations/opt-out.service';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from './evolution.service';
@@ -29,6 +30,11 @@ describe('WhatsappService', () => {
   let service: WhatsappService;
   const prismaMock = { clinicSettings: { findUnique: jest.fn() } };
   const chatMock = { processInboundMessage: jest.fn() };
+  /** Descadastro persistido (F9) — o adapter só registra e confirma. */
+  const optOutMock = {
+    optOut: jest.fn().mockResolvedValue(undefined),
+    isOptedOut: jest.fn().mockResolvedValue(false),
+  };
   const evolutionMock = {
     sendText: jest.fn(),
     sendMedia: jest.fn(),
@@ -52,6 +58,7 @@ describe('WhatsappService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: ChatService, useValue: chatMock },
         { provide: EvolutionService, useValue: evolutionMock },
+        { provide: OptOutService, useValue: optOutMock },
       ],
     }).compile();
     service = moduleRef.get(WhatsappService);

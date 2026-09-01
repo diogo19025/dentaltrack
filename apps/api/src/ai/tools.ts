@@ -5,6 +5,12 @@ import {
   type MediaAttachment,
   type MediaType,
 } from '@dentaltrack/shared';
+import type { AgendaService } from '../agenda/agenda.service';
+import {
+  formatDatePtBr,
+  formatTimePtBr,
+  parseLocalDateTime,
+} from '../common/time';
 import type { ConversationsService } from '../conversations/conversations.service';
 import type { PrismaService } from '../prisma/prisma.service';
 
@@ -32,6 +38,13 @@ export interface ChatToolsContext {
    * — é preenchido durante a execução das tools no turno.
    */
   attachments?: MediaAttachment[];
+  /**
+   * Agenda da empresa (F9). Quando presente e conectada a um sistema de gestão,
+   * o agente passa a oferecer **horários que existem de verdade** e a gravar o
+   * agendamento na agenda real. Ausente, as tools caem no comportamento
+   * anterior (preferência em texto livre) — o motor não quebra sem integração.
+   */
+  agenda?: AgendaService;
 }
 
 interface SearchInput {
@@ -50,6 +63,13 @@ interface BookInput {
   telefone?: string;
   procedimento?: string;
   preferencia?: string;
+  /** Horário acordado, "AAAA-MM-DDTHH:mm" no fuso da empresa (F9). */
+  dataHora?: string;
+}
+interface CheckAvailabilityInput {
+  procedimento?: string;
+  aPartirDe?: string;
+  dias?: number;
 }
 interface PresentOfferInput {
   procedimento?: string;
@@ -147,8 +167,34 @@ const OFFER_SELECT = {
 
 /** Constrói o conjunto de tools para uma conversa específica. */
 export function buildChatTools(ctx: ChatToolsContext): ToolSet {
-  const { prisma, conversations, clinicId, conversationId } = ctx;
+  const { prisma, conversations, clinicId, conversationId, agenda } = ctx;
   const channel: Channel = ctx.channel ?? 'web';
+
+  /**
+   * Procedimento do catálogo pelo nome, com a duração — que é o que define o
+   * tamanho do horário a reservar na agenda. Diferente de `findProcedures`,
+   * que devolve a visão formatada para o modelo ler.
+   */
+  async function findProcedureRow(query: string): Promise<{
+    id: string;
+    name: string;
+    durationMinutes: number | null;
+  } | null> {
+    const q = query.trim();
+    if (!q) return null;
+    return prisma.procedure.findFirst({
+      where: {
+        clinicId,
+        active: true,
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { description: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, durationMinutes: true },
+    });
+  }
 
   /**
    * Escolhe a oferta mais pertinente (F6) para o momento da conversa:
@@ -415,9 +461,94 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
       },
     }),
 
+    checkAvailability: dynamicTool({
+      description:
+        'Consulta os horários REALMENTE livres na agenda da empresa. Use SEMPRE antes de sugerir qualquer dia ou horário ao cliente. Se a resposta vier com agendaConectada=false, NÃO invente horários: pergunte a preferência de dia/período do cliente e diga que a equipe confirma a disponibilidade.',
+      inputSchema: jsonSchema<CheckAvailabilityInput>({
+        type: 'object',
+        properties: {
+          procedimento: {
+            type: 'string',
+            description:
+              'Procedimento desejado — ajusta a duração do horário reservado.',
+          },
+          aPartirDe: {
+            type: 'string',
+            description:
+              'Data inicial da busca no formato AAAA-MM-DD. Vazio = a partir de hoje.',
+          },
+          dias: {
+            type: 'number',
+            description: 'Quantos dias buscar à frente (padrão 10, máximo 30).',
+          },
+        },
+        additionalProperties: false,
+      }),
+      execute: async (input) => {
+        const { procedimento, aPartirDe, dias } =
+          input as CheckAvailabilityInput;
+        if (!agenda) {
+          return {
+            agendaConectada: false,
+            orientacao:
+              'A agenda não está conectada. Pergunte a preferência de dia e período e explique que a equipe confirma o horário.',
+          };
+        }
+
+        try {
+          const [timeZone, procedure] = await Promise.all([
+            agenda.timeZone(clinicId),
+            procedimento ? findProcedureRow(procedimento) : null,
+          ]);
+          const from = aPartirDe
+            ? (parseLocalDateTime(`${aPartirDe}T00:00`, timeZone) ?? new Date())
+            : new Date();
+
+          const { slots, live } = await agenda.getAvailability(clinicId, {
+            from,
+            days: Math.min(Math.max(dias ?? 10, 1), 30),
+            durationMinutes: procedure?.durationMinutes ?? null,
+            limit: 6,
+          });
+
+          if (!live || slots.length === 0) {
+            return {
+              agendaConectada: live,
+              horarios: [],
+              orientacao: live
+                ? 'A agenda respondeu, mas não há horários livres no período. Ofereça um período diferente.'
+                : 'A agenda não está conectada. Pergunte a preferência de dia e período e explique que a equipe confirma o horário.',
+            };
+          }
+
+          return {
+            agendaConectada: true,
+            horarios: slots.map((slot) => {
+              const startsAt = new Date(slot.startsAt);
+              return {
+                // O agente devolve este valor em `dataHora` ao agendar.
+                dataHora: slot.startsAt,
+                rotulo: `${formatDatePtBr(startsAt, timeZone)} às ${formatTimePtBr(startsAt, timeZone)}`,
+                profissional: slot.professionalName,
+              };
+            }),
+            orientacao:
+              'Ofereça no máximo 3 destes horários por vez e use o campo dataHora exatamente como veio ao registrar o agendamento.',
+          };
+        } catch {
+          return {
+            agendaConectada: false,
+            horarios: [],
+            orientacao:
+              'Não foi possível consultar a agenda agora. Pergunte a preferência do cliente e diga que a equipe confirma.',
+          };
+        }
+      },
+    }),
+
     bookAppointment: dynamicTool({
       description:
-        'Registra um pedido de agendamento (a conversão). Use quando o cliente confirmar que quer marcar. Garanta antes nome e telefone. Informe o procedimento e a preferência de dia/horário em texto livre.',
+        'Registra o agendamento (a conversão). Use quando o cliente confirmar que quer marcar. Garanta antes nome e telefone. Se você consultou a agenda e o cliente escolheu um horário, informe `dataHora` com o valor exato devolvido pela consulta; caso contrário, descreva a preferência em texto livre.',
       inputSchema: jsonSchema<BookInput>({
         type: 'object',
         properties: {
@@ -432,13 +563,19 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
           },
           preferencia: {
             type: 'string',
-            description: 'Preferência de dia/horário em texto livre.',
+            description:
+              'Preferência de dia/horário em texto livre (use quando não houver horário confirmado).',
+          },
+          dataHora: {
+            type: 'string',
+            description:
+              'Horário escolhido, exatamente como veio de checkAvailability (AAAA-MM-DDTHH:mm).',
           },
         },
         additionalProperties: false,
       }),
       execute: async (input) => {
-        const { nome, telefone, procedimento, preferencia } =
+        const { nome, telefone, procedimento, preferencia, dataHora } =
           input as BookInput;
         try {
           const leadId = nome
@@ -457,19 +594,52 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
               )?.leadId ?? null);
 
           const procedure = procedimento
-            ? (await findProcedures(procedimento, 1))[0]
-            : undefined;
+            ? await findProcedureRow(procedimento)
+            : null;
 
-          const appointment = await prisma.appointment.create({
-            data: {
-              clinicId,
-              conversationId,
-              leadId,
-              procedureId: procedure?.id ?? null,
-              preferredTime: preferencia ?? null,
-            },
-            select: { id: true },
-          });
+          const startsAt =
+            dataHora && agenda
+              ? parseLocalDateTime(dataHora, await agenda.timeZone(clinicId))
+              : null;
+
+          const lead = leadId
+            ? await prisma.lead.findFirst({
+                where: { id: leadId, clinicId },
+                select: { name: true, phone: true },
+              })
+            : null;
+
+          // Com agenda conectada e horário definido, isto grava também na
+          // agenda real da empresa; sem uma coisa ou outra, registra só aqui —
+          // e `confirmed` diz qual dos dois aconteceu.
+          const booked = agenda
+            ? await agenda.book(clinicId, {
+                conversationId,
+                leadId,
+                procedureId: procedure?.id ?? null,
+                procedureName: procedure?.name ?? procedimento ?? null,
+                durationMinutes: procedure?.durationMinutes ?? null,
+                startsAt,
+                preferredTime: preferencia ?? null,
+                patientName: nome ?? lead?.name ?? null,
+                patientPhone: telefone ?? lead?.phone ?? null,
+              })
+            : {
+                appointmentId: (
+                  await prisma.appointment.create({
+                    data: {
+                      clinicId,
+                      conversationId,
+                      leadId,
+                      procedureId: procedure?.id ?? null,
+                      preferredTime: preferencia ?? null,
+                    },
+                    select: { id: true },
+                  })
+                ).id,
+                confirmed: false,
+                startsAt: null,
+              };
 
           // Conversão: em_andamento → agendada (no-op se já agendada).
           try {
@@ -478,7 +648,14 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             /* status já final / transição não permitida — não bloqueia o agendamento */
           }
 
-          return { ok: true, appointmentId: appointment.id };
+          return {
+            ok: true,
+            appointmentId: booked.appointmentId,
+            confirmado: booked.confirmed,
+            orientacao: booked.confirmed
+              ? 'Horário reservado na agenda. Pode confirmar ao cliente com dia e hora.'
+              : 'O pedido ficou registrado, mas o horário NÃO foi reservado na agenda. Diga ao cliente que a equipe confirma em seguida — não afirme que está marcado.',
+          };
         } catch {
           return {
             ok: false,

@@ -25,8 +25,17 @@ test("configurações: editar, salvar e persistir", async ({ page }) => {
   await page.reload();
   await expect(page.getByPlaceholder("Nome da sua empresa")).toHaveValue(clinicName);
 
-  // As 4 abas do segmented existem (Identidade/Ofertas + catálogo da F2).
-  for (const tab of ["Identidade & Persona", "Ofertas & Instruções", "Procedimentos", "Tags"]) {
+  // As abas do segmented existem: Identidade/Ofertas + catálogo (F2) +
+  // conexão do WhatsApp (F10) + automações e integração (F9).
+  for (const tab of [
+    "Identidade & Persona",
+    "Ofertas & Instruções",
+    "Procedimentos",
+    "Tags",
+    "WhatsApp",
+    "Automações",
+    "Integração",
+  ]) {
     await expect(page.getByRole("tab", { name: tab })).toBeVisible();
   }
 });

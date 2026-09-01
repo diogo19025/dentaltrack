@@ -129,6 +129,68 @@ export class EvolutionService {
     return res?.base64;
   }
 
+  // ─── Gestão de instâncias (F10 · pareamento por QR na tela) ───────────────
+  //
+  // Automatiza o que antes era um procedimento de terminal (docs/WHATSAPP.md
+  // §3–4): criar a instância já apontando o webhook para cá e pedir o QR. É o
+  // que tira o produto de "um número, uma clínica".
+
+  /**
+   * Cria a instância e **já aponta o webhook** para a nossa API. Fazer as duas
+   * coisas numa chamada só evita o estado intermediário em que a instância
+   * existe, o número é pareado e as mensagens não chegam a lugar nenhum.
+   */
+  async createInstance(
+    instanceName: string,
+    webhook: { url: string; token?: string },
+  ): Promise<unknown> {
+    return this.post('/instance/create', {
+      instanceName,
+      integration: 'WHATSAPP-BAILEYS',
+      qrcode: true,
+      webhook: {
+        url: webhook.url,
+        // Um endpoint único (sem o nome do evento colado na URL).
+        byEvents: false,
+        // Áudio embutido no webhook — evita uma 2ª chamada para buscar a mídia.
+        base64: true,
+        ...(webhook.token
+          ? { headers: { 'x-evolution-token': webhook.token } }
+          : {}),
+        // Só o que o adapter consome.
+        events: ['MESSAGES_UPSERT'],
+      },
+    });
+  }
+
+  /** Pede um QR novo para parear. O QR expira em segundos — repita à vontade. */
+  async connectInstance(instanceName: string): Promise<unknown> {
+    return this.request('GET', `/instance/connect/${instanceName}`);
+  }
+
+  /** Estado da sessão: `open` (conectado), `connecting`, `close`. */
+  async connectionState(instanceName: string): Promise<unknown> {
+    return this.request('GET', `/instance/connectionState/${instanceName}`);
+  }
+
+  /** Dados da instância (inclui o número pareado). Vazio = não existe. */
+  async fetchInstance(instanceName: string): Promise<unknown> {
+    return this.request(
+      'GET',
+      `/instance/fetchInstances?instanceName=${encodeURIComponent(instanceName)}`,
+    );
+  }
+
+  /** Desconecta o número, mantendo a instância. */
+  async logoutInstance(instanceName: string): Promise<unknown> {
+    return this.post(`/instance/logout/${instanceName}`, {});
+  }
+
+  /** Remove a instância por completo. */
+  async deleteInstance(instanceName: string): Promise<unknown> {
+    return this.request('DELETE', `/instance/delete/${instanceName}`);
+  }
+
   private get baseUrl(): string | undefined {
     return this.config.get('EVOLUTION_API_URL', { infer: true });
   }
@@ -150,18 +212,26 @@ export class EvolutionService {
     path: string,
     body: unknown,
   ): Promise<T | undefined> {
+    return this.request<T>('POST', path, body);
+  }
+
+  private async request<T = unknown>(
+    method: 'GET' | 'POST' | 'DELETE',
+    path: string,
+    body?: unknown,
+  ): Promise<T | undefined> {
     if (!this.baseUrl || !this.apiKey) {
       throw new Error(
         'Evolution API não configurada (EVOLUTION_API_URL / EVOLUTION_API_KEY).',
       );
     }
     const res = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
+      method,
       headers: {
         'Content-Type': 'application/json',
         apikey: this.apiKey,
       },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');

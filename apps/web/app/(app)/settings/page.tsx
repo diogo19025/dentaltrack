@@ -32,6 +32,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/shell/page-header";
 import { ProceduresTab } from "@/components/settings/procedures-tab";
 import { TagsTab } from "@/components/settings/tags-tab";
+import { AutomationsTab } from "@/components/settings/automations-tab";
+import { IntegrationTab } from "@/components/settings/integration-tab";
+import { WhatsappTab } from "@/components/settings/whatsapp-tab";
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +50,9 @@ const TAB_OPTIONS = [
   { value: "ofertas", label: "Ofertas & Instruções" },
   { value: "procedimentos", label: "Procedimentos" },
   { value: "tags", label: "Tags" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "automacoes", label: "Automações" },
+  { value: "integracao", label: "Integração" },
 ] as const;
 type Tab = (typeof TAB_OPTIONS)[number]["value"];
 
@@ -171,6 +177,18 @@ export default function SettingsPage() {
       ) : tab === "tags" ? (
         <div key="tags" className="anim-fade-up">
           <TagsTab />
+        </div>
+      ) : tab === "whatsapp" ? (
+        <div key="whatsapp" className="anim-fade-up">
+          <WhatsappTab />
+        </div>
+      ) : tab === "automacoes" ? (
+        <div key="automacoes" className="anim-fade-up">
+          <AutomationsTab />
+        </div>
+      ) : tab === "integracao" ? (
+        <div key="integracao" className="anim-fade-up">
+          <IntegrationTab />
         </div>
       ) : (
         <form
