@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AppMain } from "@/components/shell/app-main";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
+import { WhatsappOnboarding } from "@/components/whatsapp/whatsapp-onboarding";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -44,6 +45,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Topbar />
         <AppMain>{children}</AppMain>
       </div>
+      {/* Primeiro acesso: pergunta se a empresa já tem um número dedicado e,
+          se tiver, faz o pareamento por QR ali mesmo (F10). Some sozinho depois
+          de respondida — a conexão segue disponível em Configurações. */}
+      <WhatsappOnboarding />
     </div>
   );
 }

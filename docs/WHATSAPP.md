@@ -53,6 +53,13 @@ EVOLUTION_WEBHOOK_TOKEN=<um segredo qualquer p/ o webhook>
 Reinicie a API (`pnpm dev`).
 
 ### 3. Criar a instância + apontar o webhook
+
+> **Desde a F10 isso é feito na própria tela.** Com `API_PUBLIC_URL` configurada,
+> o dono da empresa entra em **Configurações → WhatsApp** (ou responde a
+> pergunta do primeiro acesso), clica em **Gerar QR code** e pareia o número —
+> a instância é criada com o webhook já apontado, e o vínculo
+> `instância → empresa` é gravado sozinho. Os passos 3, 4 e 5 abaixo continuam
+> aqui como referência e para diagnóstico por linha de comando.
 A Evolution dentro do Docker alcança a API do host via `host.docker.internal`.
 Troque `APIKEY` pela sua `EVOLUTION_API_KEY` e `WEBHOOK_TOKEN` pelo `EVOLUTION_WEBHOOK_TOKEN`:
 
@@ -125,9 +132,30 @@ agendar uma limpeza"). Esperado:
 | Sessão cai sozinha | Reconexão Baileys | A Evolution reconecta; se necessário, refaça o `connect` (passo 4). Mantenha o celular online. |
 | Risco de ban | Número novo / volume alto | Número dedicado, evite disparos em massa, respeite os delays (já aplicados). |
 
-## Limites desta etapa (MVP 1 número / 1 clínica)
-- **1 instância → 1 clínica** (mapeada manualmente). Multi-instância com pareamento
-  por QR na tela de Configurações fica para a próxima etapa (o schema já suporta).
-- **Opt-out** é confirmado por palavra-chave ("sair"/"parar"), mas **não persiste**
-  lista de bloqueio ainda.
+## Pareamento pela tela (F10)
+
+O procedimento manual acima é o que a aplicação agora automatiza:
+
+| Passo manual | O que acontece na tela |
+|---|---|
+| `POST /instance/create` com o bloco `webhook` | **Gerar QR code** cria a instância já apontando o webhook para `API_PUBLIC_URL` |
+| `GET /instance/connect/<nome>` | O QR aparece na tela e **se renova sozinho** enquanto a caixa estiver aberta |
+| `GET /instance/connectionState/<nome>` | A tela consulta a cada 3s e vira para "Conectado" sozinha |
+| `update clinic_settings set whatsapp_instance = …` | Gravado automaticamente — o nome da instância é **derivado da empresa**, nunca digitado |
+
+Requisitos no servidor: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY` e
+**`API_PUBLIC_URL`** (a URL pública desta API — é o destino do webhook). Sem
+`API_PUBLIC_URL` o botão fica indisponível e a tela explica o motivo, em vez de
+falhar depois do pareamento.
+
+No **primeiro acesso**, o app pergunta se a empresa já tem um número dedicado
+antes de mostrar qualquer QR. A pergunta não é cerimônia: quem ler aquele código
+passa a ser atendido pelo bot automaticamente, e parear um número pessoal é um
+problema sério. Quem responde "ainda não tenho" não é perguntado de novo — a
+resposta fica guardada na empresa.
+
+## Limites desta etapa
+- **1 instância → 1 empresa.** O pareamento por QR já é multi-empresa (cada uma
+  tem a sua instância, derivada do id), mas cada empresa segue com um número.
+- **Opt-out** é persistido desde a F9 (`ContactOptOut`).
 - **Sem streaming** (a resposta é enviada inteira — característica do canal).

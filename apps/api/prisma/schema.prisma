@@ -90,6 +90,11 @@ model ClinicSettings {
   offerEndsOn                  String?   @map("offer_ends_on")
   /// Linhas de disponibilidade [{ day, hours, open }] — ver @dentaltrack/shared.
   availability                 Json?
+  /// Quando o dono respondeu a pergunta do 1º acesso ("já tem um número
+  /// dedicado?") — conectando ou dizendo que não tem (F10). NULL = ainda não
+  /// perguntamos. Existe para não repetir a pergunta a cada login de quem
+  /// respondeu "ainda não".
+  whatsappOnboardingAnsweredAt DateTime? @map("whatsapp_onboarding_answered_at")
   /// Nome da instância Evolution que atende esta clínica no WhatsApp (WA-1).
   /// Resolve `instância → clínica` no webhook (sem JWT). Único por instância.
   whatsappInstance             String?   @unique @map("whatsapp_instance")

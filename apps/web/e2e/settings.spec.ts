@@ -26,12 +26,13 @@ test("configurações: editar, salvar e persistir", async ({ page }) => {
   await expect(page.getByPlaceholder("Nome da sua empresa")).toHaveValue(clinicName);
 
   // As abas do segmented existem: Identidade/Ofertas + catálogo (F2) +
-  // automações e integração com o sistema de gestão (F9).
+  // conexão do WhatsApp (F10) + automações e integração (F9).
   for (const tab of [
     "Identidade & Persona",
     "Ofertas & Instruções",
     "Procedimentos",
     "Tags",
+    "WhatsApp",
     "Automações",
     "Integração",
   ]) {
