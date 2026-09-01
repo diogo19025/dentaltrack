@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  CalendarClock,
   Filter,
   LayoutDashboard,
   LogOut,
@@ -29,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/funil", label: "Funil", icon: Filter },
+  { href: "/agenda", label: "Agenda", icon: CalendarClock },
   { href: "/settings", label: "Configurações", icon: Settings },
 ];
 

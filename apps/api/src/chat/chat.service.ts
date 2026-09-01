@@ -25,6 +25,7 @@ import { detectFunnelStage } from '../ai/stage-detection';
 import { tagConversation } from '../ai/tagging';
 import { buildChatTools } from '../ai/tools';
 import { transcribeAudio } from '../ai/transcribe';
+import { AgendaService } from '../agenda/agenda.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -68,6 +69,7 @@ export class ChatService {
   constructor(
     private readonly conversations: ConversationsService,
     private readonly prisma: PrismaService,
+    private readonly agenda: AgendaService,
   ) {}
 
   /**
@@ -249,6 +251,7 @@ export class ChatService {
       conversationId,
       channel: known?.channel ?? 'web',
       attachments,
+      agenda: this.agenda,
     });
     return { systemPrompt, history, tools, attachments };
   }
@@ -433,17 +436,24 @@ export class ChatService {
     clinicId: string,
     contact?: KnownContact | null,
   ): Promise<string> {
-    const [clinic, settings, procedures] = await Promise.all([
+    const [clinic, settings, procedures, timeZone] = await Promise.all([
       this.prisma.clinic.findUnique({ where: { id: clinicId } }),
       this.prisma.clinicSettings.findUnique({ where: { clinicId } }),
       this.prisma.procedure.findMany({
         where: { clinicId, active: true },
         orderBy: { name: 'asc' },
       }),
+      this.agenda.timeZone(clinicId),
     ]);
     if (!clinic)
       throw new NotFoundException(`Empresa ${clinicId} não encontrada.`);
-    return buildSystemPrompt({ clinic, settings, procedures, contact });
+    return buildSystemPrompt({
+      clinic,
+      settings,
+      procedures,
+      contact,
+      timeZone,
+    });
   }
 
   /**

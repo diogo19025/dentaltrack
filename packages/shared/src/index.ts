@@ -14,3 +14,7 @@ export * from "./leads";
 export * from "./conversations";
 export * from "./reminders";
 export * from "./pipeline";
+export * from "./agenda";
+export * from "./automations";
+export * from "./integrations";
+export * from "./holidays";

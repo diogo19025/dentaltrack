@@ -16,7 +16,7 @@ describe('buildChatTools', () => {
     tag: { findMany: jest.fn().mockResolvedValue([]) },
     clinicSettings: { findUnique: jest.fn().mockResolvedValue(null) },
     conversation: { findFirst: jest.fn(), update: jest.fn() },
-    lead: { create: jest.fn(), update: jest.fn() },
+    lead: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
     appointment: { create: jest.fn() },
   };
   const conversationsMock = { markAsScheduled: jest.fn() };
@@ -102,9 +102,13 @@ describe('buildChatTools', () => {
     prismaMock.conversation.findFirst.mockResolvedValueOnce({
       leadId: 'lead-1',
     }); // lookup do leadId
-    prismaMock.procedure.findMany.mockResolvedValueOnce([
-      { id: 'p1', name: 'Implante', tags: [] },
-    ]);
+    // O agendamento resolve o procedimento com `findFirst` porque precisa da
+    // duração (tamanho do horário a reservar), não da visão formatada (F9).
+    prismaMock.procedure.findFirst.mockResolvedValueOnce({
+      id: 'p1',
+      name: 'Implante',
+      durationMinutes: 60,
+    });
     prismaMock.appointment.create.mockResolvedValueOnce({ id: 'appt-1' });
     conversationsMock.markAsScheduled.mockResolvedValueOnce({});
 
@@ -113,7 +117,15 @@ describe('buildChatTools', () => {
       preferencia: 'quinta de manhã',
     });
 
-    expect(res).toEqual({ ok: true, appointmentId: 'appt-1' });
+    expect(res).toEqual(
+      expect.objectContaining({
+        ok: true,
+        appointmentId: 'appt-1',
+        // Sem agenda conectada o horário não é reservado — e a tool diz isso
+        // ao modelo para que ele não confirme o que não existe (F9).
+        confirmado: false,
+      }),
+    );
     expect(prismaMock.appointment.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -133,7 +145,6 @@ describe('buildChatTools', () => {
 
   it('bookAppointment: agenda mesmo se a transição de status falhar', async () => {
     prismaMock.conversation.findFirst.mockResolvedValueOnce({ leadId: null });
-    prismaMock.procedure.findMany.mockResolvedValueOnce([]);
     prismaMock.appointment.create.mockResolvedValueOnce({ id: 'appt-2' });
     conversationsMock.markAsScheduled.mockRejectedValueOnce(
       new Error('transição inválida'),
@@ -141,7 +152,9 @@ describe('buildChatTools', () => {
 
     const res = await exec(tools().bookAppointment, { preferencia: 'amanhã' });
 
-    expect(res).toEqual({ ok: true, appointmentId: 'appt-2' });
+    expect(res).toEqual(
+      expect.objectContaining({ ok: true, appointmentId: 'appt-2' }),
+    );
   });
 
   it('presentOffer: oferta do procedimento nomeado + empurra a mídia no coletor (F6)', async () => {

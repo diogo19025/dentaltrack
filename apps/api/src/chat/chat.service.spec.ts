@@ -27,6 +27,7 @@ import {
 } from '../ai/generate-reply';
 import { transcribeAudio } from '../ai/transcribe';
 import { ChatService } from './chat.service';
+import { AgendaService } from '../agenda/agenda.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -58,6 +59,12 @@ describe('ChatService.streamMessage', () => {
   const pipeMock = jest.fn();
   let onFinish: StreamReplyOptions['onFinish'];
 
+  /** Agenda (F9): o motor só pede o fuso e, pelas tools, a disponibilidade. */
+  const agendaMock = {
+    timeZone: jest.fn().mockResolvedValue('America/Sao_Paulo'),
+    getAvailability: jest.fn().mockResolvedValue({ slots: [], live: false }),
+    book: jest.fn(),
+  };
   const conversationsMock = {
     createConversation: jest.fn(),
     appendMessage: jest.fn(),
@@ -98,6 +105,7 @@ describe('ChatService.streamMessage', () => {
         ChatService,
         { provide: ConversationsService, useValue: conversationsMock },
         { provide: PrismaService, useValue: prismaMock },
+        { provide: AgendaService, useValue: agendaMock },
       ],
     }).compile();
     service = moduleRef.get(ChatService);

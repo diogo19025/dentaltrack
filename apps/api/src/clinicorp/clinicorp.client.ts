@@ -1,0 +1,181 @@
+import { Logger } from '@nestjs/common';
+import { AgendaProviderError } from './agenda-provider';
+import { normalizeEntityIds } from './field-reader';
+
+/**
+ * Cliente HTTP do Clinicorp (F9). Só transporte: autenticação, montagem de
+ * URL, timeout e tradução de falha — nenhuma regra de agenda mora aqui.
+ *
+ * Autenticação é **HTTP Basic com um par usuário/token de API**, que não é o
+ * login do painel web da clínica; e a maior parte das rotas exige ainda o
+ * `subscriber_id` como contexto de conta. Ambos são pedidos ao suporte pelo
+ * assinante (o dono da clínica) — ver docs/CLINICORP.md.
+ */
+
+/** Base pública da API. Homologação sobrescreve via credencial. */
+export const CLINICORP_DEFAULT_BASE_URL = 'https://api.clinicorp.com/rest/v1';
+
+/**
+ * Rotas usadas pelo conector, do inventário observado da API.
+ *
+ * As grafias vêm do inventário e são reproduzidas **literalmente**, inclusive
+ * onde o próprio fornecedor as digitou errado (`get_avaliable_days`): corrigir
+ * a ortografia aqui daria 404. Se alguma divergir na primeira chamada real,
+ * este objeto é o único lugar a mexer.
+ */
+export const CLINICORP_ROUTES = {
+  units: '/business/list',
+  chairs: '/business/list_chairs',
+  professionals: '/professional/list_all_professionals',
+  statuses: '/appointment/status_list',
+  availableTimes: '/business/list_available_times',
+  appointments: '/appointment/list',
+  appointmentInfo: '/appointment/list_info',
+  appointmentCategories: '/appointment/list_categories',
+  patientAppointments: '/patient/list_appointments',
+  patientSearch: '/patient/get',
+  patientCreate: '/patient/create',
+  procedures: '/procedures/list',
+  createAppointment: '/appointment/create_appointment_by_api',
+  confirmAppointment: '/appointment/confirm_appointment',
+  cancelAppointment: '/appointment/cancel_appointment',
+  changeStatus: '/appointment/change_status',
+  // Agendamento público (plano B, por `code_link`) — não usado por padrão.
+  onlineAvailableDays: '/appointment/get_avaliable_days',
+  onlineAvailableTimes: '/appointment/get_avaliable_times_calendar',
+  createOnlineScheduling: '/appointment/create_online_scheduling',
+} as const;
+
+/**
+ * Rotas que **não** recebem `subscriber_id`. Há evidência de contrato recente
+ * de que injetá-lo nestas duas atrapalha, então a exceção fica explícita e
+ * documentada em vez de virar um bug intermitente.
+ */
+const ROUTES_WITHOUT_SUBSCRIBER: string[] = [
+  CLINICORP_ROUTES.availableTimes,
+  CLINICORP_ROUTES.createAppointment,
+];
+
+export interface ClinicorpConfig {
+  username: string;
+  token: string;
+  subscriberId: string | null;
+  baseUrl?: string | null;
+  timeoutMs?: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+export class ClinicorpClient {
+  private readonly logger = new Logger(ClinicorpClient.name);
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+
+  constructor(private readonly config: ClinicorpConfig) {
+    this.baseUrl = (
+      config.baseUrl?.trim() || CLINICORP_DEFAULT_BASE_URL
+    ).replace(/\/+$/, '');
+    this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
+
+  async get(
+    path: string,
+    query: Record<string, string | number | null | undefined> = {},
+  ): Promise<unknown> {
+    const url = new URL(`${this.baseUrl}${path}`);
+    for (const [key, value] of Object.entries(
+      this.withSubscriber(path, query),
+    )) {
+      if (value === null || value === undefined || value === '') continue;
+      url.searchParams.set(key, String(value));
+    }
+    return this.request(path, url, { method: 'GET' });
+  }
+
+  async post(path: string, body: Record<string, unknown>): Promise<unknown> {
+    const url = new URL(`${this.baseUrl}${path}`);
+    const payload = normalizeEntityIds(this.withSubscriber(path, body));
+    return this.request(path, url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  /** Cabeçalho Basic — exposto para o teste de conexão poder reusá-lo. */
+  authorizationHeader(): string {
+    const raw = `${this.config.username}:${this.config.token}`;
+    return `Basic ${Buffer.from(raw, 'utf8').toString('base64')}`;
+  }
+
+  private withSubscriber<T extends Record<string, unknown>>(
+    path: string,
+    payload: T,
+  ): T & { subscriber_id?: string } {
+    if (ROUTES_WITHOUT_SUBSCRIBER.includes(path) || !this.config.subscriberId) {
+      return payload;
+    }
+    return { subscriber_id: this.config.subscriberId, ...payload };
+  }
+
+  private async request(
+    path: string,
+    url: URL,
+    init: RequestInit,
+  ): Promise<unknown> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          ...(init.headers ?? {}),
+          Authorization: this.authorizationHeader(),
+          Accept: 'application/json',
+        },
+      });
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => '');
+        // 401/403 quase sempre é credencial errada ou plano sem a rota
+        // liberada — vale dizer isso em vez de repetir o código HTTP.
+        const hint =
+          res.status === 401 || res.status === 403
+            ? ' (verifique usuário/token da API e se a rota está liberada no plano)'
+            : '';
+        throw new AgendaProviderError(
+          `Clinicorp ${path} respondeu ${res.status}${hint}${
+            detail ? `: ${detail.slice(0, 300)}` : ''
+          }`,
+        );
+      }
+
+      const text = await res.text();
+      if (!text.trim()) return undefined;
+      try {
+        return JSON.parse(text) as unknown;
+      } catch {
+        throw new AgendaProviderError(
+          `Clinicorp ${path} devolveu uma resposta que não é JSON: ${text.slice(0, 200)}`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof AgendaProviderError) throw err;
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new AgendaProviderError(
+          `Clinicorp ${path} não respondeu em ${this.timeoutMs}ms.`,
+          err,
+        );
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Falha na chamada ${path}: ${detail}`);
+      throw new AgendaProviderError(
+        `Não foi possível falar com o Clinicorp (${path}): ${detail}`,
+        err,
+      );
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}

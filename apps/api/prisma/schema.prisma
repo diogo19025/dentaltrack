@@ -24,18 +24,23 @@ model Clinic {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  settings         ClinicSettings?
-  memberships      Membership[]
-  procedures       Procedure[]
-  tags             Tag[]
-  conversations    Conversation[]
-  messages         Message[]
-  leads            Lead[]
-  appointments     Appointment[]
-  conversationTags ConversationTag[]
-  dailyMetrics     DailyMetric[]
-  pipelineStages   PipelineStage[]
-  pipelineCards    PipelineCard[]
+  settings           ClinicSettings?
+  memberships        Membership[]
+  procedures         Procedure[]
+  tags               Tag[]
+  conversations      Conversation[]
+  messages           Message[]
+  leads              Lead[]
+  appointments       Appointment[]
+  conversationTags   ConversationTag[]
+  dailyMetrics       DailyMetric[]
+  pipelineStages     PipelineStage[]
+  pipelineCards      PipelineCard[]
+  integrations       ClinicIntegration[]
+  automationSettings AutomationSettings?
+  outboundMessages   OutboundMessage[]
+  optOuts            ContactOptOut[]
+  holidays           Holiday[]
 
   @@map("clinic")
 }
@@ -64,32 +69,32 @@ model Tag {
 /// Configuração do bot por clínica (1:1) — alimenta o system prompt (BE-1.3).
 /// Todos os campos são opcionais: o prompt builder funciona sem settings.
 model ClinicSettings {
-  id            String   @id @default(uuid()) @db.Uuid
-  clinicId      String   @unique @map("clinic_id") @db.Uuid
-  specialty     String?
-  description   String?
-  assistantName String?  @map("assistant_name")
-  tone          String?
-  greeting      String?
+  id                           String    @id @default(uuid()) @db.Uuid
+  clinicId                     String    @unique @map("clinic_id") @db.Uuid
+  specialty                    String?
+  description                  String?
+  assistantName                String?   @map("assistant_name")
+  tone                         String?
+  greeting                     String?
   // F6 — Mídia da saudação (imagem/vídeo/áudio/catálogo) enviada no 1º contato.
-  greetingMediaUrl  String? @map("greeting_media_url")
-  greetingMediaType String? @map("greeting_media_type")
-  instructions  String?
+  greetingMediaUrl             String?   @map("greeting_media_url")
+  greetingMediaType            String?   @map("greeting_media_type")
+  instructions                 String?
   // F2 — Ofertas & disponibilidade (alimentam o system prompt, BE-1.3).
-  offerEnabled  Boolean  @default(false) @map("offer_enabled")
-  offerText     String?  @map("offer_text")
+  offerEnabled                 Boolean   @default(false) @map("offer_enabled")
+  offerText                    String?   @map("offer_text")
   // F6 — Mídia da oferta global (imagem/vídeo/áudio/catálogo).
-  offerMediaUrl  String? @map("offer_media_url")
-  offerMediaType String? @map("offer_media_type")
-  offerStartsOn String?  @map("offer_starts_on")
-  offerEndsOn   String?  @map("offer_ends_on")
+  offerMediaUrl                String?   @map("offer_media_url")
+  offerMediaType               String?   @map("offer_media_type")
+  offerStartsOn                String?   @map("offer_starts_on")
+  offerEndsOn                  String?   @map("offer_ends_on")
   /// Linhas de disponibilidade [{ day, hours, open }] — ver @dentaltrack/shared.
-  availability  Json?
+  availability                 Json?
   /// Nome da instância Evolution que atende esta clínica no WhatsApp (WA-1).
   /// Resolve `instância → clínica` no webhook (sem JWT). Único por instância.
-  whatsappInstance String? @unique @map("whatsapp_instance")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  whatsappInstance             String?   @unique @map("whatsapp_instance")
+  createdAt                    DateTime  @default(now()) @map("created_at")
+  updatedAt                    DateTime  @updatedAt @map("updated_at")
 
   clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
 
@@ -190,45 +195,69 @@ model Message {
 
 /// Paciente em potencial capturado pela conversa (PII — ver LGPD no roadmap).
 model Lead {
-  id        String   @id @default(uuid()) @db.Uuid
-  clinicId  String   @map("clinic_id") @db.Uuid
-  name      String?
-  phone     String?
-  email     String?
-  source    String   @default("web")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id         String   @id @default(uuid()) @db.Uuid
+  clinicId   String   @map("clinic_id") @db.Uuid
+  name       String?
+  phone      String?
+  email      String?
+  source     String   @default("web")
+  /// Id do paciente no sistema de gestão da empresa (F9). Preenchido pela
+  /// sincronização da agenda; é o que evita criar um lead duplicado a cada
+  /// consulta importada e o que permite achar o paciente antes de agendar.
+  externalId String?  @map("external_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
 
-  clinic        Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
-  appointments  Appointment[]
-  pipelineCards PipelineCard[]
+  clinic           Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversations    Conversation[]
+  appointments     Appointment[]
+  pipelineCards    PipelineCard[]
+  outboundMessages OutboundMessage[]
 
+  @@unique([clinicId, externalId])
   @@index([clinicId])
+  @@index([clinicId, phone])
   @@map("lead")
 }
 
 /// Pedido de agendamento — o evento de conversão. No MVP é um pedido
 /// (preferência em texto livre), não um slot real sincronizado.
 model Appointment {
-  id             String   @id @default(uuid()) @db.Uuid
-  clinicId       String   @map("clinic_id") @db.Uuid
-  conversationId String?  @map("conversation_id") @db.Uuid
-  leadId         String?  @map("lead_id") @db.Uuid
-  procedureId    String?  @map("procedure_id") @db.Uuid
-  preferredTime  String?  @map("preferred_time")
-  notes          String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id                     String            @id @default(uuid()) @db.Uuid
+  clinicId               String            @map("clinic_id") @db.Uuid
+  conversationId         String?           @map("conversation_id") @db.Uuid
+  leadId                 String?           @map("lead_id") @db.Uuid
+  procedureId            String?           @map("procedure_id") @db.Uuid
+  preferredTime          String?           @map("preferred_time")
+  notes                  String?
+  /// F9 — horário **real** da consulta (UTC no banco; renderizado no fuso da
+  /// empresa). NULL enquanto o agendamento for só um `pedido` em texto livre:
+  /// sem isto não existe "3 dias antes", nem atraso, nem falta.
+  startsAt               DateTime?         @map("starts_at")
+  endsAt                 DateTime?         @map("ends_at")
+  status                 AppointmentStatus @default(pedido)
+  source                 AppointmentSource @default(bot)
+  /// Id do agendamento no sistema de gestão (chave da sincronização).
+  externalId             String?           @map("external_id")
+  professionalExternalId String?           @map("professional_external_id")
+  professionalName       String?           @map("professional_name")
+  unitExternalId         String?           @map("unit_external_id")
+  lastSyncedAt           DateTime?         @map("last_synced_at")
+  createdAt              DateTime          @default(now()) @map("created_at")
+  updatedAt              DateTime          @updatedAt @map("updated_at")
 
-  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  procedure    Procedure?    @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  clinic           Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  conversation     Conversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  lead             Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  procedure        Procedure?        @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  outboundMessages OutboundMessage[]
 
+  @@unique([clinicId, externalId])
   @@index([clinicId])
   @@index([conversationId])
   @@index([leadId])
+  @@index([clinicId, startsAt])
+  @@index([clinicId, status, startsAt])
   @@map("appointment")
 }
 
@@ -330,6 +359,173 @@ model PipelineCard {
   @@map("pipeline_card")
 }
 
+/// Integração com o sistema de gestão da empresa (F9 · hoje só Clinicorp).
+/// `mode` decide de onde vem a agenda: `desligado` mantém a disponibilidade
+/// declarada em `/settings`; `mock` usa dados sintéticos determinísticos (é o
+/// que permite construir e testar tudo antes de a credencial do cliente chegar,
+/// mesmo padrão do `LLM_PROVIDER=mock`); `live` chama a API real.
+model ClinicIntegration {
+  id             String              @id @default(uuid()) @db.Uuid
+  clinicId       String              @map("clinic_id") @db.Uuid
+  provider       IntegrationProvider @default(clinicorp)
+  mode           IntegrationMode     @default(desligado)
+  /// Credenciais cifradas (AES-256-GCM, chave em INTEGRATION_ENCRYPTION_KEY).
+  /// Nunca em texto puro e nunca devolvidas por nenhum endpoint.
+  credentials    String?
+  /// Unidade e profissional padrão escolhidos no wizard de conexão.
+  unitId         String?             @map("unit_id")
+  professionalId String?             @map("professional_id")
+  /// Mapeamento `status externo -> status daqui`: [{ externalId, externalName,
+  /// status }]. É Json porque a lista é da conta do cliente, não do domínio —
+  /// cada empresa nomeia (e cria) os seus.
+  statusMappings Json                @default("[]") @map("status_mappings")
+  lastCheckedAt  DateTime?           @map("last_checked_at")
+  lastSyncedAt   DateTime?           @map("last_synced_at")
+  lastError      String?             @map("last_error")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, provider])
+  @@map("clinic_integration")
+}
+
+/// Configuração das automações de relacionamento (F9), 1:1 com a empresa.
+/// Os textos são do dono da empresa (determinísticos, sem IA) — ele precisa
+/// saber exatamente o que sai no nome dele. Ver `automations.ts` no shared.
+model AutomationSettings {
+  id       String @id @default(uuid()) @db.Uuid
+  clinicId String @unique @map("clinic_id") @db.Uuid
+
+  /// Fuso IANA da empresa — âncora de "3 dias antes" e da janela de envio.
+  timezone        String  @default("America/Sao_Paulo")
+  sendWindowStart String  @default("08:00") @map("send_window_start")
+  sendWindowEnd   String  @default("20:00") @map("send_window_end")
+  skipHolidays    Boolean @default(true) @map("skip_holidays")
+  skipWeekends    Boolean @default(false) @map("skip_weekends")
+  /// Teto de mensagens automáticas por dia (higiene anti-ban, WA-4).
+  dailyCap        Int     @default(200) @map("daily_cap")
+
+  reminder3dEnabled  Boolean @default(true) @map("reminder_3d_enabled")
+  reminder3dTemplate String  @map("reminder_3d_template")
+  reminder1dEnabled  Boolean @default(true) @map("reminder_1d_enabled")
+  reminder1dTemplate String  @map("reminder_1d_template")
+  reminder1hEnabled  Boolean @default(true) @map("reminder_1h_enabled")
+  reminder1hTemplate String  @map("reminder_1h_template")
+
+  /// O aviso de atraso nasce **desligado**: só é correto se a recepção marcar a
+  /// chegada em tempo real, senão avisa quem já está na sala de espera.
+  lateEnabled          Boolean @default(false) @map("late_enabled")
+  lateToleranceMinutes Int     @default(15) @map("late_tolerance_minutes")
+  lateTemplate         String  @map("late_template")
+
+  noShowEnabled       Boolean @default(true) @map("no_show_enabled")
+  noShowAttempts      Int     @default(2) @map("no_show_attempts")
+  noShowIntervalHours Int     @default(48) @map("no_show_interval_hours")
+  noShowTemplate      String  @map("no_show_template")
+
+  recallEnabled   Boolean  @default(true) @map("recall_enabled")
+  recallAfterDays Int      @default(30) @map("recall_after_days")
+  /// O que conta como "manutenção" varia por empresa — configurável, não
+  /// adivinhado.
+  recallKeywords  String[] @default([]) @map("recall_keywords")
+  recallTemplate  String   @map("recall_template")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@map("automation_settings")
+}
+
+/// Fila de saída das automações (F9). Toda mensagem proativa nasce aqui como
+/// `pendente` e só depois é despachada pelo worker.
+///
+/// A fila existe por três motivos que não cabiam num `setTimeout`:
+/// 1. **idempotência** — `dedupeKey` (ex.: `lembrete_1d:<appointmentId>`) é
+///    único por empresa, então reinício de processo, cron sobreposto ou
+///    re-sincronização não geram um segundo lembrete;
+/// 2. **higiene de envio** — janela de horário, feriado, teto diário e jitter
+///    são aplicados no despacho, num lugar só, valendo para toda automação;
+/// 3. **auditoria** — o dono vê o que saiu, o que foi suprimido e por quê.
+model OutboundMessage {
+  id             String         @id @default(uuid()) @db.Uuid
+  clinicId       String         @map("clinic_id") @db.Uuid
+  kind           AutomationKind
+  status         OutboundStatus @default(pendente)
+  /// Motivo da supressão (espelha OUTBOUND_SUPPRESSION_REASONS no shared).
+  reason         String?
+  /// Chave de idempotência por empresa — o coração da fila.
+  dedupeKey      String         @map("dedupe_key")
+  /// Quando deve sair (já ajustado à janela/feriado no enfileiramento).
+  scheduledFor   DateTime       @map("scheduled_for")
+  sentAt         DateTime?      @map("sent_at")
+  /// Tentativa da cadência (falta: 1..N). Não é retry de transporte.
+  attempt        Int            @default(1)
+  /// Reenvios por falha de transporte (WhatsApp fora do ar). Diferente de
+  /// `attempt`: aqui a mensagem é a mesma, só não saiu.
+  retries        Int            @default(0)
+  body           String
+  phone          String?
+  error          String?
+  leadId         String?        @map("lead_id") @db.Uuid
+  conversationId String?        @map("conversation_id") @db.Uuid
+  appointmentId  String?        @map("appointment_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  lead        Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, dedupeKey])
+  @@index([status, scheduledFor])
+  @@index([clinicId, createdAt])
+  @@index([appointmentId])
+  @@map("outbound_message")
+}
+
+/// Descadastro de mensagens automáticas, por telefone e por empresa (F9).
+///
+/// Até aqui o opt-out era só uma resposta amigável em memória (WA-4) — o que
+/// bastava num bot **receptivo**. Com disparo ativo ele vira obrigação: quem
+/// pediu para parar não pode voltar a receber depois de um restart.
+model ContactOptOut {
+  id        String   @id @default(uuid()) @db.Uuid
+  clinicId  String   @map("clinic_id") @db.Uuid
+  /// Telefone normalizado (só dígitos, com DDI) — mesma forma usada no envio.
+  phone     String
+  /// Palavra/origem que gerou o descadastro (auditoria).
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, phone])
+  @@index([clinicId])
+  @@map("contact_opt_out")
+}
+
+/// Feriado da empresa (F9). Nacional vem da sincronização automática; local
+/// (municipal, recesso, férias) é cadastrado à mão — nenhuma fonte nacional
+/// acerta o feriado da cidade, e é justamente ele que fecha a clínica.
+model Holiday {
+  id        String       @id @default(uuid()) @db.Uuid
+  clinicId  String       @map("clinic_id") @db.Uuid
+  date      DateTime     @db.Date
+  name      String
+  scope     HolidayScope @default(local)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, date])
+  @@index([clinicId, date])
+  @@map("holiday")
+}
+
 enum Role {
   owner
   staff
@@ -392,4 +588,75 @@ enum TagColor {
   sage
 
   @@map("tag_color")
+}
+
+/// Status normalizado do agendamento (espelha APPOINTMENT_STATUSES no shared).
+/// Os sistemas externos têm dezenas de status próprios, cada conta com nomes
+/// diferentes; o operador mapeia `externo -> daqui` e as automações leem só
+/// estes seis.
+enum AppointmentStatus {
+  pedido
+  agendado
+  confirmado
+  compareceu
+  faltou
+  cancelado
+
+  @@map("appointment_status")
+}
+
+/// De onde veio o agendamento (espelha APPOINTMENT_SOURCES no shared).
+enum AppointmentSource {
+  bot
+  integracao
+  manual
+
+  @@map("appointment_source")
+}
+
+/// Sistema de gestão integrado (espelha INTEGRATION_PROVIDERS no shared).
+enum IntegrationProvider {
+  clinicorp
+
+  @@map("integration_provider")
+}
+
+/// Modo da integração (espelha INTEGRATION_MODES no shared).
+enum IntegrationMode {
+  desligado
+  mock
+  live
+
+  @@map("integration_mode")
+}
+
+/// Gatilho automático (espelha AUTOMATION_KINDS no shared).
+enum AutomationKind {
+  lembrete_3d
+  lembrete_1d
+  lembrete_1h
+  atraso
+  falta
+  retorno
+
+  @@map("automation_kind")
+}
+
+/// Estado de um item da fila de saída (espelha OUTBOUND_STATUSES no shared).
+enum OutboundStatus {
+  pendente
+  enviado
+  falhou
+  cancelado
+  suprimido
+
+  @@map("outbound_status")
+}
+
+/// Abrangência do feriado (espelha HOLIDAY_SCOPES no shared).
+enum HolidayScope {
+  nacional
+  local
+
+  @@map("holiday_scope")
 }

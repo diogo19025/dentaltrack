@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiUnavailableError } from '../ai/generate-reply';
+import { OptOutService } from '../automations/opt-out.service';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from './evolution.service';
@@ -12,20 +13,11 @@ import {
 /** Janela (ms) de deduplicação de `messageId` — a Evolution pode reentregar. */
 const DEDUPE_TTL_MS = 5 * 60_000;
 
-/** Palavras que sinalizam descadastro (opt-out mínimo, WA-4). */
-const OPT_OUT_WORDS = new Set([
-  'sair',
-  'parar',
-  'stop',
-  'cancelar',
-  'descadastrar',
-]);
-
 /** Resposta quando a IA está indisponível (mantém o cliente informado). */
 const AI_FALLBACK =
   'Estou com uma instabilidade no momento e já volto a responder. Sua mensagem foi registrada. 🙏';
 
-/** Confirmação de opt-out (não persiste lista de bloqueio no MVP — ver WA-4). */
+/** Confirmação de opt-out. O descadastro é persistido (F9 · OptOutService). */
 const OPT_OUT_REPLY =
   'Tudo bem, não enviarei mais mensagens automáticas. Se precisar, é só chamar de novo.';
 
@@ -45,6 +37,7 @@ export class WhatsappService {
     private readonly prisma: PrismaService,
     private readonly chat: ChatService,
     private readonly evolution: EvolutionService,
+    private readonly optOut: OptOutService,
   ) {}
 
   /**
@@ -65,8 +58,16 @@ export class WhatsappService {
         return;
       }
 
-      // Opt-out mínimo: confirma e não roda o bot neste turno.
-      if (inbound.text && OPT_OUT_WORDS.has(inbound.text.toLowerCase())) {
+      // Descadastro: confirma, **persiste** e não roda o bot neste turno. A
+      // persistência é o que faz o pedido sobreviver a um restart — o que era
+      // opcional num bot receptivo e é obrigatório desde que passamos a enviar
+      // mensagem sozinhos (F9).
+      if (OptOutService.isOptOutMessage(inbound.text)) {
+        await this.optOut.optOut(
+          clinicId,
+          inbound.phone,
+          'palavra no WhatsApp',
+        );
         await this.safeSend(
           inbound.instance,
           await this.replyTarget(inbound),
