@@ -1,4 +1,8 @@
-import type { ConnectionCheck, IntegrationStatus } from "@dentaltrack/shared";
+import type {
+  ConnectionCheck,
+  IntegrationProvider,
+  IntegrationStatus,
+} from "@dentaltrack/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { IntegrationTab } from "./integration-tab";
@@ -6,12 +10,16 @@ import { IntegrationTab } from "./integration-tab";
 /**
  * A aba de integração guarda a credencial que dá acesso à agenda e ao cadastro
  * de pacientes reais. O que estes testes protegem: o segredo nunca aparece na
- * tela, e o mapeamento sugerido é uma sugestão para confirmar — não uma decisão
- * aplicada pelas nossas costas.
+ * tela, o mapeamento sugerido é uma sugestão para confirmar — não uma decisão
+ * aplicada pelas nossas costas — e a escolha entre Clinicorp e Google Agenda é
+ * explícita, inclusive o efeito de ligar um desligar o outro.
  */
 
 const state = vi.hoisted(() => ({
-  data: null as IntegrationStatus | null,
+  data: {
+    clinicorp: null as IntegrationStatus | null,
+    google: null as IntegrationStatus | null,
+  },
   check: {
     mutate: vi.fn(),
     isPending: false,
@@ -26,7 +34,10 @@ vi.mock("@/hooks/use-agenda", () => ({
 }));
 
 vi.mock("@/hooks/use-integration", () => ({
-  useIntegration: () => ({ data: state.data, isLoading: state.data === null }),
+  useIntegration: (provider: IntegrationProvider) => ({
+    data: state.data[provider],
+    isLoading: state.data[provider] === null,
+  }),
   useUpdateIntegration: () => state.update,
   useCheckIntegration: () => state.check,
 }));
@@ -35,8 +46,11 @@ function status(over: Partial<IntegrationStatus> = {}): IntegrationStatus {
   return {
     provider: "clinicorp",
     mode: "live",
+    activeProvider: null,
     hasCredentials: true,
     usernameHint: "ap******rp",
+    google: null,
+    serviceAccountEmail: null,
     unitId: null,
     professionalId: null,
     statusMappings: [],
@@ -47,15 +61,35 @@ function status(over: Partial<IntegrationStatus> = {}): IntegrationStatus {
   };
 }
 
+function googleStatus(over: Partial<IntegrationStatus> = {}): IntegrationStatus {
+  return status({
+    provider: "google",
+    mode: "live",
+    activeProvider: "google",
+    hasCredentials: true,
+    usernameHint: null,
+    serviceAccountEmail: "agenda@projeto.iam.gserviceaccount.com",
+    google: {
+      calendarId: "clinica@group.calendar.google.com",
+      workStart: "08:00",
+      workEnd: "18:00",
+      workDays: [1, 2, 3, 4, 5],
+      slotMinutes: 30,
+    },
+    ...over,
+  });
+}
+
 afterEach(() => {
   vi.clearAllMocks();
-  state.data = null;
+  state.data.clinicorp = null;
+  state.data.google = null;
   state.check.data = undefined;
 });
 
 describe("IntegrationTab", () => {
   it("nunca preenche o token, mesmo com credencial salva", () => {
-    state.data = status();
+    state.data.clinicorp = status();
     render(<IntegrationTab />);
 
     const token = screen.getByLabelText(/Token da API/i) as HTMLInputElement;
@@ -66,14 +100,14 @@ describe("IntegrationTab", () => {
   });
 
   it("explica que a credencial da API não é o login do painel", () => {
-    state.data = status();
+    state.data.clinicorp = status();
     render(<IntegrationTab />);
 
     expect(screen.getByText(/não é o login do painel/i)).toBeInTheDocument();
   });
 
   it("modo desligado não pede credencial e explica o comportamento", () => {
-    state.data = status({ mode: "desligado", hasCredentials: false });
+    state.data.clinicorp = status({ mode: "desligado", hasCredentials: false });
     render(<IntegrationTab />);
 
     expect(screen.queryByLabelText(/Token da API/i)).toBeNull();
@@ -81,7 +115,7 @@ describe("IntegrationTab", () => {
   });
 
   it("mostra o passo a passo da verificação, com o erro que a parou", () => {
-    state.data = status();
+    state.data.clinicorp = status();
     state.check.data = {
       ok: false,
       mode: "live",
@@ -114,7 +148,7 @@ describe("IntegrationTab", () => {
   });
 
   it("avisa quando falta mapear um status de que as automações dependem", () => {
-    state.data = status({
+    state.data.clinicorp = status({
       statusMappings: [
         { externalId: "1", externalName: "Agendado", status: "agendado" },
       ],
@@ -125,7 +159,7 @@ describe("IntegrationTab", () => {
   });
 
   it("usa o mapeamento sugerido pela verificação, sem aplicá-lo sozinho", () => {
-    state.data = status();
+    state.data.clinicorp = status();
     state.check.data = {
       ok: true,
       mode: "live",
@@ -154,5 +188,101 @@ describe("IntegrationTab", () => {
       }),
       expect.anything(),
     );
+  });
+
+  describe("Google Agenda (F12)", () => {
+    it("abre direto no provedor ativo — quem usa Google não cai no Clinicorp", () => {
+      state.data.clinicorp = status({
+        mode: "desligado",
+        activeProvider: "google",
+      });
+      state.data.google = googleStatus();
+      render(<IntegrationTab />);
+
+      expect(screen.getByLabelText(/ID da agenda/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText(/Token da API/i)).toBeNull();
+    });
+
+    it("mostra com quem compartilhar a agenda e prefill do ID salvo", () => {
+      state.data.clinicorp = status({
+        mode: "desligado",
+        activeProvider: "google",
+      });
+      state.data.google = googleStatus();
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByText("agenda@projeto.iam.gserviceaccount.com"),
+      ).toBeInTheDocument();
+      const calendar = screen.getByLabelText(
+        /ID da agenda/i,
+      ) as HTMLInputElement;
+      expect(calendar.value).toBe("clinica@group.calendar.google.com");
+    });
+
+    it("sem service account no servidor, avisa em vez de fingir que conecta", () => {
+      state.data.clinicorp = status({
+        mode: "desligado",
+        activeProvider: "google",
+      });
+      state.data.google = googleStatus({ serviceAccountEmail: null });
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByText(/GOOGLE_CALENDAR_SA_EMAIL/i),
+      ).toBeInTheDocument();
+    });
+
+    it("salvar envia a configuração da agenda do Google", () => {
+      state.data.clinicorp = status({
+        mode: "desligado",
+        activeProvider: "google",
+      });
+      state.data.google = googleStatus();
+      render(<IntegrationTab />);
+
+      fireEvent.change(screen.getByLabelText(/ID da agenda/i), {
+        target: { value: "outra@group.calendar.google.com" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /^Salvar$/i }));
+
+      expect(state.update.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          google: expect.objectContaining({
+            calendarId: "outra@group.calendar.google.com",
+            workDays: [1, 2, 3, 4, 5],
+          }),
+        }),
+        expect.anything(),
+      );
+    });
+
+    it("explica o limite honesto: sem presença, sem automação de falta", () => {
+      state.data.clinicorp = status({
+        mode: "desligado",
+        activeProvider: "google",
+      });
+      state.data.google = googleStatus();
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByText(/não registra presença/i),
+      ).toBeInTheDocument();
+    });
+
+    it("avisa que ligar o Google desliga o Clinicorp ativo", () => {
+      state.data.clinicorp = status({ activeProvider: "clinicorp" });
+      state.data.google = googleStatus({
+        mode: "live",
+        activeProvider: "clinicorp",
+      });
+      render(<IntegrationTab />);
+
+      fireEvent.click(screen.getByRole("tab", { name: /Google Agenda/i }));
+
+      expect(
+        screen.getByText(/desliga o Clinicorp/i),
+      ).toBeInTheDocument();
+    });
   });
 });

@@ -2,7 +2,8 @@ import { z } from "zod";
 import { appointmentStatusSchema } from "./agenda";
 
 /**
- * Integração com o sistema de gestão da empresa (F9) — hoje só **Clinicorp**.
+ * Integração de agenda da empresa — **Clinicorp** (F9) ou **Google Agenda**
+ * (F12), a empresa escolhe um; só um fica ativo por vez.
  *
  * O desenho antecipa um problema conhecido: o contrato real da API externa só
  * pode ser conferido com a credencial do cliente em mãos, e ela costuma demorar.
@@ -18,9 +19,15 @@ import { appointmentStatusSchema } from "./agenda";
  *   e mapeados pelo operador, porque cada conta nomeia os seus.
  */
 
-export const INTEGRATION_PROVIDERS = ["clinicorp"] as const;
+export const INTEGRATION_PROVIDERS = ["clinicorp", "google"] as const;
 export const integrationProviderSchema = z.enum(INTEGRATION_PROVIDERS);
 export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
+
+export const INTEGRATION_PROVIDER_LABELS: Record<IntegrationProvider, string> =
+  {
+    clinicorp: "Clinicorp",
+    google: "Google Agenda",
+  };
 
 /**
  * `mock` — dados sintéticos determinísticos (desenvolvimento, testes e demo);
@@ -46,6 +53,40 @@ export const clinicorpCredentialsSchema = z.object({
   baseUrl: z.string().url("Informe uma URL válida.").nullable(),
 });
 export type ClinicorpCredentials = z.infer<typeof clinicorpCredentialsSchema>;
+
+/** "HH:MM" 24h — janela de trabalho do Google Agenda. */
+const hhMmSchema = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use o formato HH:MM (ex.: 08:00).");
+
+/**
+ * Configuração do **Google Agenda** (F12) — o provedor alternativo ao
+ * Clinicorp, para a empresa que não tem sistema de gestão integrado.
+ *
+ * O modelo de acesso é **service account**: o servidor tem uma conta de
+ * serviço do Google (e-mail + chave, só em variáveis de ambiente) e a empresa
+ * compartilha a agenda dela com esse e-mail — nenhum OAuth por empresa, nenhum
+ * token que expira no meio de um cron. O que a empresa informa é só o **ID da
+ * agenda** e a janela de trabalho (o Google não sabe o horário de atendimento;
+ * é daqui que saem os horários livres oferecidos pelo agente).
+ */
+export const googleAgendaConfigSchema = z.object({
+  /** ID da agenda (ex.: "clinica@gmail.com" ou "...@group.calendar.google.com"). */
+  calendarId: z.string().trim().min(1, "Informe o ID da agenda."),
+  /** Início do expediente ("08:00"). */
+  workStart: hhMmSchema.default("08:00"),
+  /** Fim do expediente ("18:00") — último horário começa antes disso. */
+  workEnd: hhMmSchema.default("18:00"),
+  /** Dias de atendimento (0 = domingo … 6 = sábado). */
+  workDays: z
+    .array(z.number().int().min(0).max(6))
+    .min(1, "Escolha ao menos um dia de atendimento.")
+    .max(7)
+    .default([1, 2, 3, 4, 5]),
+  /** Grade dos horários oferecidos, em minutos. */
+  slotMinutes: z.number().int().min(10).max(240).default(30),
+});
+export type GoogleAgendaConfig = z.infer<typeof googleAgendaConfigSchema>;
 
 /** Unidade/consultório descoberto na conta externa. */
 export const externalUnitSchema = z.object({
@@ -93,12 +134,14 @@ export const REQUIRED_STATUS_MAPPINGS = [
   "cancelado",
 ] as const;
 
-/** PUT /integrations/clinicorp — configuração completa. */
+/** PUT /integrations/:provider — configuração completa. */
 export const updateIntegrationSchema = z
   .object({
     mode: integrationModeSchema,
-    /** Omitido = mantém as credenciais já salvas. */
+    /** Omitido = mantém as credenciais já salvas (só Clinicorp). */
     credentials: clinicorpCredentialsSchema.nullish(),
+    /** Configuração do Google Agenda (só provider google). */
+    google: googleAgendaConfigSchema.nullish(),
     /** Unidade usada nas consultas de agenda. */
     unitId: z.string().trim().min(1).nullable(),
     /** Profissional padrão ao agendar (vazio = qualquer um). */
@@ -109,10 +152,24 @@ export const updateIntegrationSchema = z
   .strict();
 export type UpdateIntegrationInput = z.infer<typeof updateIntegrationSchema>;
 
-/** GET /integrations/clinicorp — estado atual, sem segredo algum. */
+/** GET /integrations/:provider — estado atual, sem segredo algum. */
 export const integrationStatusSchema = z.object({
   provider: integrationProviderSchema,
   mode: integrationModeSchema,
+  /**
+   * Provedor com modo ≠ desligado nesta empresa, se houver. Só **um** pode
+   * estar ativo por vez — duas agendas simultâneas seriam duas fontes de
+   * verdade em conflito (horário livre numa, ocupado na outra).
+   */
+  activeProvider: integrationProviderSchema.nullable(),
+  /** Configuração do Google Agenda (não é segredo; null nos demais). */
+  google: googleAgendaConfigSchema.nullable(),
+  /**
+   * E-mail da service account com quem a empresa compartilha a agenda —
+   * exibido na tela para o passo "compartilhar". Null = servidor sem a
+   * credencial do Google configurada.
+   */
+  serviceAccountEmail: z.string().nullable(),
   /** Há credenciais salvas? (o valor em si nunca sai do servidor) */
   hasCredentials: z.boolean(),
   /** Usuário da API mascarado (ex.: "api***rp") — só para reconhecimento. */

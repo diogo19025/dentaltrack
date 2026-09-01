@@ -625,6 +625,7 @@ enum AppointmentSource {
 /// Sistema de gestão integrado (espelha INTEGRATION_PROVIDERS no shared).
 enum IntegrationProvider {
   clinicorp
+  google
 
   @@map("integration_provider")
 }

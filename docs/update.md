@@ -1094,3 +1094,28 @@ O sino do topbar existia desde o handoff, mas era decorativo: clicável, com um 
 - **"WhatsApp desconectado" como notificação** — o estado existe (`GET /whatsapp/connection`), mas não há registro de *quando* caiu; entra quando a conexão ganhar histórico.
 - **Notificação por item de destino direto** (abrir a conversa exata, não a tela) — o painel navega para a tela do contexto; deep-link por entidade fica para quando o chat tiver rota por conversa.
 - **Push/e-mail** ficam fora: o sino cobre o dono logado; avisar quem não está olhando é outra feature (e outro risco de spam).
+
+---
+
+# Update — F12: Google Agenda como provedor de agenda (2026-09-01)
+
+## Por quê
+
+O Clinicorp cobre a empresa que tem sistema de gestão; a pequena, que vive da agenda do Google, ficava sem horário real (o agente só coletava preferência). A F9 já tinha deixado a porta pronta (`AgendaProvider`), então o Google entrou como **segundo adapter atrás da mesma porta** — nada acima dela mudou. A empresa **escolhe um** provedor; duas agendas ativas seriam duas fontes de verdade em conflito, então ligar um desliga o outro (exclusividade garantida no `IntegrationService.update`).
+
+## O que foi feito
+
+- **Acesso por service account**, não OAuth por empresa: consumo de cron/webhook sem navegador, sem refresh token expirando no meio da sincronização e sem verificação de app OAuth. O servidor tem uma conta de serviço (`GOOGLE_CALENDAR_SA_EMAIL`/`GOOGLE_CALENDAR_SA_KEY`); a empresa compartilha a agenda com esse e-mail e informa o ID da agenda na tela. JWT RS256 assinado com `node:crypto` — **nenhuma dependência nova**.
+- **Adapter** em `apps/api/src/google-agenda/`: `google-calendar.client.ts` (só transporte: token cacheado, timeout, paginação, tradução de falha em `AgendaProviderError`) e `google-agenda.provider.ts` (regras: unidade = a própria agenda; profissional sintético; horários livres = expediente configurado − free/busy; agendar cria o evento com os dados do paciente em `extendedProperties`; a sincronização lê inclusive eventos criados à mão e cancelamentos via `showDeleted`). O Google não tem cadastro de pacientes: `findPatient` nunca acha e `createPatient` devolve id vazio de propósito (nada inventado vaza para `lead.externalId`).
+- **IntegrationService generalizado por provedor**: `getProvider` resolve a linha **ativa** de `clinic_integration` (clinicorp | google | mock | nenhum); `getStatus`/`update`/`check` por provedor; `statusMappingsOf`/`recordSync` na linha ativa; a config do Google fica cifrada no mesmo campo `credentials`. REST virou `GET/PUT /integrations/:provider` + `POST /integrations/:provider/check` (pipe valida o parâmetro). Migration `f12_google_agenda`: só adiciona `google` ao enum.
+- **Sync**: o lead criado pela sincronização grava `source` com o provedor real (`clinicorp` | `google`); rótulos no `sourceLabel` do web.
+- **Web**: a aba Integração ganhou o seletor **Clinicorp × Google Agenda** (abre no provedor ativo), painel do Google com o passo de compartilhamento (mostra o e-mail da service account, ou avisa quando o servidor não a tem), ID da agenda, expediente, dias de atendimento e grade; aviso explícito de que salvar ligado desliga o outro provedor; hooks `use-integration` parametrizados.
+- **Limite honesto, avisado na tela**: o Google não registra presença (compareceu/faltou), então remarcação pós-falta e retorno de manutenção não disparam com este provedor; lembretes 3d/1d/1h funcionam. Os status do Google chegam com nomes que a heurística já reconhece ("Marcado/Cancelado (Google)") — o mapeamento sugerido nasce certo.
+- **Testes**: client (JWT→token, cache, paginação, erros), provider (grade × free/busy com fuso, mapeamento de eventos, criação), IntegrationService (branch google, exclusividade, mensagens do check) e tela (abrir no ativo, prefill, salvar config, avisos) — API 421 · web 133, tudo verde.
+- **Runbook**: `docs/GOOGLE_AGENDA.md` (setup do Cloud + passo a passo da empresa).
+
+## O que ainda não deu para fazer
+
+- **Aplicar a migration ao vivo** (`pnpm --filter @dentaltrack/api db:deploy`) e definir as duas envs no Railway — sem isso o modo real do Google não liga (o simulado funciona).
+- **Vários profissionais** = várias agendas do Google (uma por cadeira) — o desenho comporta (unidade→agenda), fica para quando houver demanda.
+- **Watch/webhook do Google** (push em vez de polling) — exige URL pública verificada e renovação de canal; o polling da F9 já atende o produto.

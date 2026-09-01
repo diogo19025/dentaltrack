@@ -8,13 +8,18 @@ import {
   type ExternalProfessional,
   type ExternalStatus,
   type ExternalUnit,
+  type GoogleAgendaConfig,
+  type IntegrationProvider,
   type IntegrationStatus,
   type StatusMapping,
   type UpdateIntegrationInput,
+  googleAgendaConfigSchema,
   statusMappingSchema,
 } from '@dentaltrack/shared';
 import { DEFAULT_TIMEZONE } from '../common/time';
 import type { Env } from '../config/env.validation';
+import { GoogleAgendaProvider } from '../google-agenda/google-agenda.provider';
+import { GoogleCalendarClient } from '../google-agenda/google-calendar.client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AgendaProvider } from './agenda-provider';
 import { ClinicorpClient } from './clinicorp.client';
@@ -28,17 +33,26 @@ import {
 import { MockAgendaProvider } from './mock.provider';
 import { suggestStatusMappings } from './status-heuristics';
 
+/** Linha de integração como o Prisma a devolve (o que usamos dela). */
+interface IntegrationRow {
+  provider: IntegrationProvider;
+  mode: 'desligado' | 'mock' | 'live';
+  credentials: string | null;
+  unitId: string | null;
+  professionalId: string | null;
+}
+
 /**
- * Configuração e resolução da integração com o sistema de gestão (F9).
+ * Configuração e resolução da integração de agenda (F9 · Clinicorp;
+ * F12 · Google Agenda).
  *
  * É a fronteira entre "o que a empresa configurou" e "de onde a agenda vem".
  * Quem precisa da agenda pede `getProvider(clinicId)` e recebe o adapter certo
- * — real, simulado ou nenhum — sem nunca saber qual é.
+ * — Clinicorp, Google, simulado ou nenhum — sem nunca saber qual é.
  *
- * Nenhum identificador externo é fixo no código: unidade, profissional e,
- * principalmente, os **ids de status** são descobertos em execução pelo wizard
- * e mapeados pelo operador. O que numa conta é "Faltou" na outra é "No-show"
- * com outro número, e é justamente o status que decide se a automação dispara.
+ * **Só um provedor fica ativo por vez** (modo ≠ desligado): duas agendas
+ * simultâneas seriam duas fontes de verdade em conflito. Ligar um desliga o
+ * outro, e a tela deixa isso explícito antes de salvar.
  */
 @Injectable()
 export class IntegrationService {
@@ -50,43 +64,61 @@ export class IntegrationService {
   ) {}
 
   /**
-   * Adapter de agenda da empresa, ou `null` quando a integração está desligada
-   * (o chamador cai para a disponibilidade declarada em `/settings`).
+   * Adapter de agenda da empresa, ou `null` quando nenhuma integração está
+   * ligada (o chamador cai para a disponibilidade declarada em `/settings`).
    */
   async getProvider(clinicId: string): Promise<AgendaProvider | null> {
-    const row = await this.prisma.clinicIntegration.findUnique({
-      where: { clinicId_provider: { clinicId, provider: 'clinicorp' } },
-    });
-    if (!row || row.mode === 'desligado') return null;
+    const row = await this.activeRow(clinicId);
+    if (!row) return null;
 
-    const timeZone = await this.timeZoneOf(clinicId);
-    if (row.mode === 'mock') return new MockAgendaProvider(timeZone);
-
-    const credentials = this.readCredentials(row.credentials);
-    if (!credentials) {
-      this.logger.warn(
-        `Empresa ${clinicId} está em modo "live" sem credenciais salvas — agenda indisponível.`,
-      );
-      return null;
+    const { provider, reason } = await this.resolveProvider(clinicId, row);
+    if (!provider && reason) {
+      this.logger.warn(`Empresa ${clinicId}: ${reason}`);
     }
-    return new ClinicorpAgendaProvider(
-      new ClinicorpClient(credentials),
-      timeZone,
-      { unitId: row.unitId, professionalId: row.professionalId },
-    );
+    return provider;
+  }
+
+  /** Provedor ativo (modo ≠ desligado) da empresa, se houver. */
+  async activeProviderName(
+    clinicId: string,
+  ): Promise<IntegrationProvider | null> {
+    const row = await this.activeRow(clinicId);
+    return row?.provider ?? null;
+  }
+
+  /** Estado do provedor ativo (ou do Clinicorp, se nenhum estiver ligado). */
+  async activeStatus(clinicId: string): Promise<IntegrationStatus> {
+    const active = await this.activeRow(clinicId);
+    return this.getStatus(clinicId, active?.provider ?? 'clinicorp');
   }
 
   /** Estado da integração para a tela — sem nenhum segredo. */
-  async getStatus(clinicId: string): Promise<IntegrationStatus> {
+  async getStatus(
+    clinicId: string,
+    provider: IntegrationProvider,
+  ): Promise<IntegrationStatus> {
     const row = await this.prisma.clinicIntegration.findUnique({
-      where: { clinicId_provider: { clinicId, provider: 'clinicorp' } },
+      where: { clinicId_provider: { clinicId, provider } },
     });
-    const credentials = this.readCredentials(row?.credentials ?? null);
+    const active = await this.activeRow(clinicId);
+    const google =
+      provider === 'google'
+        ? this.readGoogleConfig(row?.credentials ?? null)
+        : null;
+    const credentials =
+      provider === 'clinicorp'
+        ? this.readClinicorpCredentials(row?.credentials ?? null)
+        : null;
+
     return {
-      provider: 'clinicorp',
+      provider,
       mode: row?.mode ?? 'desligado',
-      hasCredentials: Boolean(credentials),
+      activeProvider: active?.provider ?? null,
+      hasCredentials:
+        provider === 'google' ? Boolean(google) : Boolean(credentials),
       usernameHint: credentials ? maskUsername(credentials.username) : null,
+      google,
+      serviceAccountEmail: this.serviceAccountEmail(),
       unitId: row?.unitId ?? null,
       professionalId: row?.professionalId ?? null,
       statusMappings: parseStatusMappings(row?.statusMappings),
@@ -99,16 +131,31 @@ export class IntegrationService {
   /**
    * Salva a configuração. Credencial omitida mantém a que já está guardada —
    * o operador precisa poder trocar a unidade sem redigitar o token (que a tela
-   * nunca recebeu de volta).
+   * nunca recebeu de volta). Ligar um provedor **desliga o outro**.
    */
   async update(
     clinicId: string,
+    provider: IntegrationProvider,
     input: UpdateIntegrationInput,
   ): Promise<IntegrationStatus> {
+    // Cada provedor guarda a sua configuração no mesmo campo cifrado; o corpo
+    // do outro provedor é ignorado em vez de misturado.
+    const secret =
+      provider === 'clinicorp'
+        ? input.credentials != null
+          ? JSON.stringify(input.credentials)
+          : undefined
+        : input.google !== undefined
+          ? input.google === null
+            ? null
+            : JSON.stringify(googleAgendaConfigSchema.parse(input.google))
+          : undefined;
     const encrypted =
-      input.credentials != null
-        ? encryptSecret(JSON.stringify(input.credentials), this.encryptionKey())
-        : undefined;
+      secret === undefined
+        ? undefined
+        : secret === null
+          ? null
+          : encryptSecret(secret, this.encryptionKey());
 
     const data = {
       ...(input.mode !== undefined ? { mode: input.mode } : {}),
@@ -123,12 +170,23 @@ export class IntegrationService {
     };
 
     await this.prisma.clinicIntegration.upsert({
-      where: { clinicId_provider: { clinicId, provider: 'clinicorp' } },
-      create: { clinicId, provider: 'clinicorp', ...data },
+      where: { clinicId_provider: { clinicId, provider } },
+      create: { clinicId, provider, ...data },
       update: data,
     });
 
-    return this.getStatus(clinicId);
+    if (input.mode !== undefined && input.mode !== 'desligado') {
+      await this.prisma.clinicIntegration.updateMany({
+        where: {
+          clinicId,
+          provider: { not: provider },
+          mode: { not: 'desligado' },
+        },
+        data: { mode: 'desligado' },
+      });
+    }
+
+    return this.getStatus(clinicId, provider);
   }
 
   /**
@@ -139,24 +197,36 @@ export class IntegrationService {
    * em que a credencial chegar, em vez de aparecer depurando em produção. Nunca
    * escreve nada no sistema do cliente.
    */
-  async check(clinicId: string): Promise<ConnectionCheck> {
-    const status = await this.getStatus(clinicId);
+  async check(
+    clinicId: string,
+    providerName: IntegrationProvider,
+  ): Promise<ConnectionCheck> {
+    const status = await this.getStatus(clinicId, providerName);
     const checkedAt = new Date();
     const steps: ConnectionStep[] = [];
     let units: ExternalUnit[] = [];
     let professionals: ExternalProfessional[] = [];
     let statuses: ExternalStatus[] = [];
 
-    const provider = await this.getProvider(clinicId);
+    const row = await this.prisma.clinicIntegration.findUnique({
+      where: { clinicId_provider: { clinicId, provider: providerName } },
+    });
+    const resolved =
+      row && row.mode !== 'desligado'
+        ? await this.resolveProvider(clinicId, row)
+        : {
+            provider: null,
+            reason:
+              'A integração está desligada. Escolha "simulado" ou "real" para verificar.',
+          };
+    const provider = resolved.provider;
+
     if (!provider) {
       steps.push({
         key: 'credenciais',
         label: 'Credenciais e modo',
         ok: false,
-        detail:
-          status.mode === 'desligado'
-            ? 'A integração está desligada. Escolha "simulado" ou "real" para verificar.'
-            : 'Modo real sem credenciais salvas. Informe usuário, token e Subscriber ID.',
+        detail: resolved.reason ?? 'A integração não pôde ser montada.',
         durationMs: 0,
       });
       return {
@@ -176,7 +246,9 @@ export class IntegrationService {
       label: 'Credenciais e modo',
       ok: true,
       detail: provider.live
-        ? `Modo real${status.usernameHint ? ` (usuário ${status.usernameHint})` : ''}.`
+        ? providerName === 'google'
+          ? `Modo real (agenda ${status.google?.calendarId ?? '?'}).`
+          : `Modo real${status.usernameHint ? ` (usuário ${status.usernameHint})` : ''}.`
         : 'Modo simulado — nenhuma chamada externa é feita.',
       durationMs: 0,
     });
@@ -256,7 +328,7 @@ export class IntegrationService {
       : (steps.find((s) => !s.ok)?.detail ?? 'Falha desconhecida.');
 
     await this.prisma.clinicIntegration.updateMany({
-      where: { clinicId, provider: 'clinicorp' },
+      where: { clinicId, provider: providerName },
       data: { lastCheckedAt: checkedAt, lastError },
     });
 
@@ -300,19 +372,20 @@ export class IntegrationService {
     return byName?.status ?? null;
   }
 
-  /** Mapeamentos salvos da empresa (usado pela sincronização). */
+  /** Mapeamentos salvos do provedor **ativo** (usado pela sincronização). */
   async statusMappingsOf(clinicId: string): Promise<StatusMapping[]> {
-    const row = await this.prisma.clinicIntegration.findUnique({
-      where: { clinicId_provider: { clinicId, provider: 'clinicorp' } },
+    const row = await this.prisma.clinicIntegration.findFirst({
+      where: { clinicId, mode: { not: 'desligado' } },
+      orderBy: { updatedAt: 'desc' },
       select: { statusMappings: true },
     });
     return parseStatusMappings(row?.statusMappings);
   }
 
-  /** Registra o resultado de uma sincronização de agenda. */
+  /** Registra o resultado de uma sincronização (no provedor ativo). */
   async recordSync(clinicId: string, error: string | null): Promise<void> {
     await this.prisma.clinicIntegration.updateMany({
-      where: { clinicId, provider: 'clinicorp' },
+      where: { clinicId, mode: { not: 'desligado' } },
       data: {
         ...(error ? {} : { lastSyncedAt: new Date() }),
         lastError: error,
@@ -329,18 +402,119 @@ export class IntegrationService {
     return row?.timezone ?? DEFAULT_TIMEZONE;
   }
 
+  /** Linha ativa (modo ≠ desligado). A exclusividade é garantida no `update`. */
+  private activeRow(clinicId: string) {
+    return this.prisma.clinicIntegration.findFirst({
+      where: { clinicId, mode: { not: 'desligado' } },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  /**
+   * Monta o adapter da linha dada. Devolve `reason` em vez de lançar para que
+   * o `check` mostre ao operador exatamente o que falta, e o `getProvider`
+   * degrade em silêncio (agenda indisponível não pode derrubar o atendimento).
+   */
+  private async resolveProvider(
+    clinicId: string,
+    row: IntegrationRow,
+  ): Promise<{ provider: AgendaProvider | null; reason?: string }> {
+    const timeZone = await this.timeZoneOf(clinicId);
+    if (row.mode === 'mock') {
+      return { provider: new MockAgendaProvider(timeZone) };
+    }
+
+    if (row.provider === 'google') {
+      const config = this.readGoogleConfig(row.credentials);
+      if (!config?.calendarId) {
+        return {
+          provider: null,
+          reason:
+            'Modo real sem agenda configurada. Informe o ID da agenda do Google.',
+        };
+      }
+      const email = this.config.get('GOOGLE_CALENDAR_SA_EMAIL', {
+        infer: true,
+      });
+      const key = this.config.get('GOOGLE_CALENDAR_SA_KEY', { infer: true });
+      if (!email || !key) {
+        return {
+          provider: null,
+          reason:
+            'O servidor não tem a service account do Google configurada (GOOGLE_CALENDAR_SA_EMAIL / GOOGLE_CALENDAR_SA_KEY).',
+        };
+      }
+      return {
+        provider: new GoogleAgendaProvider(
+          new GoogleCalendarClient({
+            serviceAccountEmail: email,
+            privateKey: key,
+          }),
+          timeZone,
+          config,
+        ),
+      };
+    }
+
+    const credentials = this.readClinicorpCredentials(row.credentials);
+    if (!credentials) {
+      return {
+        provider: null,
+        reason:
+          'Modo real sem credenciais salvas. Informe usuário, token e Subscriber ID.',
+      };
+    }
+    return {
+      provider: new ClinicorpAgendaProvider(
+        new ClinicorpClient(credentials),
+        timeZone,
+        { unitId: row.unitId, professionalId: row.professionalId },
+      ),
+    };
+  }
+
+  /** E-mail da service account, se o servidor estiver com o Google habilitado. */
+  private serviceAccountEmail(): string | null {
+    const email = this.config.get('GOOGLE_CALENDAR_SA_EMAIL', { infer: true });
+    const key = this.config.get('GOOGLE_CALENDAR_SA_KEY', { infer: true });
+    return email && key ? email : null;
+  }
+
   private encryptionKey(): Buffer {
     return loadEncryptionKey(
       this.config.get('INTEGRATION_ENCRYPTION_KEY', { infer: true }),
     );
   }
 
-  /** Decifra as credenciais; formato ilegível vira `null` (e um aviso). */
-  private readCredentials(payload: string | null): ClinicorpCredentials | null {
+  /** Decifra as credenciais do Clinicorp; ilegível vira `null` (e um aviso). */
+  private readClinicorpCredentials(
+    payload: string | null,
+  ): ClinicorpCredentials | null {
+    const raw = this.decrypt(payload);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as ClinicorpCredentials;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Decifra e valida a configuração do Google; ilegível vira `null`. */
+  private readGoogleConfig(payload: string | null): GoogleAgendaConfig | null {
+    const raw = this.decrypt(payload);
+    if (!raw) return null;
+    try {
+      const parsed = googleAgendaConfigSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private decrypt(payload: string | null): string | null {
     if (!payload) return null;
     try {
-      const raw = decryptSecret(payload, this.encryptionKey());
-      return JSON.parse(raw) as ClinicorpCredentials;
+      return decryptSecret(payload, this.encryptionKey());
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.error(

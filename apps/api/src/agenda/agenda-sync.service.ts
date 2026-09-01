@@ -74,10 +74,12 @@ export class AgendaSyncService {
     const to = new Date(now.getTime() + this.futureDays() * 24 * 3_600_000);
     const appointments = await provider.listAppointments({ from, to });
     const mappings = await this.integrations.statusMappingsOf(clinicId);
+    const source =
+      (await this.integrations.activeProviderName(clinicId)) ?? 'clinicorp';
 
     for (const external of appointments) {
       try {
-        const outcome = await this.upsert(clinicId, external, mappings);
+        const outcome = await this.upsert(clinicId, external, mappings, source);
         summary[outcome] += 1;
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -99,6 +101,7 @@ export class AgendaSyncService {
     clinicId: string,
     external: ExternalAppointment,
     mappings: StatusMapping[],
+    leadSource: string,
   ): Promise<'criados' | 'atualizados' | 'ignorados'> {
     const existing = await this.prisma.appointment.findUnique({
       where: {
@@ -109,7 +112,8 @@ export class AgendaSyncService {
 
     const status = this.resolveStatus(mappings, external, existing?.status);
     const leadId =
-      existing?.leadId ?? (await this.resolveLead(clinicId, external));
+      existing?.leadId ??
+      (await this.resolveLead(clinicId, external, leadSource));
     const conversationId =
       existing?.conversationId ??
       (leadId ? await this.latestConversation(clinicId, leadId) : null);
@@ -178,6 +182,7 @@ export class AgendaSyncService {
   private async resolveLead(
     clinicId: string,
     external: ExternalAppointment,
+    leadSource: string,
   ): Promise<string | null> {
     if (external.patientExternalId) {
       const byExternal = await this.prisma.lead.findUnique({
@@ -222,7 +227,8 @@ export class AgendaSyncService {
         name: external.patientName,
         phone,
         externalId: external.patientExternalId,
-        source: 'clinicorp',
+        // De qual agenda o contato veio ("clinicorp" | "google").
+        source: leadSource,
       },
       select: { id: true },
     });

@@ -33,6 +33,8 @@ export function sourceLabel(source: string): string {
   if (source === "whatsapp") return "WhatsApp";
   if (source === "manual") return "Manual";
   if (source === "import") return "Importado";
+  if (source === "clinicorp") return "Clinicorp";
+  if (source === "google") return "Google Agenda";
   return source;
 }
 

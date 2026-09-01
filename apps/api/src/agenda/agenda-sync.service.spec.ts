@@ -52,6 +52,7 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     statusMappingsOf: jest.fn(),
     translateStatus: jest.fn(),
     recordSync: jest.fn(),
+    activeProviderName: jest.fn(),
   };
   const configMock = { get: jest.fn(() => undefined) };
 
@@ -59,6 +60,7 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     jest.clearAllMocks();
     integrationsMock.getProvider.mockResolvedValue(providerMock);
     integrationsMock.statusMappingsOf.mockResolvedValue([]);
+    integrationsMock.activeProviderName.mockResolvedValue('clinicorp');
     integrationsMock.translateStatus.mockReturnValue(null);
     prismaMock.appointment.findUnique.mockResolvedValue(null);
     prismaMock.appointment.create.mockResolvedValue({ id: 'a1' });

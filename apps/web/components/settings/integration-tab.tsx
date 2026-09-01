@@ -6,12 +6,16 @@ import {
   APPOINTMENT_STATUSES,
   type AppointmentStatus,
   type ConnectionCheck,
+  INTEGRATION_PROVIDER_LABELS,
   type IntegrationMode,
+  type IntegrationProvider,
+  type IntegrationStatus,
   REQUIRED_STATUS_MAPPINGS,
   type StatusMapping,
 } from "@dentaltrack/shared";
 import {
   AlertTriangle,
+  CalendarDays,
   CheckCircle2,
   Info,
   Link2,
@@ -40,18 +44,41 @@ import {
 } from "@/hooks/use-integration";
 import { cn } from "@/lib/utils";
 
+const PROVIDER_OPTIONS = [
+  { value: "clinicorp" as const, label: "Clinicorp" },
+  { value: "google" as const, label: "Google Agenda" },
+];
+
 const MODE_OPTIONS = [
   { value: "desligado" as const, label: "Desligada" },
   { value: "mock" as const, label: "Simulada" },
   { value: "live" as const, label: "Real" },
 ];
 
-const MODE_HELP: Record<IntegrationMode, string> = {
-  desligado:
-    "O agente não consulta agenda. Ele coleta a preferência de dia e horário e a equipe confirma — é o comportamento de sempre.",
-  mock: "Agenda simulada, para conhecer o fluxo inteiro sem credencial nenhuma. Nada é enviado ao sistema de gestão e os telefones são inválidos de propósito.",
-  live: "O agente lê a agenda real, oferece só horários livres e grava o agendamento no sistema de gestão.",
+const MODE_HELP: Record<IntegrationProvider, Record<IntegrationMode, string>> = {
+  clinicorp: {
+    desligado:
+      "O agente não consulta agenda. Ele coleta a preferência de dia e horário e a equipe confirma — é o comportamento de sempre.",
+    mock: "Agenda simulada, para conhecer o fluxo inteiro sem credencial nenhuma. Nada é enviado ao sistema de gestão e os telefones são inválidos de propósito.",
+    live: "O agente lê a agenda real, oferece só horários livres e grava o agendamento no sistema de gestão.",
+  },
+  google: {
+    desligado:
+      "O agente não consulta agenda. Ele coleta a preferência de dia e horário e a equipe confirma — é o comportamento de sempre.",
+    mock: "Agenda simulada, para conhecer o fluxo inteiro sem conectar nada. Nada é enviado ao Google e os telefones são inválidos de propósito.",
+    live: "O agente lê a agenda do Google, oferece só horários livres dentro do expediente configurado e grava o agendamento nela.",
+  },
 };
+
+const PROVIDER_DESCRIPTION: Record<IntegrationProvider, string> = {
+  clinicorp:
+    "Conectado, o agente passa a oferecer horários que existem de verdade e as automações passam a saber quem faltou e quem compareceu.",
+  google:
+    "Para a empresa sem sistema de gestão: o agente lê e grava direto na agenda do Google que a equipe já usa.",
+};
+
+const WEEKDAY_LABELS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const SLOT_OPTIONS = [15, 20, 30, 45, 60];
 
 /** O que o operador mexeu e ainda não salvou. Ausente = usa o do servidor. */
 type Edits = {
@@ -65,20 +92,82 @@ type Edits = {
 const IGNORE = "__ignorar__";
 
 /**
- * Aba "Integração" das Configurações (F9) — conecta o sistema de gestão da
- * empresa (Clinicorp).
+ * Aba "Integração" das Configurações — conecta a agenda da empresa.
+ *
+ * Dois provedores atrás da mesma porta: **Clinicorp** (F9, sistema de gestão)
+ * ou **Google Agenda** (F12, para quem não tem sistema de gestão). Só um fica
+ * ativo por vez — duas agendas simultâneas seriam duas fontes de verdade em
+ * conflito — e é a empresa que escolhe qual.
  *
  * A tela é o assistente de conexão: guarda a credencial (que nunca volta do
  * servidor), roda a verificação **só-leitura** passo a passo e deixa o operador
- * confirmar o mapeamento de status. Nada aqui é fixo no código — unidade,
- * profissional e status vêm da conta do cliente em tempo de execução.
+ * confirmar o mapeamento de status.
  *
  * Fora do handoff de design; segue o design system existente (plan.md §6).
  */
 export function IntegrationTab() {
-  const { data, isLoading } = useIntegration();
-  const update = useUpdateIntegration();
-  const check = useCheckIntegration();
+  const [choice, setChoice] = useState<IntegrationProvider | null>(null);
+  const clinicorp = useIntegration("clinicorp");
+  // Abre já no provedor que está ativo — quem usa Google não deve cair no Clinicorp.
+  const provider = choice ?? clinicorp.data?.activeProvider ?? "clinicorp";
+  const google = useIntegration("google", provider === "google");
+  const current = provider === "google" ? google : clinicorp;
+
+  if (clinicorp.isLoading && !clinicorp.data) return <IntegrationSkeleton />;
+
+  return (
+    <div className="flex flex-col gap-5">
+      <Card className="gap-0 p-0">
+        <div className="border-b border-border px-6 py-[18px]">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="size-[18px] text-muted-foreground" />
+            <div className="text-base font-semibold tracking-[-0.01em]">
+              De onde vem a agenda
+            </div>
+          </div>
+          <div className="mt-0.5 text-[13px] text-muted-foreground">
+            Escolha o provedor: o sistema de gestão (Clinicorp) ou uma agenda do
+            Google. Só um fica ativo por vez.
+          </div>
+        </div>
+        <div className="flex flex-col gap-2 p-6">
+          <Segmented
+            aria-label="Provedor de agenda"
+            options={PROVIDER_OPTIONS}
+            value={provider}
+            onChange={setChoice}
+          />
+          {clinicorp.data?.activeProvider && (
+            <p className="text-xs text-muted-foreground">
+              Ativa hoje:{" "}
+              {INTEGRATION_PROVIDER_LABELS[clinicorp.data.activeProvider]}.
+            </p>
+          )}
+        </div>
+      </Card>
+
+      {current.isLoading || !current.data ? (
+        <Skeleton className="h-64 w-full rounded-[var(--radius)]" />
+      ) : (
+        <ProviderPanel
+          key={provider}
+          provider={provider}
+          data={current.data}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProviderPanel({
+  provider,
+  data,
+}: {
+  provider: IntegrationProvider;
+  data: IntegrationStatus;
+}) {
+  const update = useUpdateIntegration(provider);
+  const check = useCheckIntegration(provider);
   const syncAgenda = useSyncAgenda();
 
   // A credencial é digitada, então vive em estado local. O resto é **derivado**
@@ -88,11 +177,16 @@ export function IntegrationTab() {
   const [token, setToken] = useState("");
   const [subscriberId, setSubscriberId] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [calendarId, setCalendarId] = useState(data.google?.calendarId ?? "");
+  const [workStart, setWorkStart] = useState(data.google?.workStart ?? "08:00");
+  const [workEnd, setWorkEnd] = useState(data.google?.workEnd ?? "18:00");
+  const [workDays, setWorkDays] = useState<number[]>(
+    data.google?.workDays ?? [1, 2, 3, 4, 5],
+  );
+  const [slotMinutes, setSlotMinutes] = useState(data.google?.slotMinutes ?? 30);
   const [edits, setEdits] = useState<Edits>({});
 
   const result = check.data;
-
-  if (isLoading || !data) return <IntegrationSkeleton />;
 
   const mode = edits.mode ?? data.mode;
   const unitId = "unitId" in edits ? (edits.unitId ?? null) : data.unitId;
@@ -125,9 +219,16 @@ export function IntegrationTab() {
       ),
     }));
 
+  const toggleWorkDay = (day: number) =>
+    setWorkDays((current) =>
+      current.includes(day)
+        ? current.filter((d) => d !== day)
+        : [...current, day].sort(),
+    );
+
   function save() {
     const credentials =
-      mode === "live" && username.trim() && token.trim()
+      provider === "clinicorp" && mode === "live" && username.trim() && token.trim()
         ? {
             username: username.trim(),
             token: token.trim(),
@@ -135,11 +236,22 @@ export function IntegrationTab() {
             baseUrl: baseUrl.trim() || null,
           }
         : undefined;
+    const googleConfig =
+      provider === "google" && calendarId.trim()
+        ? {
+            calendarId: calendarId.trim(),
+            workStart,
+            workEnd,
+            workDays,
+            slotMinutes,
+          }
+        : undefined;
 
     update.mutate(
       {
         mode,
         ...(credentials ? { credentials } : {}),
+        ...(googleConfig ? { google: googleConfig } : {}),
         unitId,
         professionalId,
         statusMappings: mappings,
@@ -155,9 +267,16 @@ export function IntegrationTab() {
     );
   }
 
-  const missingRequired = REQUIRED_STATUS_MAPPINGS.filter(
-    (status) => !mappings.some((m) => m.status === status),
-  );
+  const missingRequired =
+    provider === "clinicorp"
+      ? REQUIRED_STATUS_MAPPINGS.filter(
+          (status) => !mappings.some((m) => m.status === status),
+        )
+      : [];
+  const otherActive =
+    data.activeProvider && data.activeProvider !== provider
+      ? INTEGRATION_PROVIDER_LABELS[data.activeProvider]
+      : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -166,12 +285,13 @@ export function IntegrationTab() {
           <div className="flex items-center gap-2">
             <Link2 className="size-[18px] text-muted-foreground" />
             <div className="text-base font-semibold tracking-[-0.01em]">
-              Sistema de gestão (Clinicorp)
+              {provider === "google"
+                ? "Google Agenda"
+                : "Sistema de gestão (Clinicorp)"}
             </div>
           </div>
           <div className="mt-0.5 text-[13px] text-muted-foreground">
-            Conectado, o agente passa a oferecer horários que existem de verdade
-            e as automações passam a saber quem faltou e quem compareceu.
+            {PROVIDER_DESCRIPTION[provider]}
           </div>
         </div>
 
@@ -184,10 +304,20 @@ export function IntegrationTab() {
               value={mode}
               onChange={setMode}
             />
-            <p className="text-xs text-muted-foreground">{MODE_HELP[mode]}</p>
+            <p className="text-xs text-muted-foreground">
+              {MODE_HELP[provider][mode]}
+            </p>
           </div>
 
-          {mode === "live" && (
+          {otherActive && mode !== "desligado" && (
+            <Note>
+              Hoje a agenda ativa é o <strong>{otherActive}</strong>. Salvar com
+              este modo ligado <strong>desliga o {otherActive}</strong> — só uma
+              agenda pode ser a fonte de verdade.
+            </Note>
+          )}
+
+          {provider === "clinicorp" && mode === "live" && (
             <div className="grid gap-5 md:grid-cols-2">
               <Note>
                 A credencial da API <strong>não é o login do painel</strong>. O
@@ -243,6 +373,116 @@ export function IntegrationTab() {
             </div>
           )}
 
+          {provider === "google" && mode !== "desligado" && (
+            <div className="grid gap-5 md:grid-cols-2">
+              {mode === "live" &&
+                (data.serviceAccountEmail ? (
+                  <Note>
+                    Compartilhe a agenda da empresa com{" "}
+                    <strong className="break-all">
+                      {data.serviceAccountEmail}
+                    </strong>{" "}
+                    (permissão &quot;Fazer alterações em eventos&quot;), copie o{" "}
+                    <strong>ID da agenda</strong> em Configurações da agenda →
+                    &quot;Integrar agenda&quot; e cole abaixo.
+                  </Note>
+                ) : (
+                  <div className="flex gap-2 rounded-[var(--radius-sm)] border border-border bg-secondary p-3 text-[13px] md:col-span-2">
+                    <AlertTriangle className="mt-0.5 size-4 flex-none text-muted-foreground" />
+                    <span>
+                      O servidor ainda não tem a conta de serviço do Google
+                      configurada (GOOGLE_CALENDAR_SA_EMAIL /
+                      GOOGLE_CALENDAR_SA_KEY). Sem ela o modo real não conecta.
+                    </span>
+                  </div>
+                ))}
+
+              <div className="flex flex-col gap-1.5 md:col-span-2">
+                <Label htmlFor="int-cal">ID da agenda</Label>
+                <Input
+                  id="int-cal"
+                  value={calendarId}
+                  placeholder="empresa@gmail.com ou xxxx@group.calendar.google.com"
+                  onChange={(e) => setCalendarId(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="int-start">Início do expediente</Label>
+                <Input
+                  id="int-start"
+                  value={workStart}
+                  placeholder="08:00"
+                  onChange={(e) => setWorkStart(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="int-end">Fim do expediente</Label>
+                <Input
+                  id="int-end"
+                  value={workEnd}
+                  placeholder="18:00"
+                  onChange={(e) => setWorkEnd(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Dias de atendimento</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  {WEEKDAY_LABELS.map((label, day) => {
+                    const active = workDays.includes(day);
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => toggleWorkDay(day)}
+                        className={cn(
+                          "rounded-[var(--radius-sm)] border px-2.5 py-1 text-xs font-medium transition-colors",
+                          active
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-secondary",
+                        )}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="int-slot">Duração padrão do horário</Label>
+                <Select
+                  value={String(slotMinutes)}
+                  onValueChange={(v) => setSlotMinutes(Number(v))}
+                >
+                  <SelectTrigger id="int-slot">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SLOT_OPTIONS.map((minutes) => (
+                      <SelectItem key={minutes} value={String(minutes)}>
+                        {minutes} minutos
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  É a grade dos horários que o agente oferece.
+                </p>
+              </div>
+
+              <Note>
+                O Google Agenda não registra presença (compareceu/faltou), então
+                as automações de remarcação pós-falta e de retorno de manutenção
+                não disparam com este provedor. Lembretes de consulta funcionam
+                normalmente.
+              </Note>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-3">
             <Button onClick={save} disabled={update.isPending}>
               {update.isPending ? "Salvando…" : "Salvar"}
@@ -290,61 +530,62 @@ export function IntegrationTab() {
 
       {result && <CheckResult result={result} />}
 
-      {(units.length > 0 || professionals.length > 0) && (
-        <Card className="gap-0 p-0">
-          <div className="border-b border-border px-6 py-[18px]">
-            <div className="text-base font-semibold tracking-[-0.01em]">
-              Unidade e profissional
+      {provider === "clinicorp" &&
+        (units.length > 0 || professionals.length > 0) && (
+          <Card className="gap-0 p-0">
+            <div className="border-b border-border px-6 py-[18px]">
+              <div className="text-base font-semibold tracking-[-0.01em]">
+                Unidade e profissional
+              </div>
+              <div className="mt-0.5 text-[13px] text-muted-foreground">
+                Onde o agente busca horários e grava os agendamentos.
+              </div>
             </div>
-            <div className="mt-0.5 text-[13px] text-muted-foreground">
-              Onde o agente busca horários e grava os agendamentos.
-            </div>
-          </div>
-          <div className="grid gap-5 p-6 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="int-unit">Unidade</Label>
-              <Select
-                value={unitId ?? IGNORE}
-                onValueChange={(v) => setUnitId(v === IGNORE ? null : v)}
-              >
-                <SelectTrigger id="int-unit">
-                  <SelectValue placeholder="Escolha a unidade" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={IGNORE}>Não definida</SelectItem>
-                  {units.map((unit) => (
-                    <SelectItem key={unit.id} value={unit.id}>
-                      {unit.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="grid gap-5 p-6 md:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="int-unit">Unidade</Label>
+                <Select
+                  value={unitId ?? IGNORE}
+                  onValueChange={(v) => setUnitId(v === IGNORE ? null : v)}
+                >
+                  <SelectTrigger id="int-unit">
+                    <SelectValue placeholder="Escolha a unidade" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={IGNORE}>Não definida</SelectItem>
+                    {units.map((unit) => (
+                      <SelectItem key={unit.id} value={unit.id}>
+                        {unit.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="int-prof">Profissional padrão</Label>
-              <Select
-                value={professionalId ?? IGNORE}
-                onValueChange={(v) =>
-                  setProfessionalId(v === IGNORE ? null : v)
-                }
-              >
-                <SelectTrigger id="int-prof">
-                  <SelectValue placeholder="Qualquer profissional" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={IGNORE}>Qualquer um</SelectItem>
-                  {professionals.map((professional) => (
-                    <SelectItem key={professional.id} value={professional.id}>
-                      {professional.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="int-prof">Profissional padrão</Label>
+                <Select
+                  value={professionalId ?? IGNORE}
+                  onValueChange={(v) =>
+                    setProfessionalId(v === IGNORE ? null : v)
+                  }
+                >
+                  <SelectTrigger id="int-prof">
+                    <SelectValue placeholder="Qualquer profissional" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={IGNORE}>Qualquer um</SelectItem>
+                    {professionals.map((professional) => (
+                      <SelectItem key={professional.id} value={professional.id}>
+                        {professional.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          </div>
-        </Card>
-      )}
+          </Card>
+        )}
 
       {mappings.length > 0 && (
         <Card className="gap-0 p-0">

@@ -1,0 +1,182 @@
+import { generateKeyPairSync } from 'node:crypto';
+import { AgendaProviderError } from '../clinicorp/agenda-provider';
+import {
+  GoogleCalendarClient,
+  normalizePrivateKey,
+} from './google-calendar.client';
+
+/** Chave RSA real (efêmera) — a assinatura do JWT precisa de uma que funcione. */
+const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const PEM = privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+
+const SA_EMAIL = 'agenda@projeto.iam.gserviceaccount.com';
+const CALENDAR = 'clinica@group.calendar.google.com';
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+describe('GoogleCalendarClient (transporte · F12)', () => {
+  const tokenBody = { access_token: 'tok-1', expires_in: 3600 };
+
+  function makeClient(fetchMock: jest.Mock) {
+    return new GoogleCalendarClient({
+      serviceAccountEmail: SA_EMAIL,
+      privateKey: PEM,
+      fetchImpl: fetchMock,
+      now: () => new Date('2026-09-01T12:00:00.000Z'),
+    });
+  }
+
+  it('troca o JWT assinado por um access token e o usa como Bearer', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(tokenBody))
+      .mockResolvedValueOnce(jsonResponse({ summary: 'Agenda da Clínica' }));
+
+    const client = makeClient(fetchMock);
+    const calendar = await client.getCalendar(CALENDAR);
+
+    expect(calendar.summary).toBe('Agenda da Clínica');
+
+    const [tokenUrl, tokenInit] = fetchMock.mock.calls[0];
+    expect(String(tokenUrl)).toBe('https://oauth2.googleapis.com/token');
+    expect(String(tokenInit.body)).toContain('jwt-bearer');
+
+    const [calUrl, calInit] = fetchMock.mock.calls[1];
+    expect(String(calUrl)).toContain(encodeURIComponent(CALENDAR));
+    expect(calInit.headers.Authorization).toBe('Bearer tok-1');
+  });
+
+  it('reusa o token até perto de expirar — um por chamada estouraria cota', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(tokenBody))
+      .mockImplementation(() =>
+        Promise.resolve(jsonResponse({ summary: 'Agenda' })),
+      );
+
+    const client = makeClient(fetchMock);
+    await client.getCalendar(CALENDAR);
+    await client.getCalendar(CALENDAR);
+
+    const tokenCalls = fetchMock.mock.calls.filter(([url]) =>
+      String(url).includes('oauth2'),
+    );
+    expect(tokenCalls).toHaveLength(1);
+  });
+
+  it('freeBusy devolve os intervalos ocupados como datas', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(tokenBody))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          calendars: {
+            [CALENDAR]: {
+              busy: [
+                {
+                  start: '2026-09-01T13:00:00Z',
+                  end: '2026-09-01T14:00:00Z',
+                },
+              ],
+            },
+          },
+        }),
+      );
+
+    const client = makeClient(fetchMock);
+    const busy = await client.freeBusy(
+      CALENDAR,
+      new Date('2026-09-01T00:00:00Z'),
+      new Date('2026-09-02T00:00:00Z'),
+    );
+
+    expect(busy).toHaveLength(1);
+    expect(busy[0].start.toISOString()).toBe('2026-09-01T13:00:00.000Z');
+  });
+
+  it('listEvents segue a paginação até o fim', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(tokenBody))
+      .mockResolvedValueOnce(
+        jsonResponse({ items: [{ id: 'a' }], nextPageToken: 'p2' }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: 'b' }] }));
+
+    const client = makeClient(fetchMock);
+    const events = await client.listEvents(
+      CALENDAR,
+      new Date('2026-09-01T00:00:00Z'),
+      new Date('2026-09-08T00:00:00Z'),
+    );
+
+    expect(events.map((e) => e.id)).toEqual(['a', 'b']);
+    const secondPage = String(fetchMock.mock.calls[2][0]);
+    expect(secondPage).toContain('pageToken=p2');
+  });
+
+  it('resposta não-2xx vira AgendaProviderError com o status e o corpo', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(tokenBody))
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { message: 'Not Found' } }, 404),
+      );
+
+    const client = makeClient(fetchMock);
+    await expect(client.getCalendar(CALENDAR)).rejects.toThrow(
+      AgendaProviderError,
+    );
+    await expect(
+      makeClient(
+        jest
+          .fn()
+          .mockResolvedValueOnce(jsonResponse(tokenBody))
+          .mockResolvedValueOnce(jsonResponse({}, 404)),
+      ).getCalendar(CALENDAR),
+    ).rejects.toThrow('404');
+  });
+
+  it('recusa da service account explica a falha, sem chamar a agenda', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: 'invalid_grant' }, 400));
+
+    const client = makeClient(fetchMock);
+    await expect(client.getCalendar(CALENDAR)).rejects.toThrow(
+      'service account',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('chave privada inválida falha com mensagem clara, não com stack críptico', async () => {
+    const client = new GoogleCalendarClient({
+      serviceAccountEmail: SA_EMAIL,
+      privateKey: 'nao-e-uma-chave',
+      fetchImpl: jest.fn(),
+    });
+    await expect(client.getCalendar(CALENDAR)).rejects.toThrow('chave privada');
+  });
+
+  describe('normalizePrivateKey — os formatos usuais de .env', () => {
+    it('aceita PEM puro', () => {
+      expect(normalizePrivateKey(PEM)).toBe(PEM.trim().replace(/\\n/g, '\n'));
+    });
+
+    it('aceita PEM com \\n escapado (uma linha só no .env)', () => {
+      const escaped = PEM.replace(/\n/g, '\\n');
+      expect(normalizePrivateKey(escaped)).toContain('BEGIN PRIVATE KEY');
+      expect(normalizePrivateKey(escaped)).toContain('\n');
+    });
+
+    it('aceita o PEM inteiro em base64', () => {
+      const encoded = Buffer.from(PEM, 'utf8').toString('base64');
+      expect(normalizePrivateKey(encoded)).toContain('BEGIN PRIVATE KEY');
+    });
+  });
+});

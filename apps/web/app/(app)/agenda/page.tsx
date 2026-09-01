@@ -54,7 +54,16 @@ export default function AgendaPage() {
   const { from, to } = useMemo(() => datesFor(Number(range)), [range]);
 
   const { data, isLoading } = useAgenda(from, to);
-  const { data: integration } = useIntegration();
+  // O que interessa aqui é a integração **ativa**, seja ela qual for.
+  const { data: clinicorpIntegration } = useIntegration("clinicorp");
+  const { data: googleIntegration } = useIntegration(
+    "google",
+    clinicorpIntegration?.activeProvider === "google",
+  );
+  const integration =
+    clinicorpIntegration?.activeProvider === "google"
+      ? googleIntegration
+      : clinicorpIntegration;
   const { data: history = [] } = useAutomationHistory(20);
   const sync = useSyncAgenda();
 

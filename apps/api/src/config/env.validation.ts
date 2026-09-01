@@ -75,6 +75,14 @@ export const envSchema = z.object({
   // Janela (dias) para tras e para frente sincronizada a cada rodada.
   AGENDA_SYNC_PAST_DAYS: z.coerce.number().int().min(0).optional(),
   AGENDA_SYNC_FUTURE_DAYS: z.coerce.number().int().positive().optional(),
+  // --- F12: Google Agenda (provedor alternativo ao Clinicorp) ---
+  // Service account do Google Cloud com a Calendar API habilitada. A empresa
+  // compartilha a agenda dela com este e-mail; a chave privada (PEM, aceita
+  // "\n" escapado ou base64) assina o JWT trocado por access token. Sem o par,
+  // o provedor google fica indisponível (a tela avisa).
+  GOOGLE_CALENDAR_SA_EMAIL: z.string().email().optional(),
+  GOOGLE_CALENDAR_SA_KEY: z.string().optional(),
+
   // Pausa (ms) entre dois envios automaticos consecutivos — higiene anti-ban.
   OUTBOUND_THROTTLE_MS: z.coerce.number().int().min(0).optional(),
   // Quantas mensagens a fila despacha por rodada do worker.

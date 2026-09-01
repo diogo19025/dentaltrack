@@ -236,7 +236,7 @@ export class AgendaService {
       },
     });
 
-    const integration = await this.integrations.getStatus(clinicId);
+    const integration = await this.integrations.activeStatus(clinicId);
 
     return {
       lastSyncedAt: integration.lastSyncedAt,
@@ -285,7 +285,7 @@ export class AgendaService {
     clinicId: string,
     provider: { listUnits(): Promise<{ id: string }[]> },
   ): Promise<string> {
-    const status = await this.integrations.getStatus(clinicId);
+    const status = await this.integrations.activeStatus(clinicId);
     if (status.unitId) return status.unitId;
     const units = await provider.listUnits();
     const first = units[0]?.id;
@@ -299,7 +299,7 @@ export class AgendaService {
       listProfessionals(unitId?: string | null): Promise<{ id: string }[]>;
     },
   ): Promise<string> {
-    const status = await this.integrations.getStatus(clinicId);
+    const status = await this.integrations.activeStatus(clinicId);
     if (status.professionalId) return status.professionalId;
     const professionals = await provider.listProfessionals(status.unitId);
     const first = professionals[0]?.id;
