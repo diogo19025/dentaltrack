@@ -120,7 +120,10 @@ export class NotificationsService {
             channel === 'whatsapp'
               ? 'Nova conversa pelo WhatsApp'
               : 'Nova conversa pelo site',
-          description: contactLabel(c.lead?.name, c.lead?.phone ?? c.contactPhone),
+          description: contactLabel(
+            c.lead?.name,
+            c.lead?.phone ?? c.contactPhone,
+          ),
           occurredAt: c.createdAt.toISOString(),
           channel,
         };
@@ -131,7 +134,10 @@ export class NotificationsService {
           id: `conversa_abandonada:${c.id}`,
           type: 'conversa_abandonada',
           title: 'Conversa abandonada',
-          description: contactLabel(c.lead?.name, c.lead?.phone ?? c.contactPhone),
+          description: contactLabel(
+            c.lead?.name,
+            c.lead?.phone ?? c.contactPhone,
+          ),
           occurredAt: c.updatedAt.toISOString(),
           channel,
         };
