@@ -19,6 +19,7 @@ import type {
   CreatePatientInput,
   ExternalAppointment,
   ExternalPatient,
+  PatientQuery,
 } from '../clinicorp/agenda-provider';
 import type {
   GoogleCalendarClient,
@@ -181,7 +182,7 @@ export class GoogleAgendaProvider implements AgendaProvider {
   }
 
   /** O Google não tem cadastro de pacientes — nunca há um para achar. */
-  findPatient(): Promise<ExternalPatient | null> {
+  findPatient(_query: PatientQuery): Promise<ExternalPatient | null> {
     return Promise.resolve(null);
   }
 
