@@ -205,6 +205,17 @@ export function parseLocalDateTime(
   );
 }
 
+/**
+ * Instante → "AAAA-MM-DDTHH:mm" na hora de parede da empresa — o inverso de
+ * `parseLocalDateTime`, e o único formato que o agente troca com as tools de
+ * agenda. Nunca devolver ISO UTC ao modelo: ele copia o "13:00" do rótulo para
+ * dentro de um string com `Z` e a consulta cai três horas fora.
+ */
+export function formatLocalDateTime(date: Date, timeZone: string): string {
+  const p = toZonedParts(date, timeZone);
+  return `${p.year}-${pad(p.month)}-${pad(p.day)}T${pad(p.hour)}:${pad(p.minute)}`;
+}
+
 /** É sábado ou domingo no fuso da empresa? */
 export function isZonedWeekend(date: Date, timeZone: string): boolean {
   const weekday = toZonedParts(date, timeZone).weekday;

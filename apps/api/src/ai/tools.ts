@@ -8,6 +8,7 @@ import {
 import type { AgendaService } from '../agenda/agenda.service';
 import {
   formatDatePtBr,
+  formatLocalDateTime,
   formatTimePtBr,
   parseLocalDateTime,
 } from '../common/time';
@@ -508,7 +509,9 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             from,
             days: Math.min(Math.max(dias ?? 10, 1), 30),
             durationMinutes: procedure?.durationMinutes ?? null,
-            limit: 6,
+            // 12 e não 6: com poucos horários o modelo lê a lista truncada como
+            // "o resto está ocupado" e nega horários que existem.
+            limit: 12,
           });
 
           if (!live || slots.length === 0) {
@@ -526,14 +529,15 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             horarios: slots.map((slot) => {
               const startsAt = new Date(slot.startsAt);
               return {
-                // O agente devolve este valor em `dataHora` ao agendar.
-                dataHora: slot.startsAt,
+                // O agente devolve este valor em `dataHora` ao agendar. Hora de
+                // parede da empresa — o mesmo "13:00" do rótulo, nunca UTC.
+                dataHora: formatLocalDateTime(startsAt, timeZone),
                 rotulo: `${formatDatePtBr(startsAt, timeZone)} às ${formatTimePtBr(startsAt, timeZone)}`,
                 profissional: slot.professionalName,
               };
             }),
             orientacao:
-              'Ofereça no máximo 3 destes horários por vez e use o campo dataHora exatamente como veio ao registrar o agendamento.',
+              'Ofereça no máximo 3 destes horários por vez e use o campo dataHora exatamente como veio ao registrar o agendamento. Esta lista pode ser parcial: se o cliente pedir um dia ou horário que não aparece nela, consulte de novo com aPartirDe no dia pedido antes de dizer que não há vaga.',
           };
         } catch {
           return {

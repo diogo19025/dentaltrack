@@ -2,6 +2,7 @@ import {
   addZonedDays,
   dateKeyToUtc,
   formatDatePtBr,
+  formatLocalDateTime,
   formatTimePtBr,
   isZonedWeekend,
   parseHhMm,
@@ -124,5 +125,20 @@ describe('time (fuso da empresa · F9)', () => {
     const instant = new Date('2026-09-12T17:30:00.000Z');
     expect(formatDatePtBr(instant, SP)).toBe('sábado, 12/09');
     expect(formatTimePtBr(instant, SP)).toBe('14:30');
+  });
+
+  describe('formatLocalDateTime (o dataHora que a tool devolve ao agente)', () => {
+    it('é a hora de parede da empresa, sem offset', () => {
+      const instant = new Date('2026-09-12T17:30:00.000Z');
+      expect(formatLocalDateTime(instant, SP)).toBe('2026-09-12T14:30');
+    });
+
+    it('é o inverso de parseLocalDateTime — repassar não desloca o horário', () => {
+      const instant = new Date('2026-09-08T16:00:00.000Z'); // 13:00 em SP
+      const echoed = formatLocalDateTime(instant, SP);
+      expect(parseLocalDateTime(echoed, SP)?.toISOString()).toBe(
+        instant.toISOString(),
+      );
+    });
   });
 });
