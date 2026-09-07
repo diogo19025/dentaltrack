@@ -7,6 +7,7 @@ import type {
   Holiday,
   OutboundMessageSummary,
   UpdateAutomationSettingsInput,
+  UpdateOutboundMessageInput,
 } from "@dentaltrack/shared";
 import { apiFetch } from "@/lib/api-client";
 
@@ -45,6 +46,36 @@ export function useAutomationHistory(limit = 50) {
     queryFn: () =>
       apiFetch<OutboundMessageSummary[]>(`/automations/history?limit=${limit}`),
     refetchInterval: 30_000,
+  });
+}
+
+/** Edita/adia uma mensagem programada (PATCH /automations/messages/:id). */
+export function useUpdateOutboundMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...input
+    }: UpdateOutboundMessageInput & { id: string }) =>
+      apiFetch<OutboundMessageSummary>(`/automations/messages/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: HISTORY_KEY }),
+  });
+}
+
+/** Cancela uma mensagem programada (POST /automations/messages/:id/cancel). */
+export function useCancelOutboundMessage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<OutboundMessageSummary>(`/automations/messages/${id}/cancel`, {
+        method: "POST",
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: HISTORY_KEY }),
   });
 }
 

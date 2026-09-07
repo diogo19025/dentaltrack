@@ -2,27 +2,34 @@
 
 import { useMemo, useState } from "react";
 import {
+  APPOINTMENT_STATUSES,
   APPOINTMENT_STATUS_LABELS,
-  AUTOMATION_LABELS,
   type AppointmentStatus,
   type AppointmentSummary,
   type AvailableSlot,
-  type OutboundMessageSummary,
 } from "@dentaltrack/shared";
 import {
   CalendarClock,
   ChevronLeft,
   ChevronRight,
-  CircleSlash,
   Link2,
   PlugZap,
   RefreshCw,
-  Send,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shell/page-header";
+import { ScheduledMessagesCard } from "@/components/agenda/scheduled-messages";
 import { useAgenda, useAvailability, useSyncAgenda } from "@/hooks/use-agenda";
 import { useAutomationHistory } from "@/hooks/use-automations";
 import { useIntegration } from "@/hooks/use-integration";
@@ -78,12 +85,33 @@ export default function AgendaPage() {
     clinicorpIntegration?.activeProvider === "google"
       ? googleIntegration
       : clinicorpIntegration;
-  const { data: history = [] } = useAutomationHistory(20);
+  const { data: history = [] } = useAutomationHistory(50);
   const sync = useSyncAgenda();
 
+  // Busca por contato/procedimento + filtro de situação — valem para a grade
+  // e para a lista de próximos, como num calendário de verdade.
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<AppointmentStatus | "todos">(
+    "todos",
+  );
+  const matches = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return (a: AppointmentSummary) => {
+      if (statusFilter !== "todos" && a.status !== statusFilter) return false;
+      if (!term) return true;
+      return [a.leadName, a.leadPhone, a.procedureName, a.professionalName]
+        .filter(Boolean)
+        .some((field) => (field as string).toLowerCase().includes(term));
+    };
+  }, [search, statusFilter]);
+
   const upcoming = useMemo(
-    () => pickUpcoming(upcomingData?.appointments ?? []),
-    [upcomingData],
+    () => pickUpcoming((upcomingData?.appointments ?? []).filter(matches)),
+    [upcomingData, matches],
+  );
+  const weekAppointments = useMemo(
+    () => (weekData?.appointments ?? []).filter(matches),
+    [weekData, matches],
   );
 
   return (
@@ -112,9 +140,53 @@ export default function AgendaPage() {
 
       <UpcomingSection appointments={upcoming} loading={weekLoading} />
 
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar cliente ou procedimento"
+            className="h-9 w-[240px] pl-8"
+            aria-label="Buscar na agenda"
+          />
+        </div>
+        <Select
+          value={statusFilter}
+          onValueChange={(value) =>
+            setStatusFilter(value as AppointmentStatus | "todos")
+          }
+        >
+          <SelectTrigger className="h-9 w-[170px]" aria-label="Filtrar por situação">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todas as situações</SelectItem>
+            {APPOINTMENT_STATUSES.map((status) => (
+              <SelectItem key={status} value={status}>
+                {APPOINTMENT_STATUS_LABELS[status]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {(search || statusFilter !== "todos") && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-9"
+            onClick={() => {
+              setSearch("");
+              setStatusFilter("todos");
+            }}
+          >
+            Limpar filtros
+          </Button>
+        )}
+      </div>
+
       <WeekGrid
         weekStart={weekStart}
-        appointments={weekData?.appointments ?? []}
+        appointments={weekAppointments}
         freeSlots={availability?.live ? availability.slots : []}
         loading={weekLoading}
         onPrev={() => setWeekOffset((v) => v - 1)}
@@ -123,7 +195,7 @@ export default function AgendaPage() {
         isCurrentWeek={weekOffset === 0}
       />
 
-      <HistoryCard history={history} />
+      <ScheduledMessagesCard history={history} />
     </>
   );
 }
@@ -201,6 +273,7 @@ interface FreeBand extends DayBlock {
 }
 interface AppointmentBlock extends DayBlock {
   appointment: AppointmentSummary;
+  endsAt: Date;
 }
 
 function WeekGrid({
@@ -380,34 +453,48 @@ function WeekGrid({
                       </div>
                     ))}
 
-                    {blocks.map(({ appointment, top, height, startsAt }) => {
-                      const missed =
-                        appointment.status === "faltou" ||
-                        appointment.status === "cancelado";
-                      return (
-                        <div
-                          key={appointment.id}
-                          className={cn(
-                            "absolute inset-x-1 overflow-hidden rounded-[var(--radius-sm)] px-1.5 py-1 text-left",
-                            missed
-                              ? "status-abandonada"
-                              : "bg-primary text-primary-foreground",
-                          )}
-                          style={{ top, height }}
-                          title={`${formatHm(startsAt)} · ${appointment.leadName ?? "Sem nome"}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""}`}
-                        >
-                          <div className="truncate text-[11px] font-semibold leading-tight">
-                            {formatHm(startsAt)} ·{" "}
-                            {appointment.leadName ?? "Sem nome"}
+                    {blocks.map(
+                      ({ appointment, top, height, startsAt, endsAt }) => {
+                        const missed =
+                          appointment.status === "faltou" ||
+                          appointment.status === "cancelado";
+                        const range = `${formatHm(startsAt)} – ${formatHm(endsAt)}`;
+                        return (
+                          <div
+                            key={appointment.id}
+                            className={cn(
+                              "absolute inset-x-1 overflow-hidden rounded-[var(--radius-sm)] border-l-2 px-1.5 py-1 text-left",
+                              missed
+                                ? "status-abandonada border-[var(--status-abandonada)]"
+                                : "bg-primary text-primary-foreground border-[var(--primary-active,var(--primary))]",
+                            )}
+                            style={{ top, height }}
+                            title={`${range} · ${appointment.leadName ?? "Sem nome"}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""} (${APPOINTMENT_STATUS_LABELS[appointment.status]})`}
+                          >
+                            {height >= 40 ? (
+                              <>
+                                <div className="truncate text-[10px] leading-tight opacity-90">
+                                  {range}
+                                </div>
+                                <div className="truncate text-[11px] font-semibold leading-tight">
+                                  {appointment.leadName ?? "Sem nome"}
+                                </div>
+                                {height >= 56 && appointment.procedureName && (
+                                  <div className="truncate text-[10px] leading-tight opacity-85">
+                                    {appointment.procedureName}
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="truncate text-[11px] font-semibold leading-tight">
+                                {formatHm(startsAt)} ·{" "}
+                                {appointment.leadName ?? "Sem nome"}
+                              </div>
+                            )}
                           </div>
-                          {height >= 40 && appointment.procedureName && (
-                            <div className="truncate text-[10px] leading-tight opacity-85">
-                              {appointment.procedureName}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                        );
+                      },
+                    )}
 
                     {isToday && nowTop >= 0 && nowTop <= bodyHeight && (
                       <div
@@ -504,6 +591,7 @@ function appointmentBlocksFor(
       return {
         appointment,
         startsAt,
+        endsAt,
         top: minutesFrom(startsAt, hourStart) * (HOUR_PX / 60),
         height: Math.max(
           ((endsAt.getTime() - startsAt.getTime()) / 60_000) * (HOUR_PX / 60) - 2,
@@ -549,89 +637,6 @@ function IntegrationStrip({
       )}
     </div>
   );
-}
-
-function HistoryCard({ history }: { history: OutboundMessageSummary[] }) {
-  return (
-    <Card className="gap-0 p-0">
-      <div className="border-b border-border px-6 py-[18px]">
-        <div className="text-base font-semibold tracking-[-0.01em]">
-          Mensagens automáticas
-        </div>
-        <div className="mt-0.5 text-[13px] text-muted-foreground">
-          O que saiu — e o que não saiu, com o motivo.
-        </div>
-      </div>
-
-      {history.length === 0 ? (
-        <Empty
-          icon={<Send className="size-5" />}
-          title="Nada enviado ainda"
-          desc="Lembretes e retomadas de contato aparecem aqui assim que houver horários marcados."
-        />
-      ) : (
-        <ul className="divide-y divide-border">
-          {history.map((message) => (
-            <li key={message.id} className="flex gap-3 px-6 py-3">
-              <div className="mt-0.5">
-                {message.status === "enviado" ? (
-                  <Send className="size-4" style={{ color: "var(--primary)" }} />
-                ) : (
-                  <CircleSlash className="size-4 text-muted-foreground" />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="text-sm font-medium">
-                    {AUTOMATION_LABELS[message.kind]}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {message.leadName ?? message.phone ?? "contato"}
-                  </span>
-                  {message.attempt > 1 && (
-                    <span className="text-xs text-muted-foreground">
-                      tentativa {message.attempt}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-0.5 truncate text-[13px] text-muted-foreground">
-                  {message.body}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {describeOutcome(message)}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
-  );
-}
-
-const OUTCOME: Record<string, string> = {
-  opt_out: "não enviada — o contato pediu para não receber mensagens automáticas",
-  sem_telefone: "não enviada — o contato não tem telefone cadastrado",
-  whatsapp_nao_configurado: "não enviada — o WhatsApp da empresa não está conectado",
-  teto_diario: "não enviada — o limite diário de mensagens foi atingido",
-  fora_da_janela: "não enviada — sairia fora do horário e chegaria tarde demais",
-  ja_enviado: "não enviada — já havia sido enviada",
-  cliente_respondeu: "não enviada — o cliente respondeu e a sequência parou",
-  agendamento_mudou: "não enviada — o horário foi remarcado ou cancelado",
-};
-
-function describeOutcome(message: OutboundMessageSummary): string {
-  if (message.status === "enviado" && message.sentAt) {
-    return `Enviada em ${new Date(message.sentAt).toLocaleString("pt-BR")}`;
-  }
-  if (message.status === "pendente") {
-    return `Agendada para ${new Date(message.scheduledFor).toLocaleString("pt-BR")}`;
-  }
-  if (message.status === "falhou") return "Falha no envio — será tentada de novo";
-  if (message.reason) {
-    return OUTCOME[message.reason] ?? `Não enviada (${message.reason})`;
-  }
-  return "Não enviada";
 }
 
 /** Situação do agendamento, com as cores já existentes de status. */
