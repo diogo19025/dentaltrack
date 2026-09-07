@@ -23,6 +23,7 @@ describe('OutboundService (fila de saída · F9)', () => {
   const prismaMock = {
     outboundMessage: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -133,6 +134,95 @@ describe('OutboundService (fila de saída · F9)', () => {
 
       expect(await outbound.enqueue(baseEnqueue)).toBe('suprimido');
       expect(created()).toMatchObject({ reason: 'whatsapp_nao_configurado' });
+    });
+  });
+
+  describe('updatePending / cancelPending — mensagens programadas na tela', () => {
+    const PENDING = {
+      id: '44444444-4444-4444-4444-444444444444',
+      status: 'pendente',
+      scheduledFor: new Date('2026-09-09T13:00:00.000Z'),
+    };
+    const updatedRow = (over: Record<string, unknown> = {}) => ({
+      id: PENDING.id,
+      kind: 'lembrete_1d',
+      status: 'pendente',
+      reason: null,
+      scheduledFor: PENDING.scheduledFor,
+      sentAt: null,
+      attempt: 1,
+      body: 'Olá!',
+      phone: '5511999998888',
+      conversationId: null,
+      appointmentId: APPOINTMENT,
+      lead: { name: 'Marina' },
+      ...over,
+    });
+
+    it('edita o texto e adia — o novo horário respeita a janela de envio', async () => {
+      prismaMock.outboundMessage.findFirst.mockResolvedValueOnce(PENDING);
+      prismaMock.outboundMessage.update.mockResolvedValueOnce(
+        updatedRow({ body: 'Novo texto' }),
+      );
+
+      // 06:00 em SP (fora da janela) → deve ser reencaixado para 08:00 em SP.
+      const result = await outbound.updatePending(CLINIC, PENDING.id, {
+        body: 'Novo texto',
+        scheduledFor: '2026-09-10T09:00:00.000Z',
+      });
+
+      const data = prismaMock.outboundMessage.update.mock.calls[0][0].data;
+      expect(data.body).toBe('Novo texto');
+      expect(data.scheduledFor.toISOString()).toBe('2026-09-10T11:00:00.000Z');
+      expect(result.leadName).toBe('Marina');
+    });
+
+    it('recusa horário inválido ou já passado', async () => {
+      prismaMock.outboundMessage.findFirst.mockResolvedValue(PENDING);
+
+      await expect(
+        outbound.updatePending(CLINIC, PENDING.id, { scheduledFor: 'ontem' }),
+      ).rejects.toThrow('Horário inválido.');
+      await expect(
+        outbound.updatePending(CLINIC, PENDING.id, {
+          scheduledFor: '2020-01-01T12:00:00.000Z',
+        }),
+      ).rejects.toThrow('O novo horário já passou.');
+      prismaMock.outboundMessage.findFirst.mockReset();
+    });
+
+    it('só mensagem pendente pode mudar — enviada é histórico', async () => {
+      prismaMock.outboundMessage.findFirst.mockResolvedValueOnce({
+        ...PENDING,
+        status: 'enviado',
+      });
+
+      await expect(
+        outbound.updatePending(CLINIC, PENDING.id, { body: 'x' }),
+      ).rejects.toThrow('Só mensagens pendentes');
+      expect(prismaMock.outboundMessage.update).not.toHaveBeenCalled();
+    });
+
+    it('mensagem de outra empresa não existe para este tenant', async () => {
+      prismaMock.outboundMessage.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        outbound.cancelPending(CLINIC, PENDING.id),
+      ).rejects.toThrow('Mensagem não encontrada.');
+    });
+
+    it('cancelar marca cancelado — a linha continua visível no histórico', async () => {
+      prismaMock.outboundMessage.findFirst.mockResolvedValueOnce(PENDING);
+      prismaMock.outboundMessage.update.mockResolvedValueOnce(
+        updatedRow({ status: 'cancelado' }),
+      );
+
+      const result = await outbound.cancelPending(CLINIC, PENDING.id);
+
+      expect(prismaMock.outboundMessage.update.mock.calls[0][0].data).toEqual({
+        status: 'cancelado',
+      });
+      expect(result.status).toBe('cancelado');
     });
   });
 

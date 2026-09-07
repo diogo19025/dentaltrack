@@ -21,7 +21,11 @@ import {
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
 import { AutomationSettingsService } from './automation-settings.service';
-import { CreateHolidayDto, UpdateAutomationSettingsDto } from './dto';
+import {
+  CreateHolidayDto,
+  UpdateAutomationSettingsDto,
+  UpdateOutboundMessageDto,
+} from './dto';
 import { HolidaysService } from './holidays.service';
 import { OutboundService } from './outbound.service';
 
@@ -67,6 +71,26 @@ export class AutomationsController {
       throw new BadRequestException('Filtros inválidos.');
     }
     return this.outbound.history(clinicId, parsed.data);
+  }
+
+  /** Edita e/ou adia uma mensagem programada (só `pendente`). */
+  @Patch('automations/messages/:id')
+  updateMessage(
+    @ClinicId() clinicId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UpdateOutboundMessageDto,
+  ): Promise<OutboundMessageSummary> {
+    return this.outbound.updatePending(clinicId, id, body);
+  }
+
+  /** Cancela uma mensagem programada — ela permanece no histórico. */
+  @Post('automations/messages/:id/cancel')
+  @HttpCode(200)
+  cancelMessage(
+    @ClinicId() clinicId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<OutboundMessageSummary> {
+    return this.outbound.cancelPending(clinicId, id);
   }
 
   @Get('holidays')

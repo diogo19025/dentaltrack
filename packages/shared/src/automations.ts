@@ -279,3 +279,22 @@ export const automationHistoryQuerySchema = z.object({
 export type AutomationHistoryQuery = z.infer<
   typeof automationHistoryQuerySchema
 >;
+
+/**
+ * Corpo de PATCH /automations/messages/:id — editar/adiar uma mensagem que
+ * ainda não saiu. Só mensagens `pendente` aceitam mudança: o que já foi
+ * enviado, suprimido ou cancelado é registro histórico, não fila.
+ */
+export const updateOutboundMessageSchema = z
+  .object({
+    /** Novo texto da mensagem. */
+    body: z.string().trim().min(1).max(2000).optional(),
+    /** Novo horário de envio (ISO 8601). O servidor reencaixa na janela. */
+    scheduledFor: z.string().min(1).optional(),
+  })
+  .refine((value) => value.body !== undefined || value.scheduledFor !== undefined, {
+    message: "Informe o texto ou o novo horário.",
+  });
+export type UpdateOutboundMessageInput = z.infer<
+  typeof updateOutboundMessageSchema
+>;

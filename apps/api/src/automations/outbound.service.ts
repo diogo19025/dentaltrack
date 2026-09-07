@@ -1,4 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
   AutomationHistoryQuery,
@@ -6,6 +11,7 @@ import type {
   AutomationSettings,
   OutboundMessageSummary,
   OutboundSuppressionReason,
+  UpdateOutboundMessageInput,
 } from '@dentaltrack/shared';
 import {
   isZonedWeekend,
@@ -63,6 +69,37 @@ export interface EnqueueInput {
 }
 
 export type EnqueueResult = 'criado' | 'duplicado' | 'suprimido';
+
+/** Projeção comum de uma linha da fila para o formato que a UI consome. */
+const SUMMARY_SELECT = {
+  id: true,
+  kind: true,
+  status: true,
+  reason: true,
+  scheduledFor: true,
+  sentAt: true,
+  attempt: true,
+  body: true,
+  phone: true,
+  conversationId: true,
+  appointmentId: true,
+  lead: { select: { name: true } },
+} as const;
+
+interface SummaryRow {
+  id: string;
+  kind: AutomationKind;
+  status: OutboundMessageSummary['status'];
+  reason: string | null;
+  scheduledFor: Date;
+  sentAt: Date | null;
+  attempt: number;
+  body: string;
+  phone: string | null;
+  conversationId: string | null;
+  appointmentId: string | null;
+  lead: { name: string | null } | null;
+}
 
 export interface DispatchSummary {
   enviados: number;
@@ -193,23 +230,83 @@ export class OutboundService {
       },
       orderBy: { createdAt: 'desc' },
       take: query.limit ?? 50,
-      select: {
-        id: true,
-        kind: true,
-        status: true,
-        reason: true,
-        scheduledFor: true,
-        sentAt: true,
-        attempt: true,
-        body: true,
-        phone: true,
-        conversationId: true,
-        appointmentId: true,
-        lead: { select: { name: true } },
-      },
+      select: SUMMARY_SELECT,
     });
 
-    return rows.map((row) => ({
+    return rows.map((row) => this.summarize(row));
+  }
+
+  /**
+   * Edita e/ou adia uma mensagem **pendente** — o painel de mensagens
+   * programadas na `/agenda`. O novo horário passa pela mesma janela de envio
+   * das automações (`nextAllowedSlot`): a higiene anti-ban não abre exceção
+   * nem para ajuste manual.
+   */
+  async updatePending(
+    clinicId: string,
+    id: string,
+    input: UpdateOutboundMessageInput,
+  ): Promise<OutboundMessageSummary> {
+    const row = await this.requirePending(clinicId, id);
+
+    let scheduledFor = row.scheduledFor;
+    if (input.scheduledFor !== undefined) {
+      const desired = new Date(input.scheduledFor);
+      if (Number.isNaN(desired.getTime())) {
+        throw new BadRequestException('Horário inválido.');
+      }
+      if (desired.getTime() < Date.now() - 60_000) {
+        throw new BadRequestException('O novo horário já passou.');
+      }
+      const settings = await this.settings.get(clinicId);
+      scheduledFor = await this.nextAllowedSlot(clinicId, desired, settings);
+    }
+
+    const updated = await this.prisma.outboundMessage.update({
+      where: { id: row.id },
+      data: {
+        ...(input.body !== undefined ? { body: input.body } : {}),
+        scheduledFor,
+      },
+      select: SUMMARY_SELECT,
+    });
+    return this.summarize(updated);
+  }
+
+  /** Cancela uma mensagem pendente — ela vira registro, não some da lista. */
+  async cancelPending(
+    clinicId: string,
+    id: string,
+  ): Promise<OutboundMessageSummary> {
+    const row = await this.requirePending(clinicId, id);
+    const updated = await this.prisma.outboundMessage.update({
+      where: { id: row.id },
+      data: { status: 'cancelado' },
+      select: SUMMARY_SELECT,
+    });
+    return this.summarize(updated);
+  }
+
+  /** A mensagem existe, é desta empresa e ainda não saiu? */
+  private async requirePending(
+    clinicId: string,
+    id: string,
+  ): Promise<{ id: string; status: string; scheduledFor: Date }> {
+    const row = await this.prisma.outboundMessage.findFirst({
+      where: { id, clinicId },
+      select: { id: true, status: true, scheduledFor: true },
+    });
+    if (!row) throw new NotFoundException('Mensagem não encontrada.');
+    if (row.status !== 'pendente') {
+      throw new BadRequestException(
+        'Só mensagens pendentes podem ser alteradas ou canceladas.',
+      );
+    }
+    return row;
+  }
+
+  private summarize(row: SummaryRow): OutboundMessageSummary {
+    return {
       id: row.id,
       kind: row.kind,
       status: row.status,
@@ -222,7 +319,7 @@ export class OutboundService {
       phone: row.phone,
       conversationId: row.conversationId,
       appointmentId: row.appointmentId,
-    }));
+    };
   }
 
   /**
