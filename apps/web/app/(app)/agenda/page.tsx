@@ -88,22 +88,50 @@ export default function AgendaPage() {
   const { data: history = [] } = useAutomationHistory(50);
   const sync = useSyncAgenda();
 
-  // Busca por contato/procedimento + filtro de situação — valem para a grade
+  // Busca + filtros (situação, procedimento, cliente) — valem para a grade
   // e para a lista de próximos, como num calendário de verdade.
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | "todos">(
     "todos",
   );
+  const [procedureFilter, setProcedureFilter] = useState("todos");
+  const [clientFilter, setClientFilter] = useState("todos");
   const matches = useMemo(() => {
     const term = search.trim().toLowerCase();
     return (a: AppointmentSummary) => {
       if (statusFilter !== "todos" && a.status !== statusFilter) return false;
+      if (procedureFilter !== "todos" && a.procedureName !== procedureFilter) {
+        return false;
+      }
+      if (clientFilter !== "todos" && a.leadName !== clientFilter) return false;
       if (!term) return true;
       return [a.leadName, a.leadPhone, a.procedureName, a.professionalName]
         .filter(Boolean)
         .some((field) => (field as string).toLowerCase().includes(term));
     };
-  }, [search, statusFilter]);
+  }, [search, statusFilter, procedureFilter, clientFilter]);
+
+  // Opções dos filtros, tiradas do que existe de fato nas janelas carregadas.
+  const { procedureOptions, clientOptions } = useMemo(() => {
+    const all = [
+      ...(weekData?.appointments ?? []),
+      ...(upcomingData?.appointments ?? []),
+    ];
+    const procedures = new Set<string>();
+    const clients = new Set<string>();
+    for (const a of all) {
+      if (a.procedureName) procedures.add(a.procedureName);
+      if (a.leadName) clients.add(a.leadName);
+    }
+    const sort = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b));
+    return { procedureOptions: sort(procedures), clientOptions: sort(clients) };
+  }, [weekData, upcomingData]);
+
+  const hasActiveFilters =
+    search !== "" ||
+    statusFilter !== "todos" ||
+    procedureFilter !== "todos" ||
+    clientFilter !== "todos";
 
   const upcoming = useMemo(
     () => pickUpcoming((upcomingData?.appointments ?? []).filter(matches)),
@@ -169,7 +197,49 @@ export default function AgendaPage() {
             ))}
           </SelectContent>
         </Select>
-        {(search || statusFilter !== "todos") && (
+        {procedureOptions.length > 0 && (
+          <Select value={procedureFilter} onValueChange={setProcedureFilter}>
+            <SelectTrigger
+              className="h-9 w-[190px]"
+              aria-label="Filtrar por procedimento"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os procedimentos</SelectItem>
+              {procedureOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="size-2.5 flex-none rounded-[3px]"
+                      style={{ background: procedureColor(name) }}
+                    />
+                    {name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {clientOptions.length > 0 && (
+          <Select value={clientFilter} onValueChange={setClientFilter}>
+            <SelectTrigger
+              className="h-9 w-[170px]"
+              aria-label="Filtrar por cliente"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os clientes</SelectItem>
+              {clientOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {hasActiveFilters && (
           <Button
             type="button"
             variant="ghost"
@@ -177,6 +247,8 @@ export default function AgendaPage() {
             onClick={() => {
               setSearch("");
               setStatusFilter("todos");
+              setProcedureFilter("todos");
+              setClientFilter("todos");
             }}
           >
             Limpar filtros
@@ -247,11 +319,21 @@ function UpcomingSection({
               <div className="truncate text-sm font-medium">
                 {appointment.leadName ?? "Sem nome"}
               </div>
-              <div className="truncate text-[13px] text-muted-foreground">
-                {appointment.procedureName ?? "Consulta"}
-                {appointment.professionalName
-                  ? ` · ${appointment.professionalName}`
-                  : ""}
+              <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+                <span
+                  className="size-2 flex-none rounded-full"
+                  style={{
+                    background: procedureColor(appointment.procedureName),
+                  }}
+                />
+                <span className="truncate font-medium">
+                  {appointment.procedureName ?? "Consulta"}
+                </span>
+                {appointment.professionalName && (
+                  <span className="truncate text-muted-foreground">
+                    · {appointment.professionalName}
+                  </span>
+                )}
               </div>
             </Card>
           ))}
@@ -344,7 +426,12 @@ function WeekGrid({
           </div>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <Legend />
+          <Legend
+            procedures={[...new Set(timed.map((a) => a.procedureName))].slice(
+              0,
+              5,
+            )}
+          />
           <div className="flex items-center gap-1">
             <Button
               type="button"
@@ -438,19 +525,14 @@ function WeekGrid({
                       />
                     ))}
 
+                    {/* Faixas livres: só o espaço verde, sem rótulo — o vazio é a informação. */}
                     {free.map((band, i) => (
                       <div
                         key={`free-${i}`}
                         className="absolute inset-x-1 rounded-[var(--radius-sm)] bg-primary-tint/70"
                         style={{ top: band.top, height: band.height }}
                         title={`Livre ${formatHm(band.startsAt)}–${formatHm(band.endsAt)}`}
-                      >
-                        {band.height >= 34 && (
-                          <span className="block px-1.5 pt-1 text-[10px] font-medium text-primary/80">
-                            livre
-                          </span>
-                        )}
-                      </div>
+                      />
                     ))}
 
                     {blocks.map(
@@ -459,16 +541,21 @@ function WeekGrid({
                           appointment.status === "faltou" ||
                           appointment.status === "cancelado";
                         const range = `${formatHm(startsAt)} – ${formatHm(endsAt)}`;
+                        const color = procedureColor(appointment.procedureName);
                         return (
                           <div
                             key={appointment.id}
                             className={cn(
-                              "absolute inset-x-1 overflow-hidden rounded-[var(--radius-sm)] border-l-2 px-1.5 py-1 text-left",
+                              "absolute inset-x-1 overflow-hidden rounded-[var(--radius-sm)] px-1.5 py-1 text-left",
                               missed
-                                ? "status-abandonada border-[var(--status-abandonada)]"
-                                : "bg-primary text-primary-foreground border-[var(--primary-active,var(--primary))]",
+                                ? "status-abandonada"
+                                : "text-primary-foreground",
                             )}
-                            style={{ top, height }}
+                            style={{
+                              top,
+                              height,
+                              ...(missed ? {} : { background: color }),
+                            }}
                             title={`${range} · ${appointment.leadName ?? "Sem nome"}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""} (${APPOINTMENT_STATUS_LABELS[appointment.status]})`}
                           >
                             {height >= 40 ? (
@@ -479,9 +566,9 @@ function WeekGrid({
                                 <div className="truncate text-[11px] font-semibold leading-tight">
                                   {appointment.leadName ?? "Sem nome"}
                                 </div>
-                                {height >= 56 && appointment.procedureName && (
-                                  <div className="truncate text-[10px] leading-tight opacity-85">
-                                    {appointment.procedureName}
+                                {height >= 56 && (
+                                  <div className="truncate text-[10px] font-medium leading-tight opacity-90">
+                                    {appointment.procedureName ?? "Consulta"}
                                   </div>
                                 )}
                               </>
@@ -489,6 +576,9 @@ function WeekGrid({
                               <div className="truncate text-[11px] font-semibold leading-tight">
                                 {formatHm(startsAt)} ·{" "}
                                 {appointment.leadName ?? "Sem nome"}
+                                {appointment.procedureName
+                                  ? ` · ${appointment.procedureName}`
+                                  : ""}
                               </div>
                             )}
                           </div>
@@ -516,19 +606,44 @@ function WeekGrid({
   );
 }
 
-function Legend() {
+function Legend({ procedures }: { procedures: (string | null)[] }) {
   return (
-    <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
+    <div className="hidden flex-wrap items-center gap-3 text-[11px] text-muted-foreground sm:flex">
       <span className="flex items-center gap-1.5">
         <span className="size-2.5 rounded-[3px] bg-primary-tint" />
         livre
       </span>
-      <span className="flex items-center gap-1.5">
-        <span className="size-2.5 rounded-[3px] bg-primary" />
-        atendimento
-      </span>
+      {procedures.length === 0 ? (
+        <span className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-[3px] bg-primary" />
+          atendimento
+        </span>
+      ) : (
+        procedures.map((name) => (
+          <span key={name ?? "consulta"} className="flex items-center gap-1.5">
+            <span
+              className="size-2.5 rounded-[3px]"
+              style={{ background: procedureColor(name) }}
+            />
+            {name ?? "Consulta"}
+          </span>
+        ))
+      )}
     </div>
   );
+}
+
+/**
+ * Cor estável por procedimento (paleta de charts do design system) — o mesmo
+ * procedimento tem sempre a mesma cor na grade, na legenda e no filtro.
+ */
+function procedureColor(name: string | null): string {
+  if (!name) return "var(--primary)";
+  let hash = 0;
+  for (let i = 0; i < name.length; i += 1) {
+    hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  }
+  return `var(--chart-${(Math.abs(hash) % 5) + 1})`;
 }
 
 /** Horários livres do dia, com faixas contíguas fundidas numa banda só. */
