@@ -5,10 +5,14 @@ import {
   APPOINTMENT_STATUS_LABELS,
   AUTOMATION_LABELS,
   type AppointmentStatus,
+  type AppointmentSummary,
+  type AvailableSlot,
   type OutboundMessageSummary,
 } from "@dentaltrack/shared";
 import {
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   CircleSlash,
   Link2,
   PlugZap,
@@ -17,44 +21,54 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { PageHeader } from "@/components/shell/page-header";
-import { useAgenda, useSyncAgenda } from "@/hooks/use-agenda";
+import { useAgenda, useAvailability, useSyncAgenda } from "@/hooks/use-agenda";
 import { useAutomationHistory } from "@/hooks/use-automations";
 import { useIntegration } from "@/hooks/use-integration";
 import { cn } from "@/lib/utils";
 
-const RANGE_OPTIONS = [
-  { value: "7", label: "7 dias" },
-  { value: "15", label: "15 dias" },
-  { value: "30", label: "30 dias" },
-] as const;
+/** Altura de uma hora na grade, em px. */
+const HOUR_PX = 48;
+const DAYS_IN_GRID = 7;
+const UPCOMING_LIMIT = 4;
 
 /**
  * /agenda (F9) — o que está marcado e o que o sistema mandou.
  *
- * A tela existe para responder às duas perguntas que o dono faz quando liga as
- * automações: "a agenda chegou aqui certinho?" e "o lembrete saiu?". Por isso
- * ela mostra também **o que foi suprimido e por quê** — suprimido por
- * descadastro é o sistema acertando; falha de envio é problema a investigar.
+ * Duas vistas complementares: os **próximos agendamentos** (o que vem aí, em
+ * cards) e a **grade da semana** ao estilo Google Agenda — faixas de horário
+ * livres (tint) × atendimentos marcados (blocos sólidos), o mesmo dado que o
+ * assistente oferece aos clientes. Abaixo, o histórico das mensagens
+ * automáticas — o que saiu e o que foi suprimido, com o motivo.
  *
  * Fora do handoff de design; segue o design system existente (plan.md §6).
  */
 export default function AgendaPage() {
-  const [range, setRange] = useState<(typeof RANGE_OPTIONS)[number]["value"]>("7");
-  const { from, to } = useMemo(() => datesFor(Number(range)), [range]);
+  // Início da semana exibida (meia-noite local). 0 = semana que começa hoje.
+  const [weekOffset, setWeekOffset] = useState(0);
+  const weekStart = useMemo(() => {
+    const today = startOfDay(new Date());
+    return new Date(today.getTime() + weekOffset * DAYS_IN_GRID * DAY_MS);
+  }, [weekOffset]);
+  const weekEnd = useMemo(
+    () => new Date(weekStart.getTime() + (DAYS_IN_GRID - 1) * DAY_MS),
+    [weekStart],
+  );
 
-  const { data, isLoading } = useAgenda(from, to);
-  // O que interessa aqui é a integração **ativa**, seja ela qual for.
+  const { data: weekData, isLoading: weekLoading } = useAgenda(
+    dateKey(weekStart),
+    dateKey(weekEnd),
+  );
+  // Janela larga só para a lista de próximos — independe da semana exibida.
+  const { data: upcomingData } = useAgenda(dateKey(new Date()), dateKeyPlus(30));
+  // A disponibilidade sempre parte de hoje; pedimos até o fim da semana vista.
+  const availabilityDays = Math.min(
+    30,
+    Math.max(1, (weekOffset + 1) * DAYS_IN_GRID),
+  );
+  const { data: availability } = useAvailability(availabilityDays);
+
   const { data: clinicorpIntegration } = useIntegration("clinicorp");
   const { data: googleIntegration } = useIntegration(
     "google",
@@ -67,7 +81,10 @@ export default function AgendaPage() {
   const { data: history = [] } = useAutomationHistory(20);
   const sync = useSyncAgenda();
 
-  const appointments = data?.appointments ?? [];
+  const upcoming = useMemo(
+    () => pickUpcoming(upcomingData?.appointments ?? []),
+    [upcomingData],
+  );
 
   return (
     <>
@@ -75,12 +92,6 @@ export default function AgendaPage() {
         title="Agenda"
         subtitle="Os horários marcados e as mensagens que o assistente enviou sozinho."
       >
-        <Segmented
-          aria-label="Período da agenda"
-          options={RANGE_OPTIONS}
-          value={range}
-          onChange={setRange}
-        />
         {integration && integration.mode !== "desligado" && (
           <Button
             type="button"
@@ -96,84 +107,413 @@ export default function AgendaPage() {
 
       <IntegrationStrip
         mode={integration?.mode ?? "desligado"}
-        lastSyncedAt={data?.lastSyncedAt ?? null}
+        lastSyncedAt={weekData?.lastSyncedAt ?? null}
       />
 
-      <Card className="mb-5 gap-0 p-0">
-        <div className="border-b border-border px-6 py-[18px]">
-          <div className="text-base font-semibold tracking-[-0.01em]">
-            Próximos atendimentos
-          </div>
-          <div className="mt-0.5 text-[13px] text-muted-foreground">
-            {appointments.length} agendamento(s) no período.
-          </div>
-        </div>
+      <UpcomingSection appointments={upcoming} loading={weekLoading} />
 
-        {isLoading ? (
-          <div className="p-6">
-            <Skeleton className="h-40 w-full rounded-[var(--radius-sm)]" />
-          </div>
-        ) : appointments.length === 0 ? (
-          <Empty
-            icon={<CalendarClock className="size-5" />}
-            title="Nenhum horário no período"
-            desc="Marcações feitas pelo assistente aparecem aqui. Com o sistema de gestão conectado, a agenda inteira da empresa também."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Quando</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Procedimento</TableHead>
-                  <TableHead>Profissional</TableHead>
-                  <TableHead>Situação</TableHead>
-                  <TableHead>Origem</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {appointments.map((appointment) => (
-                  <TableRow key={appointment.id}>
-                    <TableCell className="tabular whitespace-nowrap">
-                      {appointment.startsAt
-                        ? formatWhen(appointment.startsAt)
-                        : (appointment.preferredTime ?? "—")}
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-medium">
-                        {appointment.leadName ?? "Sem nome"}
-                      </div>
-                      {appointment.leadPhone && (
-                        <div className="tabular text-xs text-muted-foreground">
-                          {appointment.leadPhone}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>{appointment.procedureName ?? "—"}</TableCell>
-                    <TableCell>{appointment.professionalName ?? "—"}</TableCell>
-                    <TableCell>
-                      <AppointmentBadge status={appointment.status} />
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {appointment.source === "integracao"
-                        ? "Sistema de gestão"
-                        : appointment.source === "bot"
-                          ? "Assistente"
-                          : "Manual"}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </Card>
+      <WeekGrid
+        weekStart={weekStart}
+        appointments={weekData?.appointments ?? []}
+        freeSlots={availability?.live ? availability.slots : []}
+        loading={weekLoading}
+        onPrev={() => setWeekOffset((v) => v - 1)}
+        onNext={() => setWeekOffset((v) => v + 1)}
+        onToday={() => setWeekOffset(0)}
+        isCurrentWeek={weekOffset === 0}
+      />
 
       <HistoryCard history={history} />
     </>
   );
 }
+
+/* ─────────────────────────── Próximos agendamentos ─────────────────────────── */
+
+function UpcomingSection({
+  appointments,
+  loading,
+}: {
+  appointments: AppointmentSummary[];
+  loading: boolean;
+}) {
+  return (
+    <section className="mb-5">
+      <div className="mb-2.5 flex items-baseline justify-between">
+        <h2 className="text-base font-semibold tracking-[-0.01em]">
+          Próximos agendamentos
+        </h2>
+        <span className="text-xs text-muted-foreground">próximos 30 dias</span>
+      </div>
+
+      {loading ? (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: UPCOMING_LIMIT }).map((_, i) => (
+            <Skeleton key={i} className="h-[92px] rounded-[var(--radius-sm)]" />
+          ))}
+        </div>
+      ) : appointments.length === 0 ? (
+        <Card className="p-0">
+          <Empty
+            icon={<CalendarClock className="size-5" />}
+            title="Nada marcado por enquanto"
+            desc="Assim que o assistente (ou a equipe) marcar um horário, ele aparece aqui."
+          />
+        </Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {appointments.map((appointment) => (
+            <Card key={appointment.id} className="gap-1.5 p-4">
+              <div className="flex items-center justify-between gap-2">
+                <span className="tabular text-[13px] font-semibold text-primary">
+                  {appointment.startsAt
+                    ? formatWhen(appointment.startsAt)
+                    : (appointment.preferredTime ?? "A combinar")}
+                </span>
+                <AppointmentBadge status={appointment.status} />
+              </div>
+              <div className="truncate text-sm font-medium">
+                {appointment.leadName ?? "Sem nome"}
+              </div>
+              <div className="truncate text-[13px] text-muted-foreground">
+                {appointment.procedureName ?? "Consulta"}
+                {appointment.professionalName
+                  ? ` · ${appointment.professionalName}`
+                  : ""}
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ─────────────────────────── Grade da semana ─────────────────────────── */
+
+interface DayBlock {
+  top: number;
+  height: number;
+  startsAt: Date;
+}
+interface FreeBand extends DayBlock {
+  endsAt: Date;
+}
+interface AppointmentBlock extends DayBlock {
+  appointment: AppointmentSummary;
+}
+
+function WeekGrid({
+  weekStart,
+  appointments,
+  freeSlots,
+  loading,
+  onPrev,
+  onNext,
+  onToday,
+  isCurrentWeek,
+}: {
+  weekStart: Date;
+  appointments: AppointmentSummary[];
+  freeSlots: AvailableSlot[];
+  loading: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onToday: () => void;
+  isCurrentWeek: boolean;
+}) {
+  const days = useMemo(
+    () =>
+      Array.from(
+        { length: DAYS_IN_GRID },
+        (_, i) => new Date(weekStart.getTime() + i * DAY_MS),
+      ),
+    [weekStart],
+  );
+
+  // Janela de horas da grade: 8–18 por padrão, esticada pelo que existir fora.
+  const timed = appointments.filter((a) => a.startsAt && a.status !== "cancelado");
+  const { hourStart, hourEnd } = useMemo(() => {
+    let start = 8;
+    let end = 18;
+    for (const a of timed) {
+      const s = new Date(a.startsAt as string);
+      const e = a.endsAt ? new Date(a.endsAt) : new Date(s.getTime() + 30 * 60_000);
+      start = Math.min(start, s.getHours());
+      end = Math.max(end, e.getMinutes() > 0 ? e.getHours() + 1 : e.getHours());
+    }
+    for (const slot of freeSlots) {
+      const s = new Date(slot.startsAt);
+      const e = slot.endsAt ? new Date(slot.endsAt) : s;
+      start = Math.min(start, s.getHours());
+      end = Math.max(end, e.getMinutes() > 0 ? e.getHours() + 1 : e.getHours());
+    }
+    return { hourStart: start, hourEnd: Math.max(end, start + 1) };
+  }, [timed, freeSlots]);
+
+  const bodyHeight = (hourEnd - hourStart) * HOUR_PX;
+  const hours = Array.from({ length: hourEnd - hourStart }, (_, i) => hourStart + i);
+
+  const today = startOfDay(new Date()).getTime();
+  const now = new Date();
+  const nowTop =
+    (now.getHours() - hourStart + now.getMinutes() / 60) * HOUR_PX;
+
+  return (
+    <Card className="mb-5 gap-0 overflow-hidden p-0">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-[14px]">
+        <div>
+          <div className="text-base font-semibold tracking-[-0.01em]">
+            Grade da semana
+          </div>
+          <div className="mt-0.5 text-[13px] text-muted-foreground">
+            {rangeLabel(days[0], days[days.length - 1])}
+          </div>
+        </div>
+        <div className="ml-auto flex items-center gap-3">
+          <Legend />
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Semana anterior"
+              onClick={onPrev}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            {!isCurrentWeek && (
+              <Button type="button" variant="outline" onClick={onToday}>
+                Hoje
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Próxima semana"
+              onClick={onNext}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="p-6">
+          <Skeleton className="h-72 w-full rounded-[var(--radius-sm)]" />
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <div className="min-w-[760px]">
+            {/* Cabeçalho dos dias */}
+            <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))] border-b border-border">
+              <div />
+              {days.map((day) => {
+                const isToday = day.getTime() === today;
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className="border-l border-border px-2 py-2 text-center"
+                  >
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      {day.toLocaleDateString("pt-BR", { weekday: "short" })}
+                    </div>
+                    <div
+                      className={cn(
+                        "mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold",
+                        isToday && "bg-primary text-primary-foreground",
+                      )}
+                    >
+                      {day.getDate()}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Corpo: gutter de horas + 7 colunas */}
+            <div className="grid grid-cols-[52px_repeat(7,minmax(0,1fr))]">
+              <div className="relative" style={{ height: bodyHeight }}>
+                {hours.map((hour) => (
+                  <div
+                    key={hour}
+                    className="absolute right-1.5 -translate-y-1/2 text-[11px] text-muted-foreground"
+                    style={{ top: (hour - hourStart) * HOUR_PX }}
+                  >
+                    {hour > hourStart ? `${pad2(hour)}:00` : ""}
+                  </div>
+                ))}
+              </div>
+
+              {days.map((day) => {
+                const isToday = day.getTime() === today;
+                const free = freeBandsFor(day, freeSlots, hourStart);
+                const blocks = appointmentBlocksFor(day, timed, hourStart);
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className="relative border-l border-border"
+                    style={{ height: bodyHeight }}
+                  >
+                    {hours.map((hour) => (
+                      <div
+                        key={hour}
+                        className="absolute inset-x-0 border-t border-border/60"
+                        style={{ top: (hour - hourStart) * HOUR_PX }}
+                      />
+                    ))}
+
+                    {free.map((band, i) => (
+                      <div
+                        key={`free-${i}`}
+                        className="absolute inset-x-1 rounded-[var(--radius-sm)] bg-primary-tint/70"
+                        style={{ top: band.top, height: band.height }}
+                        title={`Livre ${formatHm(band.startsAt)}–${formatHm(band.endsAt)}`}
+                      >
+                        {band.height >= 34 && (
+                          <span className="block px-1.5 pt-1 text-[10px] font-medium text-primary/80">
+                            livre
+                          </span>
+                        )}
+                      </div>
+                    ))}
+
+                    {blocks.map(({ appointment, top, height, startsAt }) => {
+                      const missed =
+                        appointment.status === "faltou" ||
+                        appointment.status === "cancelado";
+                      return (
+                        <div
+                          key={appointment.id}
+                          className={cn(
+                            "absolute inset-x-1 overflow-hidden rounded-[var(--radius-sm)] px-1.5 py-1 text-left",
+                            missed
+                              ? "status-abandonada"
+                              : "bg-primary text-primary-foreground",
+                          )}
+                          style={{ top, height }}
+                          title={`${formatHm(startsAt)} · ${appointment.leadName ?? "Sem nome"}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""}`}
+                        >
+                          <div className="truncate text-[11px] font-semibold leading-tight">
+                            {formatHm(startsAt)} ·{" "}
+                            {appointment.leadName ?? "Sem nome"}
+                          </div>
+                          {height >= 40 && appointment.procedureName && (
+                            <div className="truncate text-[10px] leading-tight opacity-85">
+                              {appointment.procedureName}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {isToday && nowTop >= 0 && nowTop <= bodyHeight && (
+                      <div
+                        className="pointer-events-none absolute inset-x-0 z-10"
+                        style={{ top: nowTop }}
+                      >
+                        <div className="h-[2px] bg-destructive" />
+                        <div className="absolute -left-[3px] -top-[3px] size-2 rounded-full bg-destructive" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="hidden items-center gap-3 text-[11px] text-muted-foreground sm:flex">
+      <span className="flex items-center gap-1.5">
+        <span className="size-2.5 rounded-[3px] bg-primary-tint" />
+        livre
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="size-2.5 rounded-[3px] bg-primary" />
+        atendimento
+      </span>
+    </div>
+  );
+}
+
+/** Horários livres do dia, com faixas contíguas fundidas numa banda só. */
+function freeBandsFor(
+  day: Date,
+  slots: AvailableSlot[],
+  hourStart: number,
+): FreeBand[] {
+  const dayStart = day.getTime();
+  const dayEnd = dayStart + DAY_MS;
+  const inDay = slots
+    .map((slot) => ({
+      start: new Date(slot.startsAt),
+      end: slot.endsAt
+        ? new Date(slot.endsAt)
+        : new Date(new Date(slot.startsAt).getTime() + 30 * 60_000),
+    }))
+    .filter((s) => s.start.getTime() >= dayStart && s.start.getTime() < dayEnd)
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+  const merged: { start: Date; end: Date }[] = [];
+  for (const slot of inDay) {
+    const last = merged[merged.length - 1];
+    if (last && slot.start.getTime() <= last.end.getTime()) {
+      if (slot.end.getTime() > last.end.getTime()) last.end = slot.end;
+    } else {
+      merged.push({ start: slot.start, end: slot.end });
+    }
+  }
+
+  return merged.map(({ start, end }) => ({
+    startsAt: start,
+    endsAt: end,
+    top: minutesFrom(start, hourStart) * (HOUR_PX / 60),
+    height: Math.max(
+      ((end.getTime() - start.getTime()) / 60_000) * (HOUR_PX / 60) - 2,
+      10,
+    ),
+  }));
+}
+
+/** Blocos de atendimento do dia, posicionados na grade. */
+function appointmentBlocksFor(
+  day: Date,
+  appointments: AppointmentSummary[],
+  hourStart: number,
+): AppointmentBlock[] {
+  const dayStart = day.getTime();
+  const dayEnd = dayStart + DAY_MS;
+  return appointments
+    .filter((a) => {
+      const t = new Date(a.startsAt as string).getTime();
+      return t >= dayStart && t < dayEnd;
+    })
+    .map((appointment) => {
+      const startsAt = new Date(appointment.startsAt as string);
+      const endsAt = appointment.endsAt
+        ? new Date(appointment.endsAt)
+        : new Date(startsAt.getTime() + 30 * 60_000);
+      return {
+        appointment,
+        startsAt,
+        top: minutesFrom(startsAt, hourStart) * (HOUR_PX / 60),
+        height: Math.max(
+          ((endsAt.getTime() - startsAt.getTime()) / 60_000) * (HOUR_PX / 60) - 2,
+          22,
+        ),
+      };
+    });
+}
+
+/* ─────────────────────────── Blocos compartilhados ─────────────────────────── */
 
 function IntegrationStrip({
   mode,
@@ -334,7 +674,41 @@ function Empty({
   );
 }
 
-/** "sexta-feira, 12/09 às 14:30" no fuso do navegador. */
+/* ─────────────────────────── Datas & formatação ─────────────────────────── */
+
+const DAY_MS = 24 * 3_600_000;
+
+/** Os próximos que ainda vão acontecer (ou pedidos sem horário), mais cedo primeiro. */
+function pickUpcoming(appointments: AppointmentSummary[]): AppointmentSummary[] {
+  const now = Date.now();
+  return appointments
+    .filter(
+      (a) =>
+        a.status !== "cancelado" &&
+        a.status !== "faltou" &&
+        a.status !== "compareceu" &&
+        (!a.startsAt || new Date(a.startsAt).getTime() >= now),
+    )
+    .sort((a, b) => {
+      if (!a.startsAt) return 1;
+      if (!b.startsAt) return -1;
+      return a.startsAt.localeCompare(b.startsAt);
+    })
+    .slice(0, UPCOMING_LIMIT);
+}
+
+function startOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Minutos desde o início da grade (hora local do navegador). */
+function minutesFrom(date: Date, hourStart: number): number {
+  return (date.getHours() - hourStart) * 60 + date.getMinutes();
+}
+
+/** "sexta, 12/09 às 14:30" no fuso do navegador. */
 function formatWhen(iso: string): string {
   const date = new Date(iso);
   const day = date.toLocaleDateString("pt-BR", {
@@ -342,17 +716,27 @@ function formatWhen(iso: string): string {
     day: "2-digit",
     month: "2-digit",
   });
-  const time = date.toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${day} às ${time}`;
+  return `${day} às ${formatHm(date)}`;
 }
 
-/** Janela AAAA-MM-DD de hoje até N dias à frente. */
-function datesFor(days: number): { from: string; to: string } {
-  const today = new Date();
-  const end = new Date(today.getTime() + days * 24 * 3_600_000);
-  const key = (d: Date) => d.toISOString().slice(0, 10);
-  return { from: key(today), to: key(end) };
+function formatHm(date: Date): string {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function rangeLabel(first: Date, last: Date): string {
+  const fmt = (d: Date) =>
+    d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  return `${fmt(first)} – ${fmt(last)}`;
+}
+
+function dateKey(date: Date): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function dateKeyPlus(days: number): string {
+  return dateKey(new Date(Date.now() + days * DAY_MS));
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
 }
