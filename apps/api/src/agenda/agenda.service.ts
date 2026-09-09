@@ -8,6 +8,7 @@ import type {
 import { dateKeyToUtc, DEFAULT_TIMEZONE } from '../common/time';
 import { IntegrationService } from '../clinicorp/integration.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { bookingKey } from './appointment-keys';
 
 /** Quantos dias à frente a consulta de disponibilidade varre por padrão. */
 const DEFAULT_AVAILABILITY_DAYS = 10;
@@ -15,6 +16,10 @@ const DEFAULT_AVAILABILITY_DAYS = 10;
 const DEFAULT_SLOT_LIMIT = 6;
 /** Duração assumida quando o procedimento não declara a dele. */
 const DEFAULT_DURATION_MINUTES = 30;
+
+/** Status iniciais do agendamento — literais para o Prisma inferir o enum. */
+const AGENDADO = 'agendado' as const;
+const PEDIDO = 'pedido' as const;
 
 export interface BookInput {
   conversationId: string | null;
@@ -121,11 +126,53 @@ export class AgendaService {
    * Registra o agendamento. Com integração e horário definido, grava também na
    * agenda real; sem uma coisa ou outra, grava só aqui — e `confirmed` diz ao
    * chamador qual dos dois mundos aconteceu.
+   *
+   * **A ordem das escritas é a parte importante (P0.5).** Até a F12 o provedor
+   * externo era chamado primeiro e o banco depois, sem chave de dedupe: um
+   * timeout no `createAppointment` deixava o horário ocupado na agenda real e
+   * nada aqui, e o retry criava o segundo. Agora:
+   *
+   * 1. grava o pedido **local** com a `bookingKey` — repetição colide no índice
+   *    único e devolve o agendamento que já existe, sem tocar na agenda externa;
+   * 2. só então chama o provedor;
+   * 3. atualiza a **mesma** linha com o id externo.
+   *
+   * Falha no passo 2 deixa a linha registrada com `confirmed: false` — o
+   * comportamento honesto que já existia, agora sem risco de duplicar.
    */
   async book(clinicId: string, input: BookInput): Promise<BookResult> {
-    const provider = await this.integrations.getProvider(clinicId);
     const duration = input.durationMinutes ?? DEFAULT_DURATION_MINUTES;
+    const key = bookingKey({
+      conversationId: input.conversationId,
+      leadId: input.leadId,
+      patientPhone: input.patientPhone,
+      startsAt: input.startsAt,
+      procedureId: input.procedureId,
+      procedureName: input.procedureName,
+    });
 
+    // 1. O pedido existe no DentalTrack antes de qualquer chamada externa.
+    const local = await this.createRequest(clinicId, input, duration, key);
+    if (local.reused) {
+      // Repetição da mesma operação: devolve o que já existe. Nenhuma segunda
+      // escrita na agenda da empresa — é exatamente o que se queria evitar.
+      this.logger.log({
+        event: 'agenda.book',
+        outcome: 'ok',
+        appointmentId: local.id,
+        reaproveitado: true,
+        confirmado: local.confirmed,
+      });
+      return {
+        appointmentId: local.id,
+        startsAt: local.startsAt,
+        confirmed: local.confirmed,
+        externalId: local.externalId,
+      };
+    }
+
+    // 2. Agenda real da empresa.
+    const provider = await this.integrations.getProvider(clinicId);
     let externalId: string | null = null;
     let professionalName: string | null = null;
     let confirmed = false;
@@ -164,9 +211,9 @@ export class AgendaService {
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        // Registra o pedido mesmo assim: perder o interesse do cliente por uma
-        // falha de integração seria pior. `confirmed` fica false e o agente
-        // promete retorno em vez de confirmar.
+        // O pedido já está registrado (passo 1): perder o interesse do cliente
+        // por uma falha de integração seria pior. `confirmed` fica false e o
+        // agente promete retorno em vez de confirmar.
         this.logger.error(
           `Falha ao gravar o agendamento na agenda da empresa ${clinicId}: ${detail}`,
           err instanceof Error ? err.stack : undefined,
@@ -174,27 +221,13 @@ export class AgendaService {
       }
     }
 
-    const appointment = await this.prisma.appointment.create({
-      data: {
-        clinicId,
-        conversationId: input.conversationId,
-        leadId: input.leadId,
-        procedureId: input.procedureId,
-        preferredTime: input.preferredTime,
-        startsAt: input.startsAt,
-        endsAt: input.startsAt
-          ? new Date(input.startsAt.getTime() + duration * 60_000)
-          : null,
-        status: input.startsAt ? 'agendado' : 'pedido',
-        source: confirmed ? 'integracao' : 'bot',
-        externalId,
-        professionalName,
-        unitExternalId: input.unitId ?? null,
-        professionalExternalId: input.professionalId ?? null,
-        notes: input.procedureName,
-      },
-      select: { id: true },
-    });
+    // 3. Reconcilia a linha local com o que a agenda real devolveu.
+    if (confirmed) {
+      await this.prisma.appointment.update({
+        where: { id: local.id },
+        data: { externalId, professionalName, source: 'integracao' },
+      });
+    }
 
     // `confirmed: false` aqui é o sinal de que o pedido existe no DentalTrack e
     // **não** existe na agenda da empresa — a divergência que o suporte precisa
@@ -202,18 +235,95 @@ export class AgendaService {
     this.logger.log({
       event: 'agenda.book',
       outcome: confirmed ? 'ok' : 'fail',
-      appointmentId: appointment.id,
+      appointmentId: local.id,
       confirmado: confirmed,
       integracao: provider !== null,
       comHorario: input.startsAt !== null,
     });
 
     return {
-      appointmentId: appointment.id,
+      appointmentId: local.id,
       startsAt: input.startsAt,
       confirmed,
       externalId,
     };
+  }
+
+  /**
+   * Grava o pedido local, ou devolve o que já existe para a mesma chave.
+   *
+   * O índice único `(clinic_id, booking_key)` **é** o controle de concorrência:
+   * duas chamadas simultâneas com a mesma chave disputam o índice, uma vence e a
+   * outra recebe `P2002` — momento em que a linha vencedora já está commitada e
+   * pode ser lida. Não há advisory lock aqui de propósito: ele seria redundante
+   * com a constraint (diferente do `OnboardingService`, que provisiona duas
+   * tabelas e não tem índice em que se apoiar).
+   */
+  private async createRequest(
+    clinicId: string,
+    input: BookInput,
+    duration: number,
+    bookingKeyValue: string | null,
+  ): Promise<{
+    id: string;
+    reused: boolean;
+    startsAt: Date | null;
+    confirmed: boolean;
+    externalId: string | null;
+  }> {
+    const data = {
+      clinicId,
+      conversationId: input.conversationId,
+      leadId: input.leadId,
+      procedureId: input.procedureId,
+      preferredTime: input.preferredTime,
+      startsAt: input.startsAt,
+      endsAt: input.startsAt
+        ? new Date(input.startsAt.getTime() + duration * 60_000)
+        : null,
+      // Mantém o status de antes da P0.5: sem integração, um agendamento com
+      // horário já nasce `agendado`. Promovê-lo só no passo 3 faria empresas
+      // sem sistema de gestão pararem de receber lembretes, que o planner
+      // busca por `status in (agendado, confirmado)`.
+      status: input.startsAt ? AGENDADO : PEDIDO,
+      source: 'bot' as const,
+      unitExternalId: input.unitId ?? null,
+      professionalExternalId: input.professionalId ?? null,
+      notes: input.procedureName,
+      bookingKey: bookingKeyValue,
+    };
+
+    try {
+      const created = await this.prisma.appointment.create({
+        data,
+        select: { id: true },
+      });
+      return {
+        id: created.id,
+        reused: false,
+        startsAt: input.startsAt,
+        confirmed: false,
+        externalId: null,
+      };
+    } catch (err) {
+      if (!bookingKeyValue || !isUniqueViolation(err)) throw err;
+
+      const existing = await this.prisma.appointment.findFirst({
+        where: { clinicId, bookingKey: bookingKeyValue },
+        select: { id: true, startsAt: true, source: true, externalId: true },
+      });
+      // Colisão sem linha correspondente não deveria acontecer; se acontecer,
+      // engolir o erro esconderia um problema real de dados.
+      if (!existing) throw err;
+
+      return {
+        id: existing.id,
+        reused: true,
+        startsAt: existing.startsAt,
+        confirmed: existing.source === 'integracao',
+        externalId: existing.externalId,
+      };
+    }
   }
 
   /**
@@ -334,6 +444,19 @@ export class AgendaService {
     }
     return first;
   }
+}
+
+/**
+ * Violação de índice único no Prisma. Checagem por `code` em vez de
+ * `instanceof PrismaClientKnownRequestError` para não acoplar ao cliente
+ * gerado, que muda de caminho entre versões.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
 }
 
 function startOfToday(timeZone: string): Date {

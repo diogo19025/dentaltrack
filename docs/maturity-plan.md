@@ -6,13 +6,13 @@
 
 ## Placar
 
-**2 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
+**3 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
 
 | # | PR | Entrega | Status | Migration |
 |---|---|---|---|---|
 | 0 | Auditoria e plano | Fases 0 e 1 da spec, versionadas | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
 | 1 | **Observabilidade** (P0.3) | Correlação, logs JSON com redação de PII, filtro de exceções, Sentry | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
-| 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` + advisory lock | ⬜ a fazer | `f13_booking_idempotency` |
+| 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` no índice único | ✅ **2026-09-09** | `f13_booking_idempotency` ⚠️ aplicar |
 | 3 | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar; `dispatchDue` com claim | ⬜ a fazer | `f14_outbound_claim` |
 | 4 | **Agenda real endurecida** (P0.1) | Retry só em leitura, erros tipados, `google:smoke` com escrita | ⬜ a fazer | — |
 | 5 | **Handoff humano** (P0.2) | IA pausável por conversa, endpoints, UI no dialog | ⬜ a fazer | `f15_handoff` |
@@ -98,9 +98,18 @@ agenda.availability → agenda.book → agenda.sync → outbound.dispatch
 
 ---
 
-## P0.5 · Idempotência dos agendamentos ⬜ *PRs 2 e 3*
+## P0.5 · Idempotência dos agendamentos 🚧 *PR 2 entregue em 2026-09-09 · PR 3 pendente*
 
-**Estado atual.** `AgendaService.book()` chama o provedor **antes** de gravar no banco, e a gravação local não tem chave de dedupe. Cancelar e remarcar não existem em nenhuma camada.
+> **O que mudou em relação ao planejado** no PR 2:
+>
+> - **Sem advisory lock.** O plano previa `pg_advisory_xact_lock`, mas aqui ele seria redundante: o índice único `(clinic_id, booking_key)` **já é** o controle de concorrência — o segundo INSERT bloqueia no índice, o primeiro commita, e o segundo recebe `P2002` com a linha vencedora já legível. O lock do `OnboardingService` existe porque lá são duas tabelas e não há constraint em que se apoiar. Menos maquinário para a mesma garantia.
+> - **O `status` inicial continua `agendado` quando há horário**, em vez de nascer `pedido` e ser promovido no passo 3. Seguir o plano ao pé da letra teria feito empresas **sem integração** pararem de receber lembretes: `AutomationPlannerService.planReminders` busca por `status in ('agendado','confirmado')`, e sem provedor a promoção nunca aconteceria. O passo 3 atualiza só `externalId`, `professionalName` e `source`.
+> - **`canceledAt` foi adiado para o PR 3**, onde cancelar de fato existe. Coluna que nenhum código lê não cumpre requisito nenhum.
+> - **O segundo ponto de criação também foi fechado.** `ai/tools.ts` tinha um `appointment.create()` próprio para o caso sem agenda conectada — inalcançável em produção hoje (o `ChatService` sempre injeta a agenda), mas é a mesma classe de bug. Ganhou a mesma chave e o mesmo tratamento de colisão.
+> - **Verificado:** 31 testes novos (API de 465 para 496), e o nome do índice na migration conferido contra o que o Prisma gera (`appointment_clinic_id_booking_key_key`).
+> - ⚠️ **A migration `f13_booking_idempotency` ainda não foi aplicada ao vivo** — rodar `pnpm --filter @dentaltrack/api db:deploy` no Supabase. Até lá a coluna não existe e o `create` falha.
+
+**Estado antes do PR 2.** `AgendaService.book()` chamava o provedor **antes** de gravar no banco, e a gravação local não tinha chave de dedupe. Cancelar e remarcar não existem em nenhuma camada (PR 3).
 
 **Mudança necessária — a de maior retorno do plano inteiro é a reordenação do `book()`.** Hoje um timeout no `createAppointment` deixa o horário gravado na agenda real e nada no banco; o retry cria o segundo. Nova ordem:
 

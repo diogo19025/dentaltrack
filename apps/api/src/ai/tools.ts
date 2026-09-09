@@ -5,6 +5,7 @@ import {
   type MediaAttachment,
   type MediaType,
 } from '@dentaltrack/shared';
+import { bookingKey } from '../agenda/appointment-keys';
 import type { AgendaService } from '../agenda/agenda.service';
 import {
   formatDatePtBr,
@@ -628,22 +629,15 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
                 patientName: nome ?? lead?.name ?? null,
                 patientPhone: telefone ?? lead?.phone ?? null,
               })
-            : {
-                appointmentId: (
-                  await prisma.appointment.create({
-                    data: {
-                      clinicId,
-                      conversationId,
-                      leadId,
-                      procedureId: procedure?.id ?? null,
-                      preferredTime: preferencia ?? null,
-                    },
-                    select: { id: true },
-                  })
-                ).id,
-                confirmed: false,
-                startsAt: null,
-              };
+            : await bookWithoutAgenda(prisma, {
+                clinicId,
+                conversationId,
+                leadId,
+                procedureId: procedure?.id ?? null,
+                procedureName: procedure?.name ?? procedimento ?? null,
+                preferredTime: preferencia ?? null,
+                patientPhone: telefone ?? lead?.phone ?? null,
+              });
 
           // Conversão: em_andamento → agendada (no-op se já agendada).
           try {
@@ -671,6 +665,72 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
   };
 
   return tools as unknown as ToolSet;
+}
+
+/**
+ * Registra o pedido de agendamento quando a conversa **não** tem agenda ligada
+ * — sem horário e sem escrita externa, só o interesse do cliente.
+ *
+ * Carrega a mesma `bookingKey` do `AgendaService.book()` de propósito: este é o
+ * segundo (e único outro) ponto do sistema que cria um `Appointment`, e deixá-lo
+ * sem chave reabriria pelo outro lado o buraco que a P0.5 fechou. Hoje o
+ * caminho não é alcançável em produção — o `ChatService` sempre injeta a agenda
+ * —, mas "inalcançável" é propriedade que se perde no primeiro chamador novo.
+ */
+async function bookWithoutAgenda(
+  prisma: PrismaService,
+  args: {
+    clinicId: string;
+    conversationId: string;
+    leadId: string | null;
+    procedureId: string | null;
+    procedureName: string | null;
+    preferredTime: string | null;
+    patientPhone: string | null;
+  },
+): Promise<{
+  appointmentId: string;
+  confirmed: boolean;
+  startsAt: Date | null;
+}> {
+  const key = bookingKey({
+    conversationId: args.conversationId,
+    leadId: args.leadId,
+    patientPhone: args.patientPhone,
+    startsAt: null,
+    procedureId: args.procedureId,
+    procedureName: args.procedureName,
+  });
+  const data = {
+    clinicId: args.clinicId,
+    conversationId: args.conversationId,
+    leadId: args.leadId,
+    procedureId: args.procedureId,
+    preferredTime: args.preferredTime,
+    bookingKey: key,
+  };
+
+  try {
+    const created = await prisma.appointment.create({
+      data,
+      select: { id: true },
+    });
+    return { appointmentId: created.id, confirmed: false, startsAt: null };
+  } catch (err) {
+    const collided =
+      key !== null &&
+      typeof err === 'object' &&
+      err !== null &&
+      (err as { code?: unknown }).code === 'P2002';
+    if (!collided) throw err;
+
+    const existing = await prisma.appointment.findFirst({
+      where: { clinicId: args.clinicId, bookingKey: key },
+      select: { id: true },
+    });
+    if (!existing) throw err;
+    return { appointmentId: existing.id, confirmed: false, startsAt: null };
+  }
 }
 
 /** Cria ou atualiza o lead da conversa (escopo por empresa) e o vincula. */

@@ -245,7 +245,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm --filter @dentaltrack/web e2e   # Playwright — roda offline com LLM_PROVIDER=mock
 ```
 
-Estado em 2026-09-09: **465 testes na API** (Jest, ao lado do código) e **145 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
+Estado em 2026-09-09: **496 testes na API** (Jest, ao lado do código) e **145 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
 
 ---
 
@@ -292,6 +292,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 | 2026-09-08 | **Auditoria de maturidade** — [`maturity-audit.md`](maturity-audit.md) e [`maturity-plan.md`](maturity-plan.md). |
 | 2026-09-09 | **Observabilidade** (P0.3, PR 1 do plano de maturidade): correlação por `requestId`, logs JSON com redação de PII, filtro global de exceções, Sentry. |
 | 2026-09-09 | Cartão "Assistente ativo" da sidebar virou dispensável, com a dispensa amarrada ao **login** (claim `session_id` do JWT) e não ao navegador — F5 e navegação não o trazem de volta; o próximo login traz. |
+| 2026-09-09 | **Idempotência do agendamento** (P0.5, PR 2): o pedido passa a ser gravado **antes** da chamada à agenda externa, com uma `bookingKey` sob índice único. Duplo clique, retry após timeout, webhook reentregue e o modelo chamando a tool duas vezes deixam de virar dois agendamentos. Migration `f13_booking_idempotency`. |
 
 ---
 

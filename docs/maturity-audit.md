@@ -62,8 +62,8 @@ Monorepo pnpm + Turborepo, três pacotes:
 
 | # | Risco | Onde | Dano se acontecer |
 |---|---|---|---|
-| 1 | **Agendamento duplicado.** `appointment.create()` sem dedupe; `@@unique([clinicId, externalId])` é inerte porque `NULL` não colide com `NULL` em Postgres | [`agenda.service.ts:163`](../apps/api/src/agenda/agenda.service.ts) | Dois horários ocupados na agenda real da clínica. Irreversível sem intervenção manual. **O pior risco do sistema** |
-| 2 | **Escrita órfã.** O provedor é chamado antes do banco: um timeout no `createAppointment` deixa o horário gravado no Clinicorp/Google e **nada** no DentalTrack | [`agenda.service.ts:120-160`](../apps/api/src/agenda/agenda.service.ts) | O retry cria o segundo. Estado divergente entre os dois sistemas |
+| ~~1~~ | ~~**Agendamento duplicado.**~~ **Resolvido no PR 2** (2026-09-09): `bookingKey` no índice único `(clinic_id, booking_key)` | [`appointment-keys.ts`](../apps/api/src/agenda/appointment-keys.ts) | — |
+| ~~2~~ | ~~**Escrita órfã.**~~ **Resolvido no PR 2**: o pedido local é gravado **antes** de qualquer chamada externa | [`agenda.service.ts`](../apps/api/src/agenda/agenda.service.ts) | — |
 | 3 | **Resposta perdida em silêncio.** Falha de `sendText` no caminho reativo é só logada | [`whatsapp.service.ts:202`](../apps/api/src/whatsapp/whatsapp.service.ts) | O cliente nunca recebe resposta e ninguém fica sabendo |
 | 4 | **Dedupe volátil.** `Map` em memória com TTL de 5 min | [`whatsapp.service.ts:34`](../apps/api/src/whatsapp/whatsapp.service.ts) | Reentrega após restart → cliente recebe a mesma resposta duas vezes |
 | ~~5~~ | ~~**Produção não diagnosticável.**~~ **Resolvido no PR 1** (2026-09-09) | [`common/`](../apps/api/src/common/) | — |

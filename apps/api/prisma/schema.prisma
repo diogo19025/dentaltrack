@@ -247,6 +247,12 @@ model Appointment {
   source                 AppointmentSource @default(bot)
   /// Id do agendamento no sistema de gestão (chave da sincronização).
   externalId             String?           @map("external_id")
+  /// P0.5 — chave de idempotência do agendamento (`agenda/appointment-keys.ts`).
+  /// É o que impede duplo clique, retry após timeout e o modelo chamando a tool
+  /// duas vezes de virarem dois agendamentos. NULL quando não há identidade de
+  /// contato para deduplicar — e nulo não colide com nulo em Postgres, então
+  /// esses casos seguem criando linhas independentes.
+  bookingKey             String?           @map("booking_key")
   professionalExternalId String?           @map("professional_external_id")
   professionalName       String?           @map("professional_name")
   unitExternalId         String?           @map("unit_external_id")
@@ -261,6 +267,7 @@ model Appointment {
   outboundMessages OutboundMessage[]
 
   @@unique([clinicId, externalId])
+  @@unique([clinicId, bookingKey])
   @@index([clinicId])
   @@index([conversationId])
   @@index([leadId])
