@@ -2,7 +2,38 @@
 
 > Fase 1 da etapa de maturidade. Deriva de [`maturity-audit.md`](maturity-audit.md).
 > Objetivo: encerrar o desenvolvimento exploratório e deixar o produto em estado de **validação comercial**.
-> Data: 2026-09-08.
+> Criado em 2026-09-08 · placar atualizado em 2026-09-09.
+
+## Placar
+
+**2 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
+
+| # | PR | Entrega | Status | Migration |
+|---|---|---|---|---|
+| 0 | Auditoria e plano | Fases 0 e 1 da spec, versionadas | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
+| 1 | **Observabilidade** (P0.3) | Correlação, logs JSON com redação de PII, filtro de exceções, Sentry | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
+| 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` + advisory lock | ⬜ a fazer | `f13_booking_idempotency` |
+| 3 | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar; `dispatchDue` com claim | ⬜ a fazer | `f14_outbound_claim` |
+| 4 | **Agenda real endurecida** (P0.1) | Retry só em leitura, erros tipados, `google:smoke` com escrita | ⬜ a fazer | — |
+| 5 | **Handoff humano** (P0.2) | IA pausável por conversa, endpoints, UI no dialog | ⬜ a fazer | `f15_handoff` |
+| 6 | **WhatsApp robusto** (P0.4) | `InboundMessage`, fila da resposta reativa, estado persistido | ⬜ a fazer | `f16_whatsapp_robustez` |
+| 7 | **Estados de erro e carregamento** (P1.3) | `ErrorState`, error boundaries, `api-client` | ⬜ a fazer | — |
+| 8 | **Permissões owner/staff** (P1.4) | `RolesGuard` + UI | ⬜ a fazer | — |
+| 9 | **LGPD operacional** (P1.5) | Anonimização, opt-out na UI, retenção | ⬜ a fazer | `f17_lgpd` |
+| 10 | **Onboarding + demo** (P1.1, P1.2) | Checklist derivado, seed completo | ⬜ a fazer | — |
+| 11 | **CI dos fluxos críticos** (P1.6) | 5 e2e de API + workflow + `chat.spec.ts` corrigido | ⬜ a fazer | — |
+| 12 | **Runbook de produção** (P1.7) | `docs/production-runbook.md` | ⬜ a fazer | — |
+
+Legenda: ✅ concluído · 🚧 em andamento · ⬜ a fazer · ⏸️ bloqueado (com o motivo na linha).
+
+### Como manter este placar honesto
+
+1. **A linha muda no mesmo commit que a entrega**, nunca depois. Placar atualizado em commit separado vira placar desatualizado.
+2. **Nenhum PR vira ✅ sem `pnpm typecheck && pnpm lint && pnpm test` verdes nos três pacotes.** Verde parcial é ⬜.
+3. **Quem entregar registra o que saiu diferente do planejado** numa nota `> O que mudou em relação ao planejado` na seção do requisito — como está no P0.3. É essa nota que evita a próxima pessoa refazer uma decisão já tomada.
+4. **Não marcar ✅ por antecipação.** Um PR aberto e não mergeado é 🚧.
+
+---
 
 ## Regras que valem para todo o plano
 
@@ -52,11 +83,13 @@ agenda.availability → agenda.book → agenda.sync → outbound.dispatch
 
 `WhatsappService.handleWebhook` usa o próprio `messageId` como `requestId` — assim a reentrega da Evolution fica visível no log em vez de virar duas entradas soltas.
 
-**Arquivos afetados.** `apps/api/src/common/*` (5 novos), `main.ts`, `app.module.ts`, `auth/tenant.guard.ts` (injeta `clinicId` no contexto — a query já acontece), `health/health.controller.ts` (acrescenta estado do WhatsApp, da agenda e a versão), `jobs/agenda.jobs.ts`, `apps/web/lib/api-client.ts` (envia `x-request-id` e exibe o código no erro — é o que transforma "deu erro" em uma busca no log). Sentry em `apps/api/src/sentry.ts` + `apps/web/instrumentation*.ts`, ativado só se `SENTRY_DSN` existir.
+**Arquivos entregues.** Sete em `apps/api/src/common/` (`request-context`, `request-id.middleware`, `structured-logger`, `redact`, `all-exceptions.filter`, `http-logging.interceptor`, `sentry`) mais `observability.module.ts`; `main.ts`, `app.module.ts`, `auth/tenant.guard.ts` (injeta `clinicId` no contexto — a query já acontecia), `health/` (versão do deploy, transporte do WhatsApp, monitoramento), `config/env.validation.ts`, `chat/chat.service.ts`, `whatsapp/whatsapp.service.ts`, `agenda/agenda.service.ts`, `jobs/agenda.jobs.ts`, `packages/shared/src/health.ts` e `apps/web/lib/api-client.ts` (envia e expõe o `x-request-id` — é o que transforma "deu erro" numa busca no log).
+
+**Diferença em relação ao plano original:** o Sentry ficou em `common/sentry.ts` (não na raiz) e **não houve instrumentação do Next.js**. O erro que importa diagnosticar nasce no backend — chamada de IA, envio pelo WhatsApp, escrita na agenda —, e o front já carrega o `requestId` que liga a tela ao log do servidor. Instrumentar o web ficou registrado como sugestão futura, não como dívida do P0.3.
 
 **Banco.** Nenhuma alteração.
 
-**Testes.** `all-exceptions.filter.spec.ts`; `structured-logger.spec.ts` (formato JSON + redação); `request-context.spec.ts` (contexto sobrevive a `await`); um teste garantindo que nenhum log carrega telefone cru.
+**Testes entregues.** 37 novos (API foi de 428 para 465): `redact.spec` (telefone e e-mail em log real, sem falso positivo em UUID), `request-context.spec` (contexto sobrevive a `await` e isola escopos concorrentes), `structured-logger.spec` (JSON, redação, log não serializável não derruba a operação), `all-exceptions.filter.spec` (corpos preservados, nada escrito após o início da resposta), `request-id.middleware.spec` (id forjado com quebra de linha é descartado) e `health.controller.spec`.
 
 **Risco:** médio — troca o logger global. Mitigado por `LOG_FORMAT`, que permite voltar ao formato antigo por env.
 **Esforço:** M. **Dependências:** nenhuma.
@@ -65,7 +98,7 @@ agenda.availability → agenda.book → agenda.sync → outbound.dispatch
 
 ---
 
-## P0.5 · Idempotência dos agendamentos
+## P0.5 · Idempotência dos agendamentos ⬜ *PRs 2 e 3*
 
 **Estado atual.** `AgendaService.book()` chama o provedor **antes** de gravar no banco, e a gravação local não tem chave de dedupe. Cancelar e remarcar não existem em nenhuma camada.
 
@@ -98,7 +131,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.1 · Agenda real ponta a ponta
+## P0.1 · Agenda real ponta a ponta ⬜ *PR 4*
 
 **Estado atual.** Adapters completos, timeout de 15s, **sem retry**. `AgendaProviderError` só tem mensagem — a UI não distingue credencial recusada de API fora do ar. A aba Integração tem zero tratamento de erro. O caminho de escrita nunca foi exercitado contra API real (o smoke é só-leitura por design).
 
@@ -121,7 +154,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.2 · Handoff humano
+## P0.2 · Handoff humano ⬜ *PR 5*
 
 **Estado atual.** Não existe. O `RemindersModule` já envia texto pelo WhatsApp e o persiste na conversa — é o transporte pronto.
 
@@ -145,7 +178,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.4 · Robustez da conexão WhatsApp
+## P0.4 · Robustez da conexão WhatsApp ⬜ *PR 6*
 
 **Estado atual.** Dedupe em memória; falha de envio reativo perdida; transporte sem timeout nem retry; estado da conexão só existe enquanto alguém olha `/settings`.
 
@@ -175,7 +208,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 # P1 — maturidade operacional
 
-## P1.4 · Permissões (owner / staff)
+## P1.4 · Permissões (owner / staff) ⬜ *PR 8*
 
 **Estado atual.** `Membership.role` e `enum Role { owner, staff }` existem no schema e **nunca são lidos**.
 
@@ -185,7 +218,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 **Risco:** médio — trancar alguém para fora. Mitigado: todo membership existente é `owner` por default, e `@Roles` fica limitado aos seis grupos listados.
 **Esforço:** M. **Fora:** RBAC genérico, editor de permissões, tela de convite de membros (criar `staff` fica documentado no runbook).
 
-## P1.3 · Estados de erro e carregamento
+## P1.3 · Estados de erro e carregamento ⬜ *PR 7*
 
 **Estado atual.** Sem error boundary; `integration-tab` e `automations-tab` sem nenhum `isError`; o padrão `isLoading || !data ? <Skeleton/>` gera **skeleton eterno** em erro (dashboard, automações, WhatsApp); `onExport` com `try/finally` sem `catch`; `catch {}` vazio no bootstrap do layout; `api-client` sem timeout e com `res.json()` sem guard (quebra em 204).
 
@@ -195,7 +228,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 **Banco.** Nenhuma. **Testes.** `api-client` (204, timeout, requestId), `ErrorState`, `ConfirmDialog`, e um por aba corrigida (erro renderiza mensagem, não skeleton). **Risco:** baixo. **Esforço:** M.
 
-## P1.5 · LGPD operacional
+## P1.5 · LGPD operacional ⬜ *PR 9*
 
 **Anonimização, não exclusão física.** `DELETE /leads/:id/dados-pessoais` (owner-only), numa `$transaction`: o lead perde nome, telefone, e-mail e `externalId`; as conversas perdem `contactPhone`; o conteúdo das mensagens e do corpo das mensagens de saída é substituído. **`Appointment` é preservado** — não carrega PII própria, e apagá-lo destruiria histórico e `DailyMetric`. **`ContactOptOut` é mantido, deliberadamente:** aquele telefone é justamente o que impede reenviar mensagem para quem pediu para parar; apagá-lo em nome da privacidade produziria a violação que ele previne.
 
@@ -203,15 +236,15 @@ Logs sem PII já vêm do `redactPhone` do P0.3 — nenhum serviço precisa ser e
 
 **Banco.** `f17_lgpd`: `Lead.anonymizedAt DateTime?`. **Testes.** Anonimiza tudo o que deve, é idempotente, cross-tenant → 404. **Risco:** médio (operação destrutiva) — mitigado por owner-only, confirmação, transação e ausência de delete físico. **Esforço:** M. **Dependências:** P0.3, P1.3, P1.4.
 
-## P1.1 · Onboarding guiado
+## P1.1 · Onboarding guiado ⬜ *PR 10*
 
 `GET /onboarding/checklist` **derivado das tabelas existentes**, como o `NotificationsService` faz — nenhuma tabela nova, ~50 linhas. Seis itens `{ key, label, done, href }`: identidade, procedimentos, tags, WhatsApp conectado (usa o `whatsappState` do P0.4), agenda conectada, automações revisadas. Um card no topo do dashboard, que some quando tudo está feito. Depende do `?tab=` do P1.3. **Banco.** Nenhuma. **Risco:** baixo. **Esforço:** P-M. **Dependências:** P0.4, P1.3.
 
-## P1.2 · Ambiente de demonstração
+## P1.2 · Ambiente de demonstração ⬜ *PR 10*
 
 `seed.ts` ganha `AutomationSettings`, `ClinicIntegration` em `mode: 'mock'` **com os `statusMappings` já preenchidos** — é isso que faz a `/agenda` demo ter conteúdo real — e feriados. `seed-demo.ts` ganha agendamentos nos seis status com horário real, `OutboundMessage` nos quatro status (cobre a aba Automações e o painel de mensagens programadas), dois opt-outs e duas conversas em handoff. `Membership` só é criada se `DEMO_USER_ID` vier por env — inventar um UUID geraria membership órfã. Correção associada: memoizar o `MockAgendaProvider` por empresa no `IntegrationService` (três linhas), senão a agenda demo se contradiz entre chamadas. **Banco.** Nenhuma. **Validação:** rodar e conferir as sete telas. **Risco:** baixo. **Esforço:** P-M. **Dependências:** P0.2, P0.4.
 
-## P1.6 · CI para os fluxos críticos
+## P1.6 · CI para os fluxos críticos ⬜ *PR 11*
 
 Duas camadas, escolhendo a mais barata por fluxo. Os cinco fluxos da spec vão para **supertest na API** — `apps/api/test/jest-e2e.json` já existe, `supertest` já está instalado e não há nenhum spec: é infraestrutura pronta esperando os testes. O guard de auth já aceita HS256, então o CI assina o próprio token sem depender do Supabase real; o Evolution ganha `EVOLUTION_MODE=mock` que registra envios em memória (mesmo movimento do `LLM_PROVIDER=mock` e do `IntegrationMode=mock`, que já se provaram). O Playwright continua cobrindo a UI.
 
@@ -219,7 +252,7 @@ Duas camadas, escolhendo a mais barata por fluxo. Os cinco fluxos da spec vão p
 
 Duas correções de higiene junto: o `chat.spec.ts` **quebrado desde o whitelabel** (espera "clínica"/"consulta"; o código diz "empresa"/"atendimento") — CI vermelho no primeiro dia mata o hábito; e a senha de teste sai de `e2e/credentials.ts` para `E2E_PASSWORD` (hoje está em texto claro no repositório, apontando para o Supabase real). A proteção de branch é configuração do GitHub — documentada no runbook, não versionável. **Risco:** baixo. **Esforço:** M-G. **Dependências:** P0.2 e P0.5 (dois dos specs testam o que eles constroem).
 
-## P1.7 · Runbook de produção
+## P1.7 · Runbook de produção ⬜ *PR 12*
 
 `docs/production-runbook.md`, organizado **por sintoma** — que é como um problema de produção chega. "O bot parou de responder", "o cliente não recebeu o lembrete", "agendou e não apareceu na agenda", "WhatsApp desconectado", "erro 500 na tela" (→ pedir o `requestId` e buscar no log). Mais: topologia e onde ficam os logs, envs por serviço com o efeito de faltar cada uma, deploy e rollback (e o que **não** tem rollback), kill switches (`AUTOMATIONS_ENABLED=false`, `mode=desligado`, desconectar a instância), retenção e atendimento a titular, e uma seção honesta de **o que ainda não existe** (sem alertas automáticos, sem réplica, backup só o do Supabase). **Esforço:** P. Escrito por último, quando os outros itens já definiram o que há para diagnosticar.
 
@@ -227,23 +260,18 @@ Duas correções de higiene junto: o `chat.spec.ts` **quebrado desde o whitelabe
 
 # Ordem de execução
 
-| # | PR | Itens | Migration | Esforço |
-|---|---|---|---|---|
-| ✅ 0 | Auditoria e plano versionados | Fases 0 e 1 | — | P |
-| ✅ 1 | **Observabilidade** — entregue 2026-09-09 | P0.3 | — | M |
-| 2 | Idempotência do agendamento | P0.5 (parte 1) | `f13_booking_idempotency` | G |
-| 3 | Cancelar/remarcar + verificação de slot + claim da fila | P0.5 (parte 2) | `f14_outbound_claim` | G |
-| 4 | Retry, taxonomia de erro e smoke de escrita | P0.1 | — | M |
-| 5 | Handoff humano | P0.2 | `f15_handoff` | M |
-| 6 | WhatsApp robusto | P0.4 | `f16_whatsapp_robustez` | G |
-| 7 | Estados de erro e carregamento | P1.3 | — | M |
-| 8 | Permissões owner/staff | P1.4 | — | M |
-| 9 | LGPD | P1.5 | `f17_lgpd` | M |
-| 10 | Checklist de onboarding + seed demo | P1.1, P1.2 | — | M |
-| 11 | CI + E2E dos fluxos críticos | P1.6 | — | M-G |
-| 12 | Sentry, runbook e docs | P1.7 | — | P |
+> A lista com status vive no **[Placar](#placar)**, no topo. Aqui fica só o porquê da ordem — duas tabelas com a mesma informação divergem na primeira semana.
 
-**Racional:** primeiro o que dá visibilidade — não se conserta o que não se enxerga. Depois o que evita dano irreversível (duplicata na agenda real de uma clínica). Depois o canal, e só então a experiência e o governo dos dados. Os PRs 1 e 4 são independentes e podem sair em paralelo; o PR 2 é o de maior retorno absoluto.
+| # | Esforço | Por que está nesta posição |
+|---|---|---|
+| 1 | M | **Primeiro porque tudo depois loga nela.** Não se conserta o que não se enxerga. |
+| 2–3 | G | O que evita **dano irreversível**: agendamento duplicado na agenda real de um cliente. O PR 2 é o de maior retorno absoluto do plano. |
+| 4 | M | Endurece a agenda com os erros já classificados; independente do 1, pode sair em paralelo. |
+| 5–6 | M · G | O canal: handoff e a robustez do WhatsApp, que dependem da observabilidade para serem verificáveis. |
+| 7–9 | M | Experiência de erro, permissões e governo dos dados — nenhum é pré-requisito do outro. |
+| 10 | M | Onboarding e demo dependem de 5 e 6 para terem o que mostrar. |
+| 11 | M-G | O CI vem tarde de propósito: dois dos cinco fluxos críticos só existem depois de 2 e 5. |
+| 12 | P | O runbook por último, quando os outros já definiram o que há para diagnosticar. |
 
 ---
 
@@ -279,6 +307,7 @@ Migração para a Cloud API da Meta · novas automações · novos dashboards, g
 
 Registradas aqui em vez de implementadas. Nenhuma entra sem feedback de usuário real, necessidade observada em piloto, bloqueio concreto de venda ou cliente disposto a pagar.
 
+- **Sentry no front (`apps/web`).** O PR 1 instrumentou só a API, por decisão: o erro que importa diagnosticar nasce no backend, e o front já carrega o `requestId` que liga a tela ao log do servidor. Vale reavaliar se aparecer erro de renderização que os logs do servidor não expliquem.
 - **Projeto Supabase separado para o CI.** Hoje o isolamento do E2E é por clínica do usuário de teste, dentro do projeto real.
 - **Alertas automáticos** (WhatsApp caído, fila parada) por e-mail ou push, em vez de depender de alguém abrir a tela.
 - **Troca de empresa na UI.** O `TenantGuard` sempre pega a membership mais antiga; multi-clínica por usuário não tem seletor.

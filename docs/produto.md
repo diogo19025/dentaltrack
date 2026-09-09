@@ -245,7 +245,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm --filter @dentaltrack/web e2e   # Playwright — roda offline com LLM_PROVIDER=mock
 ```
 
-Estado em 2026-09-09: **465 testes na API** (Jest, ao lado do código) e **133 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md).
+Estado em 2026-09-09: **465 testes na API** (Jest, ao lado do código) e **145 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
 
 ---
 
@@ -290,13 +290,16 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 | 2026-08-31 | **F9** Agenda com horário real, integração Clinicorp e quatro automações com fila idempotente. |
 | 2026-09-01 | **F10** pareamento do WhatsApp por QR na tela · **F11** central de notificações · **F12** Google Agenda como provedor. |
 | 2026-09-08 | **Auditoria de maturidade** — [`maturity-audit.md`](maturity-audit.md) e [`maturity-plan.md`](maturity-plan.md). |
-| 2026-09-09 | **Observabilidade** (P0.3): correlação por `requestId`, logs JSON com redação de PII, filtro global de exceções, Sentry. |
+| 2026-09-09 | **Observabilidade** (P0.3, PR 1 do plano de maturidade): correlação por `requestId`, logs JSON com redação de PII, filtro global de exceções, Sentry. |
+| 2026-09-09 | Cartão "Assistente ativo" da sidebar virou dispensável, com a dispensa amarrada ao **login** (claim `session_id` do JWT) e não ao navegador — F5 e navegação não o trazem de volta; o próximo login traz. |
 
 ---
 
 ## § Onde estamos
 
-O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial. O plano de 12 PRs, com o que já foi feito e o que falta, está em [`maturity-plan.md`](maturity-plan.md).
+O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial.
+
+**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **2 de 12 concluídos** (auditoria e observabilidade). Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
 
 **Riscos abertos, registrados honestamente:**
 
