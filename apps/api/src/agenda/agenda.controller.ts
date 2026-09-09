@@ -1,16 +1,21 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   HttpCode,
+  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   type AgendaResponse,
+  type AppointmentSummary,
   type Availability,
   agendaQuerySchema,
+  rescheduleAppointmentSchema,
 } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
@@ -68,5 +73,33 @@ export class AgendaController {
       days: Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 60) : 10,
       limit: 20,
     });
+  }
+
+  /**
+   * Cancela na agenda real e aqui (P0.5). Idempotente: repetir devolve o
+   * agendamento já cancelado. Endpoint da equipe — **não** é tool do agente.
+   */
+  @Post(':id/cancelar')
+  @HttpCode(200)
+  cancel(
+    @ClinicId() clinicId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<AppointmentSummary> {
+    return this.agenda.cancel(clinicId, id);
+  }
+
+  /** Move o agendamento para outro horário (P0.5). Mesmo horário = no-op. */
+  @Post(':id/remarcar')
+  @HttpCode(200)
+  reschedule(
+    @ClinicId() clinicId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: unknown,
+  ): Promise<AppointmentSummary> {
+    const parsed = rescheduleAppointmentSchema.safeParse(body);
+    if (!parsed.success) {
+      throw new BadRequestException('Informe o novo horário (startsAt).');
+    }
+    return this.agenda.reschedule(clinicId, id, new Date(parsed.data.startsAt));
   }
 }
