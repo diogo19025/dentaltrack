@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AiUnavailableError } from '../ai/generate-reply';
 import { OptOutService } from '../automations/opt-out.service';
 import { ChatService } from '../chat/chat.service';
+import { runWithContext, setContext } from '../common/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from './evolution.service';
 import {
@@ -43,12 +44,34 @@ export class WhatsappService {
   /**
    * Processa um evento do webhook. **Nunca lança** (o controller já respondeu
    * 200 e isto roda em background): falhas são logadas e seguem.
+   *
+   * O turno roda dentro de um escopo de correlação próprio: o webhook nasce fora
+   * de um request HTTP, então não herda o `requestId` do middleware. O
+   * `messageId` da Evolution é o id natural — se ela reentregar a mensagem, as
+   * duas passagens aparecem no log sob o mesmo id, que é como se identifica uma
+   * reentrega sem adivinhar (P0.3).
    */
   async handleWebhook(payload: EvolutionWebhookPayload): Promise<void> {
+    const inbound = parseInboundMessage(payload);
+    if (!inbound) return;
+    await runWithContext(
+      { requestId: `wa:${inbound.messageId}`, channel: 'whatsapp' },
+      () => this.processInbound(inbound),
+    );
+  }
+
+  /** O turno em si, já dentro do escopo de correlação. */
+  private async processInbound(inbound: ParsedInbound): Promise<void> {
+    const startedAt = Date.now();
     try {
-      const inbound = parseInboundMessage(payload);
-      if (!inbound) return;
-      if (this.isDuplicate(inbound.messageId)) return;
+      if (this.isDuplicate(inbound.messageId)) {
+        this.logger.log({
+          event: 'whatsapp.inbound',
+          outcome: 'ok',
+          reason: 'reentrega_ignorada',
+        });
+        return;
+      }
 
       const clinicId = await this.resolveClinicId(inbound.instance);
       if (!clinicId) {
@@ -57,6 +80,12 @@ export class WhatsappService {
         );
         return;
       }
+      setContext({ clinicId });
+      this.logger.log({
+        event: 'whatsapp.inbound',
+        outcome: 'ok',
+        tipo: inbound.text ? 'texto' : 'audio',
+      });
 
       // Descadastro: confirma, **persiste** e não roda o bot neste turno. A
       // persistência é o que faz o pedido sobreviver a um restart — o que era
@@ -89,8 +118,18 @@ export class WhatsappService {
 
       if (reply || attachments.length > 0) {
         const target = await this.replyTarget(inbound);
-        if (reply)
+        if (reply) {
           await this.evolution.sendText(inbound.instance, target, reply);
+          // Fecha o fluxo `whatsapp.inbound → ai.reply → whatsapp.outbound`: com
+          // esta linha dá para afirmar que a resposta saiu, e sem ela dá para
+          // afirmar que não saiu — que é a pergunta que o suporte faz.
+          this.logger.log({
+            event: 'whatsapp.outbound',
+            outcome: 'ok',
+            durationMs: Date.now() - startedAt,
+            anexos: attachments.length,
+          });
+        }
         // Mídia da saudação/oferta (F6): enviada após o texto, uma a uma.
         // Best-effort — a falha de um anexo não impede os demais nem a resposta.
         for (const media of attachments) {
@@ -106,7 +145,13 @@ export class WhatsappService {
         }
       }
     } catch (err) {
-      await this.handleError(err, payload);
+      this.logger.error({
+        event: 'whatsapp.inbound',
+        outcome: 'fail',
+        durationMs: Date.now() - startedAt,
+        reason: err instanceof Error ? err.name : 'desconhecido',
+      });
+      await this.handleError(err, inbound);
     }
   }
 
@@ -181,20 +226,20 @@ export class WhatsappService {
   /** Trata erros do processamento: IA indisponível → fallback amigável. */
   private async handleError(
     err: unknown,
-    payload: EvolutionWebhookPayload,
+    inbound: ParsedInbound,
   ): Promise<void> {
     const detail = err instanceof Error ? err.message : String(err);
-    this.logger.error(`Falha ao processar webhook do WhatsApp: ${detail}`);
+    this.logger.error(
+      `Falha ao processar webhook do WhatsApp: ${detail}`,
+      err instanceof Error ? err.stack : undefined,
+    );
 
     if (err instanceof AiUnavailableError) {
-      const inbound = parseInboundMessage(payload);
-      if (inbound) {
-        await this.safeSend(
-          inbound.instance,
-          await this.replyTarget(inbound),
-          AI_FALLBACK,
-        );
-      }
+      await this.safeSend(
+        inbound.instance,
+        await this.replyTarget(inbound),
+        AI_FALLBACK,
+      );
     }
   }
 

@@ -5,6 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { setContext } from '../common/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 import type { AuthenticatedRequest } from './types';
 
@@ -30,6 +31,10 @@ export class TenantGuard implements CanActivate {
     }
 
     request.clinicId = membership.clinicId;
+    // A empresa só é conhecida aqui: a partir deste ponto todo log do request
+    // sai com o `clinicId`, que é como se investiga um problema num produto
+    // multi-tenant sem abrir o banco (P0.3).
+    setContext({ clinicId: membership.clinicId });
     return true;
   }
 }

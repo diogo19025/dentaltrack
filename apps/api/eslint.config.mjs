@@ -29,6 +29,15 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-floating-promises': 'warn',
       '@typescript-eslint/no-unsafe-argument': 'warn',
+      // Argumento prefixado com `_` é ignorado (convenção do TypeScript).
+      // Quem implementa uma porta com vários adapters precisa declarar
+      // parâmetros que aquele adapter específico não usa — o Google não tem
+      // cadastro de pacientes, mas `findPatient` recebe a consulta mesmo assim.
+      // Apagar o parâmetro esconderia do leitor que a porta o passa.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },

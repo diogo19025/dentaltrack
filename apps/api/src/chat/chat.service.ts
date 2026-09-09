@@ -26,6 +26,7 @@ import { tagConversation } from '../ai/tagging';
 import { buildChatTools } from '../ai/tools';
 import { transcribeAudio } from '../ai/transcribe';
 import { AgendaService } from '../agenda/agenda.service';
+import { setContext } from '../common/request-context';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -152,6 +153,8 @@ export class ChatService {
       input.channel,
       input.contactPhone,
     );
+    // A partir daqui todo log do turno sai amarrado à conversa (P0.3).
+    setContext({ conversationId });
 
     // 1a. Primeiro contato desta conversa? (sem nenhuma mensagem ainda) → manda
     // a mídia de saudação (F6) junto da primeira resposta, se configurada.
@@ -197,7 +200,28 @@ export class ChatService {
 
     // 4. Gera sem streaming (com fallback de provider). Erro → AiUnavailableError.
     // As tools (ex.: `presentOffer`) preenchem `attachments` durante a geração.
-    const result = await generateAssistantReply(history, systemPrompt, tools);
+    const aiStartedAt = Date.now();
+    let result: GenerateReplyResult;
+    try {
+      result = await generateAssistantReply(history, systemPrompt, tools);
+    } catch (err) {
+      // Distingue "a IA não respondeu" de "a IA respondeu e o envio falhou" —
+      // são causas diferentes com correções diferentes, e hoje o log não separa.
+      this.logger.error({
+        event: 'ai.reply',
+        outcome: 'fail',
+        durationMs: Date.now() - aiStartedAt,
+        reason: err instanceof Error ? err.name : 'desconhecido',
+      });
+      throw err;
+    }
+    this.logger.log({
+      event: 'ai.reply',
+      outcome: 'ok',
+      durationMs: Date.now() - aiStartedAt,
+      tokens: result.tokens ?? null,
+      caracteres: result.text.length,
+    });
 
     // 5. Persiste a resposta + dispara o auto-tagging (igual ao onFinish do web).
     await this.persistAssistantReply(conversationId, input.clinicId, result);

@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { AutomationsModule } from './automations/automations.module';
 import { ChatModule } from './chat/chat.module';
 import { ClinicorpModule } from './clinicorp/clinicorp.module';
+import { ObservabilityModule } from './common/observability.module';
 import { validateEnv } from './config/env.validation';
 import { ConversationsModule } from './conversations/conversations.module';
 import { HealthModule } from './health/health.module';
@@ -24,6 +25,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
+    ObservabilityModule,
     PrismaModule,
     AuthModule,
     HealthModule,
