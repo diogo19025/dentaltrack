@@ -227,6 +227,11 @@ export const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
  */
 export const OUTBOUND_STATUSES = [
   "pendente",
+  /**
+   * Reivindicada por um despachante e ainda não enviada (P0.5). Dura segundos;
+   * se um processo cair no meio, o próximo tique devolve a linha a `pendente`.
+   */
+  "enviando",
   "enviado",
   "falhou",
   "cancelado",

@@ -257,6 +257,9 @@ model Appointment {
   professionalName       String?           @map("professional_name")
   unitExternalId         String?           @map("unit_external_id")
   lastSyncedAt           DateTime?         @map("last_synced_at")
+  /// P0.5 (PR 3) — quando foi cancelado pela equipe ou pela sincronização.
+  /// Cancelar o que já está cancelado é no-op: a data não é sobrescrita.
+  canceledAt             DateTime?         @map("canceled_at")
   createdAt              DateTime          @default(now()) @map("created_at")
   updatedAt              DateTime          @updatedAt @map("updated_at")
 
@@ -661,6 +664,9 @@ enum AutomationKind {
 /// Estado de um item da fila de saída (espelha OUTBOUND_STATUSES no shared).
 enum OutboundStatus {
   pendente
+  /// P0.5 (PR 3) — reivindicada por um despachante e ainda não enviada. É o
+  /// claim otimista que impede duas réplicas de mandarem o mesmo lembrete.
+  enviando
   enviado
   falhou
   cancelado
