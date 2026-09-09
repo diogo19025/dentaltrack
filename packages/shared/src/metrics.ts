@@ -4,7 +4,7 @@ import { tagColorSchema } from "./tags";
 
 /**
  * Contrato das métricas do dashboard (F3 · BE-3.2/3.3 ‖ FE-3.1..3.5).
- * Definições em docs/context.md §10. Escopado por empresa (o `clinicId` vem do
+ * Definições em docs/produto.md § Métricas. Escopado por empresa (o `clinicId` vem do
  * TenantGuard). Taxas vêm como fração 0..1 (o FE formata como %).
  */
 

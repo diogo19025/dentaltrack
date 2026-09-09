@@ -142,7 +142,7 @@ Mapeamento fixo: implante→teal · clareamento→amber · ortodontia→blue · 
   badge de delta (▲ success-tint / ▼ destructive-tint) quando houver; label (13px muted); número
   (30px/600, tabular); hint (12px muted); **sparkline** (área teal) nos 4 primeiros. Cards:
   Leads totais · Mensagens do bot (50d) · Taxa de resposta · Taxa de conversão · Em andamento · Não completadas.
-  *(Valores no protótipo são exemplos; ligue às métricas do `context.md §10`.)*
+  *(Valores no protótipo são exemplos; ligue às métricas do `produto.md § Métricas`.)*
 - **Linha (Recharts `LineChart`)** em card 1.7fr: 2 séries — Bot `--chart-1`, Paciente `--chart-3`;
   grid horizontal pontilhado; eixos discretos; legenda no header. Título "Volume de mensagens · Bot × paciente por dia · últimos 50 dias".
 - **Donut (Recharts `PieChart` innerRadius)** em card 1fr: status (Em andamento/Agendada/Abandonada)
@@ -206,7 +206,7 @@ Mapeamento fixo: implante→teal · clareamento→amber · ortodontia→blue · 
 ## State Management
 - `auth` (Supabase) · rota ativa (App Router) · `range` do dashboard · filtro/busca de leads ·
   estado do chat (mensagens, streaming) via `useChat`/Zustand · forms via RHF.
-- **Multi-tenant:** toda query carrega `clinicId` (ver `plan.md`). Dados via TanStack Query contra a API NestJS.
+- **Multi-tenant:** toda query carrega `clinicId` (ver `produto.md`). Dados via TanStack Query contra a API NestJS.
 
 ## Assets
 - **Ícones:** equivalentes **lucide-react** (chat, dashboard/grid, users, settings, send, search, bell,

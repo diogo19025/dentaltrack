@@ -5,7 +5,7 @@ import { tagColorSchema } from "./tags";
 /**
  * Contrato dos leads capturados (F3 · GET /leads ‖ FE-3.6). Escopado por
  * empresa (o `clinicId` vem do TenantGuard). Cada lead deriva interesse, tags e
- * status da(s) sua(s) conversa(s). Ver docs/plan.md §5/§6.
+ * status da(s) sua(s) conversa(s). Ver docs/produto.md § Modelo de dados.
  */
 
 /** Pílula de tag (nome + cor fixa do design). */

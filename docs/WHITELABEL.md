@@ -77,4 +77,4 @@ NEXT_PUBLIC_APP_TAGLINE=Plataforma de atendimento com IA
 - **Logo por upload** por clínica: hoje só monograma. Exige schema (`ClinicSettings.logoUrl`) + storage.
 - **Cores por clínica**: `--primary` e afins seguem fixos no `theme.css`.
 - **Nome default `"Nexo"`** em `brand.ts` é um **placeholder** — decisão de produto pendente.
-- **Docs herdados** (`context.md`, `plan.md`, handoff) ainda descrevem o produto como odontológico; não foram reescritos.
+- **Handoff de design** ainda descreve o produto como odontológico; não foi reescrito. (`context.md` e `plan.md`, que tinham o mesmo problema, foram substituídos por [`produto.md`](produto.md) em 2026-09-09.)

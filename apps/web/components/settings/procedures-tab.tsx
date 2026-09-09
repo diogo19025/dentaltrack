@@ -75,7 +75,7 @@ function MiniTag({ name, color }: { name: string; color: TagColor }) {
 /**
  * Aba "Procedimentos" das Configurações (BE-2.2 no FE). Sem mockup no handoff —
  * construída com o design system existente (Card + Table + Dialog), conforme
- * o plan.md §6. CRUD via TanStack Query contra `/procedures`. Cada procedimento
+ * o produto.md § Design. CRUD via TanStack Query contra `/procedures`. Cada procedimento
  * pode ter tags de interesse associadas (relação N:N).
  */
 export function ProceduresTab() {

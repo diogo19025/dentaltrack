@@ -206,9 +206,9 @@ describe('OutboundService (fila de saída · F9)', () => {
     it('mensagem de outra empresa não existe para este tenant', async () => {
       prismaMock.outboundMessage.findFirst.mockResolvedValueOnce(null);
 
-      await expect(
-        outbound.cancelPending(CLINIC, PENDING.id),
-      ).rejects.toThrow('Mensagem não encontrada.');
+      await expect(outbound.cancelPending(CLINIC, PENDING.id)).rejects.toThrow(
+        'Mensagem não encontrada.',
+      );
     });
 
     it('cancelar marca cancelado — a linha continua visível no histórico', async () => {

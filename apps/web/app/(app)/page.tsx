@@ -39,7 +39,7 @@ import { initials, timeAgo } from "@/lib/format";
  * Dashboard (FE-3.2..3.5) — réplica 1:1 de `screen_dashboard.jsx`: filtro de
  * período + 6 KPI cards (com sparkline) + linha (bot×cliente) + donut de
  * status + funil + top tags + tabela de conversas recentes. Dados reais via
- * TanStack Query (GET /metrics, GET /conversations). Métricas: context.md §10.
+ * TanStack Query (GET /metrics, GET /conversations). Métricas: produto.md § Métricas.
  */
 
 const RANGE_OPTIONS = [

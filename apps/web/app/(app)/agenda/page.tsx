@@ -48,7 +48,7 @@ const UPCOMING_LIMIT = 4;
  * assistente oferece aos clientes. Abaixo, o histórico das mensagens
  * automáticas — o que saiu e o que foi suprimido, com o motivo.
  *
- * Fora do handoff de design; segue o design system existente (plan.md §6).
+ * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
 export default function AgendaPage() {
   // Início da semana exibida (meia-noite local). 0 = semana que começa hoje.

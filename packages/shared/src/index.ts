@@ -1,6 +1,6 @@
 /**
  * @dentaltrack/shared — contrato (Zod + tipos) compartilhado entre
- * apps/api (NestJS) e apps/web (Next.js). Ver docs/plan.md §1/§2.
+ * apps/api (NestJS) e apps/web (Next.js). Ver docs/produto.md § Stack.
  */
 export * from "./enums";
 export * from "./media";

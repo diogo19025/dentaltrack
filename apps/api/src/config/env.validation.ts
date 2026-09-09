@@ -14,6 +14,20 @@ export const envSchema = z.object({
   // Origens permitidas no CORS (separadas por vírgula).
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
 
+  // ─── Observabilidade (P0.3) ───
+  // Formato do log. Sem ela, `production` sai em JSON e o resto em texto
+  // colorido. Existe para dar caminho de volta se o JSON atrapalhar uma
+  // investigação ao vivo.
+  LOG_FORMAT: z.enum(['json', 'pretty']).optional(),
+  // DSN do Sentry. **Ausente = monitoramento desligado**, sem erro: é o que
+  // mantém desenvolvimento e testes sem rede e sem ruído.
+  SENTRY_DSN: z.string().optional(),
+  // Amostragem de tracing. Default 0 — o valor aqui é o erro, não o APM.
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).optional(),
+  // Commit publicado, exposto em GET /health e usado como release no Sentry.
+  // A primeira pergunta quando um deploy sai errado é "qual versão está no ar?".
+  APP_VERSION: z.string().optional(),
+
   // ─── IA (BE-1.5 / BE-1.8) ───
   // Provider do LLM. Padrão: openai (GPT, API paga); google (Gemini) e groq
   // seguem como alternativas. "mock" é determinístico/offline (QA-4.2) — só para E2E/testes.

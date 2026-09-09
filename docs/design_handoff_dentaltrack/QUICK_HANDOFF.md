@@ -88,7 +88,7 @@ Transição de página: `fadeUp` (translateY 10→0) ao trocar de rota.
 2. **`/` Dashboard** (`screen_dashboard.jsx`) — filtro de período (7/30/**50**/90, default 50) +
    **6 KPI cards** (com sparkline) + **linha** (bot×paciente, Recharts `LineChart`) +
    **donut** de status (`PieChart` innerRadius) + **funil** (barras) + **top tags** (barras horizontais) +
-   **tabela** de conversas recentes. Métricas conforme `context.md §10`.
+   **tabela** de conversas recentes. Métricas conforme `produto.md § Métricas`.
 3. **`/chat`** (`screen_chat.jsx`) — coluna do chat (header do bot com status online, lista de
    mensagens, quick replies, input) + **rail lateral** com Tags detectadas (confiança), Resumo e
    Sugestão. Streaming via **AI SDK `useChat`** (SSE do NestJS) — replique o efeito token-a-token e o

@@ -12,6 +12,7 @@ import {
   zonedTimeToUtc,
 } from '../common/time';
 import type {
+  PatientQuery,
   AgendaProvider,
   AgendaWindow,
   AvailabilityQuery,
@@ -19,7 +20,6 @@ import type {
   CreatePatientInput,
   ExternalAppointment,
   ExternalPatient,
-  PatientQuery,
 } from '../clinicorp/agenda-provider';
 import type {
   GoogleCalendarClient,

@@ -2,7 +2,7 @@
 
 > Canal WhatsApp via **Evolution API (Baileys — não-oficial, sem a API da Meta)**.
 > O motor do agente **não muda**: o WhatsApp é só um _adapter_ de borda que recebe
-> o webhook e chama o mesmo `ChatService`. Arquitetura: `docs/plan.md` §11.
+> o webhook e chama o mesmo `ChatService`. Arquitetura: [`produto.md`](produto.md) § Arquitetura.
 > ⚠️ **Higiene anti-banimento:** use um **número dedicado** (não o seu pessoal).
 
 ## Como funciona (visão geral)

@@ -85,6 +85,7 @@ export class AgendaService {
         (options.days ?? DEFAULT_AVAILABILITY_DAYS) * 24 * 3_600_000,
     );
 
+    const startedAt = Date.now();
     try {
       const slots = await provider.listAvailableSlots({
         from,
@@ -92,9 +93,21 @@ export class AgendaService {
         durationMinutes: options.durationMinutes ?? null,
         limit: options.limit ?? DEFAULT_SLOT_LIMIT,
       });
+      this.logger.log({
+        event: 'agenda.availability',
+        outcome: 'ok',
+        durationMs: Date.now() - startedAt,
+        horarios: slots.length,
+      });
       return { slots, live: provider.live };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn({
+        event: 'agenda.availability',
+        outcome: 'fail',
+        durationMs: Date.now() - startedAt,
+        reason: err instanceof Error ? err.name : 'desconhecido',
+      });
       this.logger.warn(
         `Não foi possível consultar a agenda da empresa ${clinicId}: ${detail}`,
       );
@@ -156,6 +169,7 @@ export class AgendaService {
         // promete retorno em vez de confirmar.
         this.logger.error(
           `Falha ao gravar o agendamento na agenda da empresa ${clinicId}: ${detail}`,
+          err instanceof Error ? err.stack : undefined,
         );
       }
     }
@@ -180,6 +194,18 @@ export class AgendaService {
         notes: input.procedureName,
       },
       select: { id: true },
+    });
+
+    // `confirmed: false` aqui é o sinal de que o pedido existe no DentalTrack e
+    // **não** existe na agenda da empresa — a divergência que o suporte precisa
+    // enxergar sem abrir o banco (P0.3).
+    this.logger.log({
+      event: 'agenda.book',
+      outcome: confirmed ? 'ok' : 'fail',
+      appointmentId: appointment.id,
+      confirmado: confirmed,
+      integracao: provider !== null,
+      comHorario: input.startsAt !== null,
     });
 
     return {

@@ -5,7 +5,7 @@ import { mediaTypeSchema, mediaUrlFieldSchema } from "./media";
  * Contrato de Configurações do bot (F2 · BE-2.1 / FE-2.1..2.5).
  * Alimenta o system prompt (BE-1.3) e a tela `/settings` (réplica de
  * `screen_settings.jsx`). O `clinicId` NÃO vem no body: é resolvido pelo
- * TenantGuard a partir do JWT. Ver docs/plan.md §5/§6.
+ * TenantGuard a partir do JWT. Ver docs/produto.md § Modelo de dados.
  */
 
 /** Tons de voz disponíveis para a persona (espelha o segmented do design). */

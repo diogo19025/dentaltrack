@@ -58,7 +58,7 @@ function sanitizeContactName(
 /**
  * Serviço de conversas (BE-1.2). Channel-agnostic — não conhece o canal.
  * Multi-tenant: toda operação é escopada por `clinicId` (derivado da conversa
- * quando não é informado), conforme docs/plan.md §2 e docs/context.md §6.
+ * quando não é informado), conforme docs/produto.md § Estrutura.
  */
 @Injectable()
 export class ConversationsService {

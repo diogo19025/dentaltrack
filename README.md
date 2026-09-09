@@ -26,9 +26,17 @@ Cada conversa vira um lead classificado automaticamente:
 - **Funil visual** — um quadro kanban mostra cada contato no estágio em que está: novo contato, interessado, quer agendar, escolhendo data, agendado. Os cards andam sozinhos conforme a conversa evolui, e você pode arrastar, criar colunas e adicionar contatos manualmente.
 - **Temperatura do lead** — cada contato ganha uma nota de quente, médio ou frio pelo comportamento na conversa, para você saber em quem focar primeiro.
 
+### Agenda de verdade, não "vou confirmar depois"
+
+O agente consulta os horários realmente livres na sua agenda e só diz "está marcado" quando marcou. Funciona com o **Clinicorp** ou direto na **Google Agenda** da equipe — e, se você ainda não tem sistema de gestão, há um modo simulado para experimentar antes de conectar qualquer coisa.
+
+### Cuida do cliente depois da conversa
+
+Lembretes automáticos 3 dias, 1 dia e 1 hora antes; aviso quando o cliente está atrasado; convite para remarcar quem faltou; e retorno de manutenção para quem sumiu. Tudo com janela de horário, respeito a feriado, teto diário e descadastro — e com um botão para desligar tudo.
+
 ### Mostra o que está acontecendo
 
-O painel responde as perguntas que importam: quantas pessoas chegaram, o que elas procuram, quantas viraram agendamento, quantas abandonaram e quantas voltaram. Sua base de leads pode ser exportada em Excel, CSV ou PDF a qualquer momento — e se você já tem uma planilha de contatos, importa direto.
+O painel responde as perguntas que importam: quantas pessoas chegaram, o que elas procuram, quantas viraram agendamento, quantas abandonaram e quantas voltaram. O sino avisa o que aconteceu enquanto você não olhava. Sua base de leads pode ser exportada em Excel, CSV ou PDF a qualquer momento — e se você já tem uma planilha de contatos, importa direto.
 
 ### Funciona onde seu cliente está
 
@@ -48,7 +56,8 @@ Nome da clínica, especialidade, tom de voz, saudação, ofertas, regras de aten
 | **Chat** | Converse com o agente e acompanhe as conversas, com as tags surgindo ao vivo. |
 | **Funil** | Quadro kanban dos contatos por estágio, com arrastar-e-soltar. |
 | **Leads** | Base de contatos com temperatura, detalhe de cada lead, exportação e importação. |
-| **Configurações** | Identidade, ofertas, catálogo de procedimentos e tags — tudo que molda o comportamento do agente. |
+| **Agenda** | Grade semanal dos agendamentos e histórico das mensagens programadas. |
+| **Configurações** | Identidade, ofertas, catálogo, tags, WhatsApp, automações e integração de agenda. |
 
 ---
 
@@ -94,11 +103,12 @@ pnpm --filter @dentaltrack/web e2e   # Playwright, roda offline em modo mock
 
 ### Documentação
 
-- [`docs/context.md`](docs/context.md) — especificação de produto
-- [`docs/plan.md`](docs/plan.md) — plano de execução
-- [`docs/update.md`](docs/update.md) — registro do que foi implementado
+- [`docs/produto.md`](docs/produto.md) — **documento único**: produto, arquitetura, modelo de dados, métricas, design e histórico
+- [`docs/maturity-plan.md`](docs/maturity-plan.md) — o que está sendo feito agora (confiabilidade e operação)
+- [`docs/maturity-audit.md`](docs/maturity-audit.md) — auditoria que originou esse plano
 - [`docs/DEPLOY.md`](docs/DEPLOY.md) — runbook de deploy (Vercel + Railway + Supabase)
 - [`docs/WHATSAPP.md`](docs/WHATSAPP.md) — runbook do canal WhatsApp
+- [`docs/CLINICORP.md`](docs/CLINICORP.md) · [`docs/GOOGLE_AGENDA.md`](docs/GOOGLE_AGENDA.md) — runbooks de agenda
 - [`docs/WHITELABEL.md`](docs/WHITELABEL.md) — modelo de marca e regras para código novo
 - [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) — design hi-fi (fonte de verdade visual)
 - [`CLAUDE.md`](CLAUDE.md) — guia canônico para agentes e devs

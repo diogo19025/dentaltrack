@@ -8,7 +8,7 @@ const ABANDON_AFTER_HOURS = Number(process.env.ABANDON_AFTER_HOURS ?? 24);
 /**
  * Jobs agendados (BE-3.4 · `@nestjs/schedule`):
  * - **markAbandoned** (de hora em hora): conversas `em_andamento` sem atividade
- *   por N horas viram `abandonada` (context.md §10 — "sem atividade por N horas").
+ *   por N horas viram `abandonada` (produto.md § Métricas — "sem atividade por N horas").
  * - **aggregateDaily** (1x/dia): pré-agrega `daily_metric` do dia anterior por
  *   empresa (alimenta o dashboard rápido; o GET /metrics calcula ao vivo no MVP).
  *

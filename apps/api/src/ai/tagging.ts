@@ -6,7 +6,7 @@ import { getModel } from './model';
 
 /**
  * Auto-tagging (BE-3.1): classifica o interesse de uma conversa e grava as tags
- * em `conversation_tag`. Mecanismo (docs/context.md §5.4): **pré-filtro por
+ * em `conversation_tag`. Mecanismo (docs/produto.md § O que existe hoje): **pré-filtro por
  * keyword** → **classificação por LLM com saída estruturada** (`generateObject`)
  * → grava acima do limiar de confiança.
  *

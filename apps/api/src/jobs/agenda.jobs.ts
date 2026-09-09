@@ -4,6 +4,7 @@ import { AgendaSyncService } from '../agenda/agenda-sync.service';
 import { AutomationPlannerService } from '../automations/automation-planner.service';
 import { HolidaysService } from '../automations/holidays.service';
 import { OutboundService } from '../automations/outbound.service';
+import { newCorrelationId, runWithContext } from '../common/request-context';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -35,24 +36,48 @@ export class AgendaJobs {
     private readonly holidays: HolidaysService,
   ) {}
 
-  /** Traz a agenda do sistema de gestão para cá. */
+  /**
+   * Traz a agenda do sistema de gestão para cá.
+   *
+   * Cada rodada abre o próprio escopo de correlação: um cron não nasce de um
+   * request, e sem isso as linhas de várias empresas se misturam no log sem
+   * nada que diga quais pertencem à mesma varredura (P0.3).
+   */
   @Cron(CronExpression.EVERY_10_MINUTES)
   async syncAgenda(): Promise<void> {
     if (this.syncing) return;
     this.syncing = true;
-    try {
-      const summary = await this.sync.syncAll();
-      if (summary.criados > 0 || summary.atualizados > 0) {
-        this.logger.log(
-          `Agenda sincronizada: ${summary.criados} novo(s), ${summary.atualizados} atualizado(s), ${summary.ignorados} ignorado(s).`,
-        );
-      }
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Falha na sincronização da agenda: ${detail}`);
-    } finally {
-      this.syncing = false;
-    }
+    const startedAt = Date.now();
+    await runWithContext(
+      { requestId: newCorrelationId('job'), channel: 'job' },
+      async () => {
+        try {
+          const summary = await this.sync.syncAll();
+          this.logger.log({
+            event: 'agenda.sync',
+            outcome: 'ok',
+            durationMs: Date.now() - startedAt,
+            criados: summary.criados,
+            atualizados: summary.atualizados,
+            ignorados: summary.ignorados,
+          });
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            {
+              event: 'agenda.sync',
+              outcome: 'fail',
+              durationMs: Date.now() - startedAt,
+              reason: err instanceof Error ? err.name : 'desconhecido',
+            },
+            err instanceof Error ? err.stack : undefined,
+          );
+          this.logger.error(`Falha na sincronização da agenda: ${detail}`);
+        } finally {
+          this.syncing = false;
+        }
+      },
+    );
   }
 
   /** Decide o que precisa sair e despacha o que já venceu. */
@@ -60,20 +85,39 @@ export class AgendaJobs {
   async runAutomations(): Promise<void> {
     if (this.dispatching) return;
     this.dispatching = true;
-    try {
-      const planned = await this.planner.planAll();
-      const summary = await this.outbound.dispatchDue();
-      if (planned > 0 || summary.enviados > 0 || summary.suprimidos > 0) {
-        this.logger.log(
-          `Automações: ${planned} enfileirada(s), ${summary.enviados} enviada(s), ${summary.suprimidos} suprimida(s), ${summary.falhas} falha(s).`,
-        );
-      }
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Falha na rodada de automações: ${detail}`);
-    } finally {
-      this.dispatching = false;
-    }
+    const startedAt = Date.now();
+    await runWithContext(
+      { requestId: newCorrelationId('job'), channel: 'job' },
+      async () => {
+        try {
+          const planned = await this.planner.planAll();
+          const summary = await this.outbound.dispatchDue();
+          this.logger.log({
+            event: 'outbound.dispatch',
+            outcome: 'ok',
+            durationMs: Date.now() - startedAt,
+            enfileiradas: planned,
+            enviadas: summary.enviados,
+            suprimidas: summary.suprimidos,
+            falhas: summary.falhas,
+          });
+        } catch (err) {
+          const detail = err instanceof Error ? err.message : String(err);
+          this.logger.error(
+            {
+              event: 'outbound.dispatch',
+              outcome: 'fail',
+              durationMs: Date.now() - startedAt,
+              reason: err instanceof Error ? err.name : 'desconhecido',
+            },
+            err instanceof Error ? err.stack : undefined,
+          );
+          this.logger.error(`Falha na rodada de automações: ${detail}`);
+        } finally {
+          this.dispatching = false;
+        }
+      },
+    );
   }
 
   /**
