@@ -58,7 +58,7 @@ function toDto(row: ProcedureRow): ProcedureDto {
  * Catálogo de procedimentos (BE-2.2). CRUD sempre escopado por `clinicId`
  * (multi-tenant). Cada procedimento pode ter tags de interesse associadas
  * (relação N:N) — alimenta as tools do agente (`suggestProcedures`) e o system
- * prompt (BE-1.3). Ver docs/plan.md §5.
+ * prompt (BE-1.3). Ver docs/produto.md § Modelo de dados.
  */
 @Injectable()
 export class ProceduresService {

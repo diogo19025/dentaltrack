@@ -9,7 +9,7 @@ import {
 } from '@dentaltrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
-/** Janela fixa das "Mensagens do bot" (requisito do produto — context.md §10). */
+/** Janela fixa das "Mensagens do bot" (requisito do produto — produto.md § Métricas). */
 const BOT_WINDOW_DAYS = 50;
 /** Pontos no sparkline dos KPIs. */
 const SPARK_POINTS = 12;
@@ -43,7 +43,7 @@ interface WindowStats {
 
 /**
  * Métricas do dashboard (BE-3.2/3.3). Escopado por `clinicId`. Definições em
- * docs/context.md §10. Calcula KPIs (com delta vs. janela anterior + sparkline),
+ * docs/produto.md § Métricas. Calcula KPIs (com delta vs. janela anterior + sparkline),
  * séries (linha bot×cliente/dia), funil, top tags e distribuição de status.
  * Tudo ao vivo no MVP (a pré-agregação `daily_metric` é alimentada pela cron).
  */

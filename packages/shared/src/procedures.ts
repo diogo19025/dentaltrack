@@ -4,7 +4,7 @@ import { mediaTypeSchema, mediaUrlFieldSchema } from "./media";
 /**
  * Contrato do catálogo de procedimentos (F2 · BE-2.2). CRUD escopado por
  * empresa (o `clinicId` vem do TenantGuard, nunca do body). Preços em centavos
- * para evitar floats — espelha o model Prisma `Procedure`. Ver docs/plan.md §5.
+ * para evitar floats — espelha o model Prisma `Procedure`. Ver docs/produto.md § Modelo de dados.
  */
 
 /** Procedimento como retornado pela API (GET /procedures). */

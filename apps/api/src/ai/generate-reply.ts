@@ -29,7 +29,7 @@ export interface GenerateReplyResult {
 /**
  * Erro de domínio (HTTP-agnóstico) quando o provedor de IA falha — chave
  * inválida, rate limit, timeout, indisponibilidade. O adapter (controller)
- * decide como traduzir para o canal (no web: 503). Ver docs/plan.md BE-1.8.
+ * decide como traduzir para o canal (no web: 503). Ver docs/produto.md § Arquitetura.
  */
 export class AiUnavailableError extends Error {
   constructor(readonly cause: unknown) {

@@ -103,7 +103,7 @@ const IGNORE = "__ignorar__";
  * servidor), roda a verificação **só-leitura** passo a passo e deixa o operador
  * confirmar o mapeamento de status.
  *
- * Fora do handoff de design; segue o design system existente (plan.md §6).
+ * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
 export function IntegrationTab() {
   const [choice, setChoice] = useState<IntegrationProvider | null>(null);

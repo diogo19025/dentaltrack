@@ -34,7 +34,7 @@ function TagPill({ name, color }: { name: string; color: TagColor }) {
 
 /**
  * Aba "Tags" das Configurações (BE-2.3 no FE). As `keywords` são os gatilhos do
- * auto-tagging (F3). Sem mockup — design system existente (plan.md §6).
+ * auto-tagging (F3). Sem mockup — design system existente (produto.md § Design).
  */
 export function TagsTab() {
   const { data: tags = [], isLoading } = useTags();

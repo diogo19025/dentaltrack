@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
  * WhatsApp cai de vez em quando (celular offline, aparelho removido na mão), e
  * reconectar precisa ser algo que o dono resolve sozinho — não um chamado.
  *
- * Fora do handoff de design; segue o design system existente (plan.md §6).
+ * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
 export function WhatsappTab() {
   const { data: connection, isLoading } = useWhatsappConnection();

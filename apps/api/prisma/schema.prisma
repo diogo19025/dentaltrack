@@ -3,7 +3,7 @@
 // F1 (BE-1.1 — base mínima): Procedure, Conversation, Message, Lead, Appointment.
 //   (clinic_settings, tag/conversation_tag e daily_metric chegam em F2/F3.)
 // Princípio: toda query é escopada por `clinic_id` (multi-tenant).
-// Docs: docs/plan.md §5, docs/context.md §9.
+// Docs: docs/produto.md § Modelo de dados.
 
 generator client {
   provider     = "prisma-client"
