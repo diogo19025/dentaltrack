@@ -179,4 +179,71 @@ describe('MockAgendaProvider (agenda simulada · F9)', () => {
       );
     });
   });
+
+  describe('cancelar e remarcar (P0.5)', () => {
+    const window = {
+      from: new Date(NOW.getTime() - 40 * 24 * 3_600_000),
+      to: new Date(NOW.getTime() + 10 * 24 * 3_600_000),
+    };
+
+    it('cancelar sobrepõe o status do agendamento de semente e persiste entre listagens', async () => {
+      const p = provider();
+      await p.cancelAppointment({ externalId: 'sim-seed-1' });
+
+      const found = (await p.listAppointments(window)).find(
+        (a) => a.externalId === 'sim-seed-1',
+      );
+      expect(found?.statusName).toBe('Cancelado');
+    });
+
+    it('cancelar duas vezes (ou id desconhecido) é sucesso — idempotente por transição', async () => {
+      const p = provider();
+      await expect(
+        p.cancelAppointment({ externalId: 'sim-seed-1' }),
+      ).resolves.toBeUndefined();
+      await expect(
+        p.cancelAppointment({ externalId: 'sim-seed-1' }),
+      ).resolves.toBeUndefined();
+      await expect(
+        p.cancelAppointment({ externalId: 'nao-existe' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('remarcar move o horário mantendo o id e volta o status para Agendado', async () => {
+      const p = provider();
+      const startsAt = new Date(NOW.getTime() + 4 * 24 * 3_600_000);
+      const moved = await p.rescheduleAppointment({
+        externalId: 'sim-seed-5', // a falta de ontem
+        patientId: '505',
+        patientName: 'Beatriz Farias',
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 30 * 60_000),
+        unitId: '1',
+        professionalId: '10',
+      });
+
+      expect(moved.externalId).toBe('sim-seed-5');
+      expect(moved.startsAt).toEqual(startsAt);
+      expect(moved.statusName).toBe('Agendado');
+
+      const listed = (await p.listAppointments(window)).find(
+        (a) => a.externalId === 'sim-seed-5',
+      );
+      expect(listed?.startsAt).toEqual(startsAt);
+    });
+
+    it('remarcar id desconhecido lança', async () => {
+      await expect(
+        provider().rescheduleAppointment({
+          externalId: 'nao-existe',
+          patientId: null,
+          patientName: 'X',
+          startsAt: NOW,
+          endsAt: NOW,
+          unitId: '1',
+          professionalId: '10',
+        }),
+      ).rejects.toThrow('não existe');
+    });
+  });
 });

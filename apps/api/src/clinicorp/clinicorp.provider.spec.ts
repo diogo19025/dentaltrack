@@ -262,4 +262,88 @@ describe('ClinicorpAgendaProvider (adapter da API real · F9)', () => {
     expect(appointment.startsAt.toISOString()).toBe('2026-09-12T17:30:00.000Z');
     expect(appointment.endsAt?.toISOString()).toBe('2026-09-12T18:00:00.000Z');
   });
+
+  describe('cancelar e remarcar (P0.5)', () => {
+    const rescheduleInput = {
+      externalId: '55',
+      patientId: '501',
+      patientName: 'Marina Alves',
+      patientPhone: '11999998888',
+      startsAt: new Date('2026-09-15T13:00:00.000Z'),
+      endsAt: new Date('2026-09-15T13:30:00.000Z'),
+      unitId: '1',
+      professionalId: '10',
+      procedureName: 'Manutenção',
+    };
+
+    it('cancelar usa a rota cancel_appointment (declarada desde a F9 e nunca chamada)', async () => {
+      const p = provider({ '/appointment/cancel_appointment': { body: {} } });
+      await p.cancelAppointment({ externalId: '55' });
+
+      const fetchMock = global.fetch as unknown as jest.Mock;
+      const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+      expect(String(url)).toContain('/appointment/cancel_appointment');
+      expect(init.method).toBe('POST');
+      // O client normaliza ids numéricos (`normalizeEntityIds`) — como nas
+      // demais rotas de escrita.
+      const sent = JSON.parse(init.body as string) as Record<string, unknown>;
+      expect(sent).toMatchObject({ AppointmentId: 55, Clinic_BusinessId: 1 });
+    });
+
+    it('404 no cancelamento conta como cancelado — repetir não é erro', async () => {
+      const p = provider({
+        '/appointment/cancel_appointment': { status: 404, text: 'not found' },
+      });
+      jest.spyOn(p['logger'], 'warn').mockImplementation(() => undefined);
+      await expect(
+        p.cancelAppointment({ externalId: '55' }),
+      ).resolves.toBeUndefined();
+    });
+
+    it('outros erros no cancelamento sobem', async () => {
+      const p = provider({
+        '/appointment/cancel_appointment': { status: 500, text: 'boom' },
+      });
+      await expect(p.cancelAppointment({ externalId: '55' })).rejects.toThrow(
+        AgendaProviderError,
+      );
+    });
+
+    it('remarcar = cancelar + recriar, e o id externo muda', async () => {
+      const p = provider({
+        '/appointment/cancel_appointment': { body: {} },
+        '/appointment/create_appointment_by_api': {
+          body: { AppointmentId: 77 },
+        },
+      });
+      jest.spyOn(p['logger'], 'log').mockImplementation(() => undefined);
+
+      const moved = await p.rescheduleAppointment(rescheduleInput);
+
+      const fetchMock = global.fetch as unknown as jest.Mock;
+      const paths = fetchMock.mock.calls.map(
+        ([url]) => new URL(String(url)).pathname,
+      );
+      expect(paths).toEqual([
+        '/rest/v1/appointment/cancel_appointment',
+        '/rest/v1/appointment/create_appointment_by_api',
+      ]);
+      expect(moved.externalId).toBe('77');
+      expect(moved.startsAt).toEqual(rescheduleInput.startsAt);
+    });
+
+    it('cancelou mas não conseguiu recriar: o erro diz isso, para ninguém confirmar nada', async () => {
+      const p = provider({
+        '/appointment/cancel_appointment': { body: {} },
+        '/appointment/create_appointment_by_api': {
+          body: { Result: 'PatientNameAlreadyExists' },
+        },
+      });
+      jest.spyOn(p['logger'], 'log').mockImplementation(() => undefined);
+
+      await expect(p.rescheduleAppointment(rescheduleInput)).rejects.toThrow(
+        /horário anterior foi cancelado.*PatientNameAlreadyExists/,
+      );
+    });
+  });
 });

@@ -10,11 +10,13 @@ import {
   AgendaProviderError,
   type AgendaWindow,
   type AvailabilityQuery,
+  type CancelAppointmentInput,
   type CreateAppointmentInput,
   type CreatePatientInput,
   type ExternalAppointment,
   type ExternalPatient,
   type PatientQuery,
+  type RescheduleAppointmentInput,
 } from './agenda-provider';
 import { CLINICORP_ROUTES, type ClinicorpClient } from './clinicorp.client';
 import {
@@ -281,6 +283,56 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
     };
   }
 
+  /**
+   * Cancela pela rota `cancel_appointment` — declarada no inventário desde a
+   * F9 e nunca chamada até o P0.5. Um 404 do fornecedor ("não existe") conta
+   * como cancelado: é o estado final que se queria, e repetir a operação não
+   * pode virar erro.
+   */
+  async cancelAppointment(input: CancelAppointmentInput): Promise<void> {
+    try {
+      await this.client.post(CLINICORP_ROUTES.cancelAppointment, {
+        AppointmentId: input.externalId,
+        Clinic_BusinessId: input.unitId ?? this.defaults.unitId ?? undefined,
+      });
+    } catch (err) {
+      if (isNotFound(err)) {
+        this.logger.warn(
+          `Agendamento ${input.externalId} já não existe no Clinicorp — tratado como cancelado.`,
+        );
+        return;
+      }
+      throw err;
+    }
+    this.logger.log(`Agendamento cancelado no Clinicorp: ${input.externalId}`);
+  }
+
+  /**
+   * O inventário da API **não expõe reagendamento**: remarcar é cancelar e
+   * recriar, e o id externo muda — por isso a porta devolve o agendamento
+   * inteiro. Se o cancelamento passar e a criação falhar, o horário antigo já
+   * foi liberado e o novo não existe: o erro sobe com essa informação para o
+   * chamador não confirmar nada ao cliente. Limite documentado em
+   * docs/CLINICORP.md.
+   */
+  async rescheduleAppointment(
+    input: RescheduleAppointmentInput,
+  ): Promise<ExternalAppointment> {
+    await this.cancelAppointment({
+      externalId: input.externalId,
+      unitId: input.unitId,
+    });
+    try {
+      return await this.createAppointment(input);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      throw new AgendaProviderError(
+        `O horário anterior foi cancelado no Clinicorp, mas o novo não pôde ser criado: ${detail}`,
+        err,
+      );
+    }
+  }
+
   /** Linha da agenda → agendamento normalizado. `null` se faltar o essencial. */
   private toAppointment(row: unknown): ExternalAppointment | null {
     const externalId = readId(
@@ -325,6 +377,16 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
       procedureName: readString(row, 'ProcedureName', 'Procedure', 'Category'),
     };
   }
+}
+
+/**
+ * O client traduz todo HTTP ≠ 2xx em `AgendaProviderError` com o status na
+ * mensagem ("respondeu 404"). É o único sinal disponível para "não existe".
+ */
+function isNotFound(err: unknown): boolean {
+  return (
+    err instanceof AgendaProviderError && /respondeu 404\b/.test(err.message)
+  );
 }
 
 /** "HH:mm" no fuso da empresa (formato que a criação de agendamento espera). */

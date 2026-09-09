@@ -147,12 +147,44 @@ export class GoogleCalendarClient {
     )) as GoogleEvent;
   }
 
+  /**
+   * Altera campos do evento (P0.5 — remarcar). `PATCH` e não `PUT`: só o que
+   * for enviado muda, e o resto do evento (descrição, propriedades do
+   * agente) fica como está.
+   */
+  async patchEvent(
+    calendarId: string,
+    eventId: string,
+    patch: Record<string, unknown>,
+  ): Promise<GoogleEvent> {
+    return (await this.request(
+      'PATCH',
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      { body: patch },
+    )) as GoogleEvent;
+  }
+
+  /**
+   * Apaga o evento (P0.5 — cancelar). **Idempotente:** 404 (não existe) e 410
+   * (já apagado) contam como sucesso — o estado final é o mesmo, e a porta
+   * exige que repetir o cancelamento não vire erro.
+   */
+  async deleteEvent(calendarId: string, eventId: string): Promise<void> {
+    await this.request(
+      'DELETE',
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+      { tolerateStatuses: [404, 410] },
+    );
+  }
+
   private async request(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     options: {
       query?: Record<string, string>;
       body?: Record<string, unknown>;
+      /** Códigos de erro que valem como sucesso sem corpo (ver `deleteEvent`). */
+      tolerateStatuses?: number[];
     } = {},
   ): Promise<unknown> {
     const token = await this.getAccessToken();
@@ -171,10 +203,13 @@ export class GoogleCalendarClient {
     });
 
     if (!response.ok) {
+      if (options.tolerateStatuses?.includes(response.status)) return undefined;
       throw new AgendaProviderError(
         `Google Calendar respondeu ${response.status} em ${path}: ${await safeBody(response)}`,
       );
     }
+    // `DELETE` responde 204 sem corpo — `json()` aqui explodiria com sucesso.
+    if (response.status === 204) return undefined;
     return response.json();
   }
 

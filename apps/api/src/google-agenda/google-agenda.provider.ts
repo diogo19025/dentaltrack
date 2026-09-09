@@ -16,10 +16,12 @@ import type {
   AgendaProvider,
   AgendaWindow,
   AvailabilityQuery,
+  CancelAppointmentInput,
   CreateAppointmentInput,
   CreatePatientInput,
   ExternalAppointment,
   ExternalPatient,
+  RescheduleAppointmentInput,
 } from '../clinicorp/agenda-provider';
 import type {
   GoogleCalendarClient,
@@ -242,6 +244,38 @@ export class GoogleAgendaProvider implements AgendaProvider {
       throw new Error('O Google não devolveu o evento criado.');
     }
     return created;
+  }
+
+  /** Apagar o evento é cancelar; o client já trata "não existe" como feito. */
+  async cancelAppointment(input: CancelAppointmentInput): Promise<void> {
+    await this.client.deleteEvent(this.config.calendarId, input.externalId);
+  }
+
+  /**
+   * Remarcar é mover o evento (`PATCH` de início/fim). O id **não muda**, e
+   * tudo o que o agente gravou no evento (paciente, procedimento) fica.
+   */
+  async rescheduleAppointment(
+    input: RescheduleAppointmentInput,
+  ): Promise<ExternalAppointment> {
+    const event = await this.client.patchEvent(
+      this.config.calendarId,
+      input.externalId,
+      {
+        start: {
+          dateTime: input.startsAt.toISOString(),
+          timeZone: this.timeZone,
+        },
+        end: { dateTime: input.endsAt.toISOString(), timeZone: this.timeZone },
+        // Um evento cancelado à mão e depois remarcado pela equipe volta a valer.
+        status: 'confirmed',
+      },
+    );
+    const moved = this.toAppointment(event);
+    if (!moved) {
+      throw new Error('O Google não devolveu o evento remarcado.');
+    }
+    return moved;
   }
 
   /** Evento → agendamento normalizado. Dia inteiro e sem horário viram `null`. */

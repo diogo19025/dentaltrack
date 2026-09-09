@@ -23,6 +23,8 @@ describe('GoogleAgendaProvider (Google Agenda atrás da porta · F12)', () => {
     freeBusy: jest.fn(),
     listEvents: jest.fn(),
     createEvent: jest.fn(),
+    patchEvent: jest.fn(),
+    deleteEvent: jest.fn(),
   };
 
   const provider = new GoogleAgendaProvider(
@@ -231,6 +233,69 @@ describe('GoogleAgendaProvider (Google Agenda atrás da porta · F12)', () => {
           unitId: config.calendarId,
           professionalId: GOOGLE_PROFESSIONAL_ID,
           procedureName: null,
+        }),
+      ).rejects.toThrow('não devolveu');
+    });
+  });
+
+  describe('cancelar e remarcar (P0.5)', () => {
+    it('cancelar apaga o evento da agenda configurada', async () => {
+      clientMock.deleteEvent.mockResolvedValue(undefined);
+
+      await provider.cancelAppointment({ externalId: 'evt-1' });
+
+      expect(clientMock.deleteEvent).toHaveBeenCalledWith(
+        config.calendarId,
+        'evt-1',
+      );
+    });
+
+    it('remarcar faz PATCH só de início/fim (o resto do evento fica) e mantém o id', async () => {
+      clientMock.patchEvent.mockResolvedValue({
+        id: 'evt-1',
+        status: 'confirmed',
+        start: { dateTime: '2026-09-04T14:00:00.000Z' },
+        end: { dateTime: '2026-09-04T14:30:00.000Z' },
+        extendedProperties: {
+          private: { dentaltrack: '1', dentaltrackPatientName: 'Marina' },
+        },
+      });
+
+      const moved = await provider.rescheduleAppointment({
+        externalId: 'evt-1',
+        patientId: null,
+        patientName: 'Marina',
+        startsAt: new Date('2026-09-04T14:00:00.000Z'),
+        endsAt: new Date('2026-09-04T14:30:00.000Z'),
+        unitId: config.calendarId,
+        professionalId: GOOGLE_PROFESSIONAL_ID,
+      });
+
+      const [calendarId, eventId, patch] = clientMock.patchEvent.mock
+        .calls[0] as [string, string, Record<string, unknown>];
+      expect(calendarId).toBe(config.calendarId);
+      expect(eventId).toBe('evt-1');
+      expect(Object.keys(patch).sort()).toEqual(['end', 'start', 'status']);
+      expect(patch.start).toEqual({
+        dateTime: '2026-09-04T14:00:00.000Z',
+        timeZone: TZ,
+      });
+      expect(moved.externalId).toBe('evt-1');
+      expect(moved.patientName).toBe('Marina');
+      expect(moved.startsAt.toISOString()).toBe('2026-09-04T14:00:00.000Z');
+    });
+
+    it('remarcar sem evento de volta lança — nunca "sucesso vazio"', async () => {
+      clientMock.patchEvent.mockResolvedValue({});
+      await expect(
+        provider.rescheduleAppointment({
+          externalId: 'evt-1',
+          patientId: null,
+          patientName: 'Marina',
+          startsAt: new Date('2026-09-04T14:00:00.000Z'),
+          endsAt: new Date('2026-09-04T14:30:00.000Z'),
+          unitId: config.calendarId,
+          professionalId: GOOGLE_PROFESSIONAL_ID,
         }),
       ).rejects.toThrow('não devolveu');
     });
