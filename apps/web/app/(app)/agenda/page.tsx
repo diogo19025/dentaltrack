@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shell/page-header";
+import { AppointmentActions } from "@/components/agenda/appointment-actions";
 import { ScheduledMessagesCard } from "@/components/agenda/scheduled-messages";
 import { useAgenda, useSyncAgenda } from "@/hooks/use-agenda";
 import { useAutomationHistory } from "@/hooks/use-automations";
@@ -306,7 +307,10 @@ function UpcomingSection({
                     ? formatWhen(appointment.startsAt)
                     : (appointment.preferredTime ?? "A combinar")}
                 </span>
-                <AppointmentBadge status={appointment.status} />
+                <div className="flex items-center gap-1">
+                  <AppointmentBadge status={appointment.status} />
+                  <AppointmentActions appointment={appointment} />
+                </div>
               </div>
               <div className="truncate text-sm font-medium">
                 {appointment.leadName ?? "Sem nome"}

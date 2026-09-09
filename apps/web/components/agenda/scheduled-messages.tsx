@@ -385,6 +385,7 @@ function describeOutcome(message: OutboundMessageSummary): string {
   if (message.status === "pendente") {
     return `Sai em ${new Date(message.scheduledFor).toLocaleString("pt-BR")}`;
   }
+  if (message.status === "enviando") return "Saindo agora…";
   if (message.status === "falhou") return "Falha no envio — será tentada de novo";
   if (message.status === "cancelado") return "Cancelada pela equipe";
   if (message.reason) {
