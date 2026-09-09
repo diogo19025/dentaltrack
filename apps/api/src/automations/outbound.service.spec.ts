@@ -65,6 +65,8 @@ describe('OutboundService (fila de saída · F9)', () => {
     evolutionMock.sendText.mockResolvedValue(undefined);
     prismaMock.outboundMessage.findUnique.mockResolvedValue(null);
     prismaMock.outboundMessage.count.mockResolvedValue(0);
+    // Claim otimista (P0.5): por padrão este despachante vence a disputa.
+    prismaMock.outboundMessage.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.clinicSettings.findUnique.mockResolvedValue({
       whatsappInstance: 'dentaltrack',
     });
@@ -96,11 +98,22 @@ describe('OutboundService (fila de saída · F9)', () => {
   const created = () => prismaMock.outboundMessage.create.mock.calls[0][0].data;
 
   describe('enqueue — idempotência', () => {
-    it('mesma chave não cria uma segunda mensagem', async () => {
-      prismaMock.outboundMessage.findUnique.mockResolvedValueOnce({ id: 'x' });
+    it('mesma chave não cria uma segunda mensagem — o índice único decide, não uma leitura antes', async () => {
+      // Check-then-create deixava duas rodadas sobrepostas passarem as duas
+      // pela checagem (P0.5). Agora a colisão no índice é a resposta.
+      prismaMock.outboundMessage.create.mockRejectedValueOnce(
+        Object.assign(new Error('Unique constraint'), { code: 'P2002' }),
+      );
 
       expect(await outbound.enqueue(baseEnqueue)).toBe('duplicado');
-      expect(prismaMock.outboundMessage.create).not.toHaveBeenCalled();
+      expect(prismaMock.outboundMessage.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('erro que não seja colisão de chave sobe', async () => {
+      prismaMock.outboundMessage.create.mockRejectedValueOnce(
+        new Error('banco fora'),
+      );
+      await expect(outbound.enqueue(baseEnqueue)).rejects.toThrow('banco fora');
     });
   });
 
@@ -377,7 +390,8 @@ describe('OutboundService (fila de saída · F9)', () => {
       expect(summary.falhas).toBe(1);
       const data = prismaMock.outboundMessage.update.mock.calls[0][0].data;
       expect(data.retries).toEqual({ increment: 1 });
-      expect(data.status).toBeUndefined(); // continua pendente
+      // Devolve o claim: a linha estava em `enviando` e precisa voltar à fila.
+      expect(data.status).toBe('pendente');
     });
 
     it('esgotadas as tentativas, marca como falhou', async () => {
@@ -391,6 +405,63 @@ describe('OutboundService (fila de saída · F9)', () => {
       expect(
         prismaMock.outboundMessage.update.mock.calls[0][0].data,
       ).toMatchObject({ status: 'falhou' });
+    });
+  });
+
+  describe('dispatchDue — claim otimista (P0.5)', () => {
+    const pending = {
+      id: 'msg-1',
+      clinicId: CLINIC,
+      kind: 'lembrete_1d' as const,
+      dedupeKey: 'lembrete_1d:x:1',
+      body: 'Olá, Marina!',
+      phone: '5511999998888',
+      conversationId: CONVERSATION,
+      appointmentId: null,
+      createdAt: new Date('2026-09-08T13:00:00.000Z'),
+      retries: 0,
+    };
+
+    it('reivindica a linha (pendente → enviando) antes de mandar', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([pending]);
+
+      await outbound.dispatchDue(NOW);
+
+      expect(prismaMock.outboundMessage.updateMany).toHaveBeenCalledWith({
+        where: { id: 'msg-1', status: 'pendente' },
+        data: { status: 'enviando' },
+      });
+      // O claim acontece ANTES do envio.
+      const claimOrder =
+        prismaMock.outboundMessage.updateMany.mock.invocationCallOrder[1];
+      const sendOrder = evolutionMock.sendText.mock.invocationCallOrder[0];
+      expect(claimOrder).toBeLessThan(sendOrder);
+    });
+
+    it('quem perde a disputa não envia — duas réplicas, um lembrete', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([pending]);
+      prismaMock.outboundMessage.updateMany
+        .mockResolvedValueOnce({ count: 0 }) // devolução de claims presos
+        .mockResolvedValueOnce({ count: 0 }); // outra réplica levou a linha
+
+      const summary = await outbound.dispatchDue(NOW);
+
+      expect(evolutionMock.sendText).not.toHaveBeenCalled();
+      expect(summary).toEqual({ enviados: 0, suprimidos: 0, falhas: 0 });
+    });
+
+    it('devolve à fila linhas presas em "enviando" por um processo que caiu', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([]);
+
+      await outbound.dispatchDue(NOW);
+
+      expect(prismaMock.outboundMessage.updateMany).toHaveBeenCalledWith({
+        where: {
+          status: 'enviando',
+          updatedAt: { lt: new Date(NOW.getTime() - 10 * 60_000) },
+        },
+        data: { status: 'pendente' },
+      });
     });
   });
 

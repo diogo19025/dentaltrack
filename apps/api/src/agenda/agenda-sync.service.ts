@@ -103,11 +103,21 @@ export class AgendaSyncService {
     mappings: StatusMapping[],
     leadSource: string,
   ): Promise<'criados' | 'atualizados' | 'ignorados'> {
+    // A leitura só enriquece (status atual como fallback, contato já vinculado).
+    // A escrita é um `upsert` único sobre `(clinicId, externalId)` — o Prisma o
+    // executa como INSERT ... ON CONFLICT, então duas rodadas sobrepostas não
+    // disputam mais um `create` (P0.5): a segunda simplesmente atualiza.
     const existing = await this.prisma.appointment.findUnique({
       where: {
         clinicId_externalId: { clinicId, externalId: external.externalId },
       },
-      select: { id: true, status: true, leadId: true, conversationId: true },
+      select: {
+        id: true,
+        status: true,
+        leadId: true,
+        conversationId: true,
+        canceledAt: true,
+      },
     });
 
     const status = this.resolveStatus(mappings, external, existing?.status);
@@ -118,6 +128,7 @@ export class AgendaSyncService {
       existing?.conversationId ??
       (leadId ? await this.latestConversation(clinicId, leadId) : null);
 
+    const now = new Date();
     const data = {
       startsAt: external.startsAt,
       endsAt: external.endsAt,
@@ -127,23 +138,22 @@ export class AgendaSyncService {
       professionalName: external.professionalName,
       unitExternalId: external.unitExternalId,
       notes: external.procedureName,
-      lastSyncedAt: new Date(),
+      lastSyncedAt: now,
       leadId,
       conversationId,
+      // Cancelado na agenda da empresa → data do cancelamento registrada aqui
+      // (sem sobrescrever a que já existe); de volta a ativo → limpa.
+      canceledAt: status === 'cancelado' ? (existing?.canceledAt ?? now) : null,
     };
 
-    if (existing) {
-      await this.prisma.appointment.update({
-        where: { id: existing.id },
-        data,
-      });
-      return 'atualizados';
-    }
-
-    await this.prisma.appointment.create({
-      data: { clinicId, externalId: external.externalId, ...data },
+    await this.prisma.appointment.upsert({
+      where: {
+        clinicId_externalId: { clinicId, externalId: external.externalId },
+      },
+      create: { clinicId, externalId: external.externalId, ...data },
+      update: data,
     });
-    return 'criados';
+    return existing ? 'atualizados' : 'criados';
   }
 
   /**

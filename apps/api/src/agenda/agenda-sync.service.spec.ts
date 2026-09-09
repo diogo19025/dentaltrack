@@ -35,8 +35,7 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
   const prismaMock = {
     appointment: {
       findUnique: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
+      upsert: jest.fn(),
     },
     lead: {
       findUnique: jest.fn(),
@@ -63,7 +62,7 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     integrationsMock.activeProviderName.mockResolvedValue('clinicorp');
     integrationsMock.translateStatus.mockReturnValue(null);
     prismaMock.appointment.findUnique.mockResolvedValue(null);
-    prismaMock.appointment.create.mockResolvedValue({ id: 'a1' });
+    prismaMock.appointment.upsert.mockResolvedValue({ id: 'a1' });
     prismaMock.lead.findUnique.mockResolvedValue(null);
     prismaMock.lead.findFirst.mockResolvedValue(null);
     prismaMock.lead.create.mockResolvedValue({ id: 'lead-novo' });
@@ -82,7 +81,12 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     sync = moduleRef.get(AgendaSyncService);
   });
 
-  const createdData = () => prismaMock.appointment.create.mock.calls[0][0].data;
+  // A escrita é um `upsert` único (P0.5): `create` para o registro novo,
+  // `update` para o conhecido — os dois viajam na mesma chamada.
+  const createdData = () =>
+    prismaMock.appointment.upsert.mock.calls[0][0].create;
+  const updatedData = () =>
+    prismaMock.appointment.upsert.mock.calls[0][0].update;
 
   it('integração desligada: não faz nada', async () => {
     integrationsMock.getProvider.mockResolvedValueOnce(null);
@@ -116,7 +120,51 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     const summary = await sync.syncClinic(CLINIC, NOW);
 
     expect(summary.atualizados).toBe(1);
-    expect(prismaMock.appointment.create).not.toHaveBeenCalled();
+    expect(prismaMock.appointment.upsert).toHaveBeenCalledTimes(1);
+    // Contato e conversa já vinculados são preservados, não recalculados.
+    expect(updatedData()).toMatchObject({
+      leadId: 'lead-1',
+      conversationId: 'conv-1',
+    });
+  });
+
+  it('a escrita é um upsert único sobre (empresa, id externo) — sem corrida entre rodadas', async () => {
+    // Antes era "existe? então create, senão update": duas varreduras
+    // sobrepostas liam "não existe" e criavam as duas. Com `upsert` (INSERT ...
+    // ON CONFLICT), a segunda só atualiza.
+    await sync.syncClinic(CLINIC, NOW);
+
+    const call = prismaMock.appointment.upsert.mock.calls[0][0];
+    expect(call.where).toEqual({
+      clinicId_externalId: { clinicId: CLINIC, externalId: 'ext-1' },
+    });
+    expect(call.create).toMatchObject({
+      clinicId: CLINIC,
+      externalId: 'ext-1',
+    });
+    expect(call.update).not.toHaveProperty('externalId');
+  });
+
+  it('cancelado na agenda da empresa ganha a data do cancelamento; de volta a ativo, perde', async () => {
+    integrationsMock.translateStatus.mockReturnValueOnce('cancelado');
+    await sync.syncClinic(CLINIC, NOW);
+    expect(createdData().canceledAt).toBeInstanceOf(Date);
+
+    jest.clearAllMocks();
+    prismaMock.appointment.findUnique.mockResolvedValueOnce({
+      id: 'a1',
+      status: 'cancelado',
+      leadId: 'lead-1',
+      conversationId: null,
+      canceledAt: new Date('2026-09-01T00:00:00.000Z'),
+    });
+    integrationsMock.translateStatus.mockReturnValueOnce('agendado');
+    integrationsMock.activeProviderName.mockResolvedValue('clinicorp');
+    integrationsMock.statusMappingsOf.mockResolvedValue([]);
+    integrationsMock.getProvider.mockResolvedValue(providerMock);
+    providerMock.listAppointments.mockResolvedValue([external()]);
+    await sync.syncClinic(CLINIC, NOW);
+    expect(updatedData().canceledAt).toBeNull();
   });
 
   describe('status: ordem de autoridade', () => {
@@ -148,9 +196,7 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
 
       await sync.syncClinic(CLINIC, NOW);
 
-      expect(prismaMock.appointment.update.mock.calls[0][0].data.status).toBe(
-        'compareceu',
-      );
+      expect(updatedData().status).toBe('compareceu');
     });
 
     it('4º — registro novo sem pista nenhuma nasce agendado', async () => {
@@ -246,8 +292,8 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
       external({ externalId: 'ruim' }),
       external({ externalId: 'bom' }),
     ]);
-    prismaMock.appointment.create
-      .mockRejectedValueOnce(new Error('violação de unicidade'))
+    prismaMock.appointment.upsert
+      .mockRejectedValueOnce(new Error('banco recusou'))
       .mockResolvedValueOnce({ id: 'a2' });
 
     const summary = await sync.syncClinic(CLINIC, NOW);
