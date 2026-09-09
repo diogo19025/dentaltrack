@@ -9,11 +9,11 @@ import {
   LogOut,
   MessageCircle,
   Settings,
-  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
+import { AssistantCard } from "@/components/shell/assistant-card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -41,9 +41,12 @@ function isActive(pathname: string, href: string) {
 export function Sidebar({
   userEmail,
   clinicName,
+  sessionId,
 }: {
   userEmail: string;
   clinicName?: string;
+  /** Id do login atual — o cartão "Assistente ativo" reaparece quando ele muda. */
+  sessionId?: string | null;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -121,32 +124,7 @@ export function Sidebar({
 
       <div className="flex-1" />
 
-      <div className="px-[14px] pb-3">
-        <div
-          className="rounded-lg p-[14px]"
-          style={{ background: "var(--primary-tint)", border: "1px solid var(--primary-tint-strong)" }}
-        >
-          <div className="mb-2 flex items-center gap-2">
-            <Sparkles className="size-[15px]" style={{ color: "var(--primary)" }} />
-            <span className="text-[13px] font-semibold" style={{ color: "var(--primary-active)" }}>
-              Assistente ativo
-            </span>
-          </div>
-          <p
-            className="mb-[10px] text-xs leading-[1.45]"
-            style={{ color: "var(--primary-active)", opacity: 0.82 }}
-          >
-            O bot está online e respondendo clientes no canal Web.
-          </p>
-          <Link
-            href="/settings"
-            className="flex items-center justify-center gap-1 rounded-[var(--radius-sm)] bg-card py-2 text-[12.5px] font-semibold text-primary"
-            style={{ border: "1px solid var(--primary-tint-strong)" }}
-          >
-            Configurar
-          </Link>
-        </div>
-      </div>
+      <AssistantCard sessionId={sessionId} />
 
       <div className="border-t border-border p-3">
         <div className="flex items-center gap-[10px] rounded-md px-2 py-[6px]">

@@ -3,6 +3,7 @@ import { AppMain } from "@/components/shell/app-main";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { WhatsappOnboarding } from "@/components/whatsapp/whatsapp-onboarding";
+import { sessionIdFromToken } from "@/lib/session-id";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -40,7 +41,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex h-full overflow-hidden">
-      <Sidebar userEmail={user.email ?? "Conta"} />
+      {/* sessionId identifica o login: o cartão "Assistente ativo" da sidebar
+          aparece uma vez por login e, fechado, só volta no próximo. */}
+      <Sidebar
+        userEmail={user.email ?? "Conta"}
+        sessionId={sessionIdFromToken(session?.access_token)}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
         <AppMain>{children}</AppMain>
