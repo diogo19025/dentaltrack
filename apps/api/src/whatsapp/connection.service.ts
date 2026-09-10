@@ -10,12 +10,24 @@ import type {
   WhatsappConnectionState,
   WhatsappOnboardingAnswer,
 } from '@dentaltrack/shared';
+import { WHATSAPP_CONNECTION_STATES } from '@dentaltrack/shared';
+import { reportException } from '../common/sentry';
 import type { Env } from '../config/env.validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from './evolution.service';
 
 /** Tamanho máximo do nome de instância (a Evolution usa isso em rotas). */
 const MAX_INSTANCE_NAME = 40;
+const RECONNECT_INTERVAL_MS = 15 * 60_000;
+
+interface ClinicConnectionRecord {
+  name: string;
+  whatsappInstance: string | null;
+  whatsappOnboardingAnsweredAt: Date | null;
+  whatsappState: WhatsappConnectionState | null;
+  whatsappStateAt: Date | null;
+  whatsappLastError: string | null;
+}
 
 /**
  * Conexão do número de WhatsApp da empresa (F10) — o pareamento por QR que
@@ -32,6 +44,8 @@ const MAX_INSTANCE_NAME = 40;
 @Injectable()
 export class WhatsappConnectionService {
   private readonly logger = new Logger(WhatsappConnectionService.name);
+  /** Evita gerar QR/reconnect em laço; restart permite uma tentativa imediata. */
+  private readonly lastReconnectAttempt = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -49,11 +63,17 @@ export class WhatsappConnectionService {
       pairingCode: null,
       onboardingAnswered: clinic.whatsappOnboardingAnsweredAt !== null,
       serverReady: this.serverReady(),
-      lastError: null,
+      lastError: clinic.whatsappLastError,
     };
 
-    if (!clinic.whatsappInstance || !this.evolution.isConfigured()) {
+    if (!clinic.whatsappInstance) {
       return { ...base, state: 'nao_configurado' };
+    }
+    if (!this.evolution.isConfigured()) {
+      const detail =
+        'O servidor não tem EVOLUTION_API_URL / EVOLUTION_API_KEY configuradas.';
+      await this.persistState(clinicId, clinic, 'desconectado', detail);
+      return { ...base, state: 'desconectado', lastError: detail };
     }
 
     try {
@@ -61,10 +81,13 @@ export class WhatsappConnectionService {
         this.evolution.connectionState(clinic.whatsappInstance),
         this.evolution.fetchInstance(clinic.whatsappInstance),
       ]);
+      const state = toConnectionState(readField(stateResponse, 'state'));
+      await this.persistState(clinicId, clinic, state, null);
       return {
         ...base,
-        state: toConnectionState(readField(stateResponse, 'state')),
+        state,
         phone: readPhone(instanceResponse),
+        lastError: null,
       };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -73,6 +96,7 @@ export class WhatsappConnectionService {
       );
       // A instância existe do nosso lado; a Evolution é que não respondeu.
       // Reportar "desconectado" com o motivo é mais honesto do que "conectado".
+      await this.persistState(clinicId, clinic, 'desconectado', detail, err);
       return { ...base, state: 'desconectado', lastError: detail };
     }
   }
@@ -128,22 +152,27 @@ export class WhatsappConnectionService {
       );
     }
 
-    // Grava o vínculo instância → empresa (é o que o webhook usa para resolver
-    // o tenant) e marca que a pergunta do 1º acesso foi respondida.
-    await this.link(clinicId, instanceName);
-
     const qrCode = readQrCode(response);
+    const state: WhatsappConnectionState = qrCode
+      ? 'aguardando_leitura'
+      : 'desconectado';
+    const lastError = qrCode
+      ? null
+      : 'A Evolution não devolveu o QR code. Tente novamente em instantes.';
+
+    // Grava o vínculo instância → empresa (é o que o webhook usa para resolver
+    // o tenant), o estado e a resposta à pergunta do 1º acesso numa escrita.
+    await this.link(clinicId, instanceName, state, lastError);
+
     return {
-      state: qrCode ? 'aguardando_leitura' : 'desconectado',
+      state,
       instanceName,
       phone: null,
       qrCode,
       pairingCode: readField(response, 'pairingCode'),
       onboardingAnswered: true,
       serverReady: true,
-      lastError: qrCode
-        ? null
-        : 'A Evolution não devolveu o QR code. Tente novamente em instantes.',
+      lastError,
     };
   }
 
@@ -182,7 +211,12 @@ export class WhatsappConnectionService {
       }
       await this.prisma.clinicSettings.updateMany({
         where: { clinicId },
-        data: { whatsappInstance: null },
+        data: {
+          whatsappInstance: null,
+          whatsappState: 'nao_configurado',
+          whatsappStateAt: new Date(),
+          whatsappLastError: null,
+        },
       });
     }
     return this.getStatus(clinicId);
@@ -217,6 +251,9 @@ export class WhatsappConnectionService {
     name: string;
     whatsappInstance: string | null;
     whatsappOnboardingAnsweredAt: Date | null;
+    whatsappState: WhatsappConnectionState | null;
+    whatsappStateAt: Date | null;
+    whatsappLastError: string | null;
   }> {
     const clinic = await this.prisma.clinic.findUniqueOrThrow({
       where: { id: clinicId },
@@ -226,6 +263,9 @@ export class WhatsappConnectionService {
           select: {
             whatsappInstance: true,
             whatsappOnboardingAnsweredAt: true,
+            whatsappState: true,
+            whatsappStateAt: true,
+            whatsappLastError: true,
           },
         },
       },
@@ -235,22 +275,131 @@ export class WhatsappConnectionService {
       whatsappInstance: clinic.settings?.whatsappInstance ?? null,
       whatsappOnboardingAnsweredAt:
         clinic.settings?.whatsappOnboardingAnsweredAt ?? null,
+      whatsappState: normalizeStoredState(clinic.settings?.whatsappState),
+      whatsappStateAt: clinic.settings?.whatsappStateAt ?? null,
+      whatsappLastError: clinic.settings?.whatsappLastError ?? null,
     };
   }
 
-  private async link(clinicId: string, instanceName: string): Promise<void> {
+  private async link(
+    clinicId: string,
+    instanceName: string,
+    state: WhatsappConnectionState,
+    lastError: string | null,
+  ): Promise<void> {
+    const now = new Date();
     await this.prisma.clinicSettings.upsert({
       where: { clinicId },
       create: {
         clinicId,
         whatsappInstance: instanceName,
-        whatsappOnboardingAnsweredAt: new Date(),
+        whatsappOnboardingAnsweredAt: now,
+        whatsappState: state,
+        whatsappStateAt: now,
+        whatsappLastError: lastError,
       },
       update: {
         whatsappInstance: instanceName,
-        whatsappOnboardingAnsweredAt: new Date(),
+        whatsappOnboardingAnsweredAt: now,
+        whatsappState: state,
+        whatsappStateAt: now,
+        whatsappLastError: lastError,
       },
     });
+  }
+
+  /**
+   * Persiste só transições reais. Assim o evento no sino mantém a data da
+   * queda em vez de parecer novo a cada polling de cinco minutos.
+   */
+  private async persistState(
+    clinicId: string,
+    clinic: ClinicConnectionRecord,
+    state: WhatsappConnectionState,
+    error: string | null,
+    cause?: unknown,
+  ): Promise<void> {
+    const lastError = error?.slice(0, 500) ?? null;
+    if (clinic.whatsappState === state) {
+      if (clinic.whatsappLastError !== lastError) {
+        await this.prisma.clinicSettings.updateMany({
+          where: { clinicId },
+          data: { whatsappLastError: lastError },
+        });
+      }
+      return;
+    }
+
+    // O estado anterior entra no WHERE: com duas réplicas, só uma registra a
+    // transição e emite o alerta; a outra encontra count=0.
+    const changed = await this.prisma.clinicSettings.updateMany({
+      where: { clinicId, whatsappState: clinic.whatsappState },
+      data: {
+        whatsappState: state,
+        whatsappStateAt: new Date(),
+        whatsappLastError: lastError,
+      },
+    });
+
+    if (changed.count === 1 && state === 'desconectado') {
+      this.logger.error({
+        event: 'whatsapp.disconnected',
+        outcome: 'fail',
+        reason: cause instanceof Error ? cause.name : 'sessao_fechada',
+      });
+      reportException(
+        cause instanceof Error
+          ? cause
+          : new Error('A sessão do WhatsApp foi desconectada.'),
+        { event: 'whatsapp.disconnected' },
+      );
+    }
+  }
+
+  /**
+   * Polling do servidor: atualiza o estado sem depender de alguém abrir a tela
+   * e tenta uma reconexão por instância no máximo a cada 15 minutos.
+   */
+  async checkAllConnections(
+    now = new Date(),
+  ): Promise<{ checked: number; reconnectAttempts: number }> {
+    const rows = await this.prisma.clinicSettings.findMany({
+      where: { whatsappInstance: { not: null } },
+      select: { clinicId: true, whatsappInstance: true },
+    });
+    let reconnectAttempts = 0;
+
+    for (const row of rows) {
+      const status = await this.getStatus(row.clinicId);
+      const instance = row.whatsappInstance;
+      if (
+        !instance ||
+        status.state !== 'desconectado' ||
+        !status.serverReady ||
+        !this.canAttemptReconnect(instance, now)
+      ) {
+        continue;
+      }
+
+      this.lastReconnectAttempt.set(instance, now.getTime());
+      reconnectAttempts += 1;
+      try {
+        await this.evolution.connectInstance(instance);
+        await this.getStatus(row.clinicId);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `Reconexão automática da instância ${instance} falhou: ${detail}`,
+        );
+      }
+    }
+
+    return { checked: rows.length, reconnectAttempts };
+  }
+
+  private canAttemptReconnect(instance: string, now: Date): boolean {
+    const last = this.lastReconnectAttempt.get(instance);
+    return last === undefined || now.getTime() - last >= RECONNECT_INTERVAL_MS;
   }
 
   private async markAnswered(clinicId: string): Promise<void> {
@@ -352,6 +501,14 @@ function toConnectionState(state: string | null): WhatsappConnectionState {
     default:
       return 'desconectado';
   }
+}
+
+function normalizeStoredState(
+  state: string | null | undefined,
+): WhatsappConnectionState | null {
+  return WHATSAPP_CONNECTION_STATES.includes(state as WhatsappConnectionState)
+    ? (state as WhatsappConnectionState)
+    : null;
 }
 
 export { readField, readPhone, readQrCode, toConnectionState };

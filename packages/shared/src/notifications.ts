@@ -24,6 +24,7 @@ import { z } from "zod";
  * - `conversa_abandonada` — o paciente sumiu no meio (cron de abandono);
  * - `automacao_falhou` — mensagem automática que NÃO saiu (lembrete, retomada) —
  *   é o tipo mais acionável: sem ele a falha é invisível até o paciente faltar.
+ * - `whatsapp_desconectado` — a sessão da empresa caiu e precisa de ação.
  */
 export const NOTIFICATION_TYPES = [
   "conversa_iniciada",
@@ -31,6 +32,7 @@ export const NOTIFICATION_TYPES = [
   "agendamento_criado",
   "conversa_abandonada",
   "automacao_falhou",
+  "whatsapp_desconectado",
 ] as const;
 export const notificationTypeSchema = z.enum(NOTIFICATION_TYPES);
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiUnavailableError } from '../ai/generate-reply';
 import { OptOutService } from '../automations/opt-out.service';
+import { OutboundService } from '../automations/outbound.service';
 import { ChatService } from '../chat/chat.service';
 import { runWithContext, setContext } from '../common/request-context';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,8 +12,8 @@ import {
   parseInboundMessage,
 } from './webhook.types';
 
-/** Janela (ms) de deduplicação de `messageId` — a Evolution pode reentregar. */
-const DEDUPE_TTL_MS = 5 * 60_000;
+/** Claims antigos não têm valor operacional e são removidos diariamente. */
+const INBOUND_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 /** Resposta quando a IA está indisponível (mantém o cliente informado). */
 const AI_FALLBACK =
@@ -31,14 +32,13 @@ const OPT_OUT_REPLY =
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
-  /** messageId → timestamp de processamento (dedupe best-effort, em memória). */
-  private readonly processed = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly chat: ChatService,
     private readonly evolution: EvolutionService,
     private readonly optOut: OptOutService,
+    private readonly outbound: OutboundService,
   ) {}
 
   /**
@@ -64,15 +64,8 @@ export class WhatsappService {
   private async processInbound(inbound: ParsedInbound): Promise<void> {
     const startedAt = Date.now();
     try {
-      if (this.isDuplicate(inbound.messageId)) {
-        this.logger.log({
-          event: 'whatsapp.inbound',
-          outcome: 'ok',
-          reason: 'reentrega_ignorada',
-        });
-        return;
-      }
-
+      // A empresa precisa ser conhecida antes do claim porque a unicidade é
+      // `(clinicId, externalId)`: duas empresas não compartilham namespace.
       const clinicId = await this.resolveClinicId(inbound.instance);
       if (!clinicId) {
         this.logger.warn(
@@ -81,6 +74,15 @@ export class WhatsappService {
         return;
       }
       setContext({ clinicId });
+
+      if (!(await this.claimInbound(clinicId, inbound.messageId))) {
+        this.logger.log({
+          event: 'whatsapp.inbound',
+          outcome: 'ok',
+          reason: 'reentrega_ignorada',
+        });
+        return;
+      }
       this.logger.log({
         event: 'whatsapp.inbound',
         outcome: 'ok',
@@ -108,18 +110,33 @@ export class WhatsappService {
       const turn = await this.buildTurn(inbound);
       if (!turn) return; // tipo não suportado / mídia indisponível
 
-      const { reply, attachments } = await this.chat.processInboundMessage({
-        clinicId,
-        channel: 'whatsapp',
-        contactPhone: inbound.phone,
-        contactName: inbound.pushName,
-        ...turn,
-      });
+      const { conversationId, reply, attachments } =
+        await this.chat.processInboundMessage({
+          clinicId,
+          channel: 'whatsapp',
+          contactPhone: inbound.phone,
+          contactName: inbound.pushName,
+          ...turn,
+        });
 
       if (reply || attachments.length > 0) {
         const target = await this.replyTarget(inbound);
         if (reply) {
-          await this.evolution.sendText(inbound.instance, target, reply);
+          try {
+            await this.evolution.sendText(inbound.instance, target, reply);
+          } catch (err) {
+            await this.queueFailedReply({
+              clinicId,
+              conversationId,
+              messageId: inbound.messageId,
+              phone: inbound.phone,
+              body: reply,
+              err,
+            });
+            // Sem o texto, os anexos de saudação/oferta perderiam contexto.
+            // A fila recupera o texto; mídia continua best-effort e não sai só.
+            return;
+          }
           // Fecha o fluxo `whatsapp.inbound → ai.reply → whatsapp.outbound`: com
           // esta linha dá para afirmar que a resposta saiu, e sem ela dá para
           // afirmar que não saiu — que é a pergunta que o suporte faz.
@@ -212,15 +229,71 @@ export class WhatsappService {
     return settings?.clinicId ?? null;
   }
 
-  /** Dedupe best-effort por messageId, com limpeza preguiçosa da janela. */
-  private isDuplicate(messageId: string): boolean {
-    const now = Date.now();
-    for (const [id, ts] of this.processed) {
-      if (now - ts > DEDUPE_TTL_MS) this.processed.delete(id);
+  /**
+   * Claim insert-first persistente. `P2002` é reentrega; qualquer outra falha
+   * é fail-open, porque responder duas vezes é recuperável e nunca responder
+   * não é. O erro fica no log para corrigir a dedupe sem parar o atendimento.
+   */
+  private async claimInbound(
+    clinicId: string,
+    externalId: string,
+  ): Promise<boolean> {
+    try {
+      await this.prisma.inboundMessage.create({
+        data: { clinicId, externalId },
+      });
+      return true;
+    } catch (err) {
+      if (isUniqueViolation(err)) return false;
+      this.logger.error({
+        event: 'whatsapp.inbound.dedupe',
+        outcome: 'fail_open',
+        reason: err instanceof Error ? err.name : 'desconhecido',
+      });
+      return true;
     }
-    if (this.processed.has(messageId)) return true;
-    this.processed.set(messageId, now);
-    return false;
+  }
+
+  /** Limpeza diária dos claims já fora da janela de reentrega útil. */
+  async cleanupInboundMessages(now = new Date()): Promise<number> {
+    const removed = await this.prisma.inboundMessage.deleteMany({
+      where: {
+        processedAt: {
+          lt: new Date(now.getTime() - INBOUND_RETENTION_MS),
+        },
+      },
+    });
+    return removed.count;
+  }
+
+  /** Falha do envio direto → fila idempotente, sem respeitar janela ativa. */
+  private async queueFailedReply(input: {
+    clinicId: string;
+    conversationId: string;
+    messageId: string;
+    phone: string;
+    body: string;
+    err: unknown;
+  }): Promise<void> {
+    const detail =
+      input.err instanceof Error ? input.err.message : String(input.err);
+    const result = await this.outbound.enqueue({
+      clinicId: input.clinicId,
+      kind: 'resposta_ia',
+      dedupeKey: `resposta:${input.messageId}`,
+      scheduledFor: new Date(),
+      body: input.body,
+      phone: input.phone,
+      conversationId: input.conversationId,
+      respectSendWindow: false,
+    });
+    this.logger.error({
+      event: 'whatsapp.outbound',
+      outcome: 'queued',
+      reason: input.err instanceof Error ? input.err.name : 'desconhecido',
+      queueResult: result,
+      detail,
+    });
   }
 
   /** Trata erros do processamento: IA indisponível → fallback amigável. */
@@ -256,4 +329,12 @@ export class WhatsappService {
       this.logger.error(`Falha ao enviar mensagem ao ${phone}: ${detail}`);
     }
   }
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
 }

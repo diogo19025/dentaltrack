@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -13,7 +14,15 @@ import {
   type MediaType,
   type Tone,
 } from "@dentaltrack/shared";
-import { Bot, Calendar, Check, Info, RefreshCw, Sparkles, Upload } from "lucide-react";
+import {
+  Bot,
+  Calendar,
+  Check,
+  Info,
+  RefreshCw,
+  Sparkles,
+  Upload,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -56,6 +65,12 @@ const TAB_OPTIONS = [
 ] as const;
 type Tab = (typeof TAB_OPTIONS)[number]["value"];
 
+function requestedTab(value: string | null): Tab {
+  return TAB_OPTIONS.some((option) => option.value === value)
+    ? (value as Tab)
+    : "identidade";
+}
+
 const TONE_OPTIONS: { value: Tone; label: string }[] = [
   { value: "formal", label: "Formal" },
   { value: "amigavel", label: "Amigável" },
@@ -90,9 +105,20 @@ const BLANK: ClinicSettingsDto = {
 };
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
   const { data, isLoading } = useSettings();
   const update = useUpdateSettings();
-  const [tab, setTab] = useState<Tab>("identidade");
+  const [tab, setTab] = useState<Tab>(() => requestedTab(tabFromUrl));
+  const [lastTabFromUrl, setLastTabFromUrl] = useState(tabFromUrl);
+
+  // O banner global pode apontar para esta mesma página enquanto ela já está
+  // montada. O React permite ajustar estado durante o render quando uma prop
+  // muda; o guard evita render em laço e não prende os cliques manuais à URL.
+  if (tabFromUrl !== lastTabFromUrl) {
+    setLastTabFromUrl(tabFromUrl);
+    setTab(requestedTab(tabFromUrl));
+  }
 
   const form = useForm<ClinicSettingsDto>({
     resolver: zodResolver(clinicSettingsSchema),
@@ -143,7 +169,11 @@ export default function SettingsPage() {
             >
               Cancelar
             </Button>
-            <Button type="button" onClick={onSubmit} disabled={!formState.isDirty || update.isPending}>
+            <Button
+              type="button"
+              onClick={onSubmit}
+              disabled={!formState.isDirty || update.isPending}
+            >
               <Check className="size-4" />
               {update.isPending ? "Salvando…" : "Salvar alterações"}
             </Button>
@@ -203,7 +233,9 @@ export default function SettingsPage() {
                 tone={tone}
                 setTone={(v) => setValue("tone", v, { shouldDirty: true })}
                 specialty={specialty}
-                setSpecialty={(v) => setValue("specialty", v, { shouldDirty: true })}
+                setSpecialty={(v) =>
+                  setValue("specialty", v, { shouldDirty: true })
+                }
                 greetingMediaType={greetingMediaType}
                 setGreetingMediaType={(v) =>
                   setValue("greetingMediaType", v, { shouldDirty: true })
@@ -213,13 +245,17 @@ export default function SettingsPage() {
               <OffersFields
                 register={register}
                 offerEnabled={offerEnabled}
-                setOfferEnabled={(v) => setValue("offerEnabled", v, { shouldDirty: true })}
+                setOfferEnabled={(v) =>
+                  setValue("offerEnabled", v, { shouldDirty: true })
+                }
                 offerMediaType={offerMediaType}
                 setOfferMediaType={(v) =>
                   setValue("offerMediaType", v, { shouldDirty: true })
                 }
                 availability={availability}
-                setAvailability={(a) => setValue("availability", a, { shouldDirty: true })}
+                setAvailability={(a) =>
+                  setValue("availability", a, { shouldDirty: true })
+                }
               />
             )}
           </div>
@@ -251,8 +287,14 @@ function SectionCard({
   return (
     <Card className="gap-0 p-[22px_24px]">
       <div className="mb-5">
-        <div className="text-base font-semibold tracking-[-0.01em]">{title}</div>
-        {desc && <div className="mt-[3px] text-[13px] text-muted-foreground">{desc}</div>}
+        <div className="text-base font-semibold tracking-[-0.01em]">
+          {title}
+        </div>
+        {desc && (
+          <div className="mt-[3px] text-[13px] text-muted-foreground">
+            {desc}
+          </div>
+        )}
       </div>
       {children}
     </Card>
@@ -277,7 +319,9 @@ function Field({
         {label}
       </Label>
       {children}
-      {hint && <p className="mt-[7px] text-[12px] text-muted-foreground">{hint}</p>}
+      {hint && (
+        <p className="mt-[7px] text-[12px] text-muted-foreground">{hint}</p>
+      )}
     </div>
   );
 }
@@ -307,7 +351,12 @@ function MediaFields({
   return (
     <div className="mt-[18px] grid grid-cols-[minmax(0,1fr)_190px] gap-3 max-[560px]:grid-cols-1">
       <Field label="Mídia (URL pública)" hint={hint} htmlFor={urlName}>
-        <Input id={urlName} type="url" {...register(urlName)} placeholder={urlPlaceholder} />
+        <Input
+          id={urlName}
+          type="url"
+          {...register(urlName)}
+          placeholder={urlPlaceholder}
+        />
       </Field>
       <Field label="Tipo">
         <Select
@@ -356,7 +405,10 @@ function IdentityFields({
 
   return (
     <>
-      <SectionCard title="Identidade da empresa" desc="Como o agente se apresenta aos clientes.">
+      <SectionCard
+        title="Identidade da empresa"
+        desc="Como o agente se apresenta aos clientes."
+      >
         <div className="mb-[18px] flex items-center gap-[18px]">
           <div className="flex size-[76px] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-[16px] border-[1.5px] border-dashed border-border-strong bg-muted text-muted-foreground">
             <Upload className="size-[18px]" />
@@ -373,7 +425,11 @@ function IdentityFields({
         </div>
         <div className="grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
           <Field label="Nome da empresa" htmlFor="set-clinic-name">
-            <Input id="set-clinic-name" {...register("clinicName")} placeholder="Nome da sua empresa" />
+            <Input
+              id="set-clinic-name"
+              {...register("clinicName")}
+              placeholder="Nome da sua empresa"
+            />
           </Field>
           <Field label="Especialidade" htmlFor="set-specialty">
             <Select value={specialty || undefined} onValueChange={setSpecialty}>
@@ -397,14 +453,31 @@ function IdentityFields({
         desc="O tom de voz e a saudação inicial da conversa."
       >
         <Field label="Tom de voz">
-          <Segmented aria-label="Tom de voz" options={TONE_OPTIONS} value={tone} onChange={setTone} />
+          <Segmented
+            aria-label="Tom de voz"
+            options={TONE_OPTIONS}
+            value={tone}
+            onChange={setTone}
+          />
         </Field>
         <div className="h-[18px]" />
-        <Field label="Nome do assistente" hint="Aparece no topo do chat e na apresentação." htmlFor="set-assistant">
-          <Input id="set-assistant" {...register("assistantName")} placeholder="Ex.: Sofia" />
+        <Field
+          label="Nome do assistente"
+          hint="Aparece no topo do chat e na apresentação."
+          htmlFor="set-assistant"
+        >
+          <Input
+            id="set-assistant"
+            {...register("assistantName")}
+            placeholder="Ex.: Sofia"
+          />
         </Field>
         <div className="h-[18px]" />
-        <Field label="Mensagem de saudação" hint="Primeira mensagem que o cliente recebe." htmlFor="set-greeting">
+        <Field
+          label="Mensagem de saudação"
+          hint="Primeira mensagem que o cliente recebe."
+          htmlFor="set-greeting"
+        >
           <Textarea
             id="set-greeting"
             rows={3}
@@ -454,9 +527,13 @@ function OffersFields({
             <span
               className={cn(
                 "flex size-[34px] items-center justify-center rounded-[9px]",
-                offerEnabled ? "text-success" : "bg-secondary text-muted-foreground",
+                offerEnabled
+                  ? "text-success"
+                  : "bg-secondary text-muted-foreground",
               )}
-              style={offerEnabled ? { background: "var(--success-tint)" } : undefined}
+              style={
+                offerEnabled ? { background: "var(--success-tint)" } : undefined
+              }
             >
               <Sparkles className="size-4" />
             </span>
@@ -475,7 +552,11 @@ function OffersFields({
             aria-label="Ativar oferta"
           />
         </div>
-        <Field label="Texto da oferta" hint="Linguagem natural — o agente adapta ao contexto." htmlFor="set-offer-text">
+        <Field
+          label="Texto da oferta"
+          hint="Linguagem natural — o agente adapta ao contexto."
+          htmlFor="set-offer-text"
+        >
           <Textarea
             id="set-offer-text"
             rows={3}
@@ -485,10 +566,20 @@ function OffersFields({
         </Field>
         <div className="mt-[18px] grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
           <Field label="Início da vigência" htmlFor="set-offer-start">
-            <IconInput id="set-offer-start" icon={Calendar} {...register("offerStartsOn")} placeholder="01/06/2026" />
+            <IconInput
+              id="set-offer-start"
+              icon={Calendar}
+              {...register("offerStartsOn")}
+              placeholder="01/06/2026"
+            />
           </Field>
           <Field label="Fim da vigência" htmlFor="set-offer-end">
-            <IconInput id="set-offer-end" icon={Calendar} {...register("offerEndsOn")} placeholder="30/06/2026" />
+            <IconInput
+              id="set-offer-end"
+              icon={Calendar}
+              {...register("offerEndsOn")}
+              placeholder="30/06/2026"
+            />
           </Field>
         </div>
         <MediaFields
@@ -519,14 +610,20 @@ function OffersFields({
         </Field>
         <div
           className="mt-3.5 flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-2.5 text-[12.5px]"
-          style={{ background: "var(--primary-tint)", color: "var(--primary-active)" }}
+          style={{
+            background: "var(--primary-tint)",
+            color: "var(--primary-active)",
+          }}
         >
-          <Info className="size-[15px] shrink-0" /> Estas instruções entram no prompt do agente
-          automaticamente.
+          <Info className="size-[15px] shrink-0" /> Estas instruções entram no
+          prompt do agente automaticamente.
         </div>
       </SectionCard>
 
-      <SectionCard title="Disponibilidade" desc="Orienta o bot ao propor horários de agendamento.">
+      <SectionCard
+        title="Disponibilidade"
+        desc="Orienta o bot ao propor horários de agendamento."
+      >
         <div className="flex flex-col gap-2.5">
           {availability.map((slot, idx) => (
             <div
@@ -535,11 +632,17 @@ function OffersFields({
             >
               <span className="text-sm font-medium">{slot.day}</span>
               <span className="flex items-center gap-3">
-                <span className="tabular text-[13px] text-muted-foreground">{slot.hours}</span>
+                <span className="tabular text-[13px] text-muted-foreground">
+                  {slot.hours}
+                </span>
                 <Switch
                   checked={slot.open}
                   onCheckedChange={(open) =>
-                    setAvailability(availability.map((s, i) => (i === idx ? { ...s, open } : s)))
+                    setAvailability(
+                      availability.map((s, i) =>
+                        i === idx ? { ...s, open } : s,
+                      ),
+                    )
                   }
                   aria-label={`Atendimento em ${slot.day}`}
                 />
@@ -588,7 +691,8 @@ function BotPreview({
     greeting.trim() ||
     `Olá! Sou ${assistantName.trim() ? `a ${name}, assistente` : "o assistente"} da ${clinic}. Como posso ajudar você hoje?`;
   const offer = offerText.trim();
-  const toneLabel = TONE_OPTIONS.find((t) => t.value === tone)?.label.toLowerCase() ?? tone;
+  const toneLabel =
+    TONE_OPTIONS.find((t) => t.value === tone)?.label.toLowerCase() ?? tone;
 
   return (
     <div className="sticky top-0">
@@ -598,8 +702,12 @@ function BotPreview({
             <Bot className="size-[18px]" />
           </span>
           <div className="flex-1">
-            <div className="text-[13.5px] font-semibold">Preview do assistente</div>
-            <div className="text-[11.5px] text-muted-foreground">Tom: {toneLabel}</div>
+            <div className="text-[13.5px] font-semibold">
+              Preview do assistente
+            </div>
+            <div className="text-[11.5px] text-muted-foreground">
+              Tom: {toneLabel}
+            </div>
           </div>
           <span className="size-2 rounded-full bg-success" />
         </div>
@@ -607,8 +715,8 @@ function BotPreview({
           <PreviewBubble>{greet}</PreviewBubble>
           {offerEnabled && offer && (
             <PreviewBubble>
-              Aproveite: temos <strong className="text-primary">{offer}</strong> para novos
-              clientes. Quer que eu já agende a sua?
+              Aproveite: temos <strong className="text-primary">{offer}</strong>{" "}
+              para novos clientes. Quer que eu já agende a sua?
             </PreviewBubble>
           )}
           <div className="max-w-[80%] self-end rounded-[14px_14px_4px_14px] bg-primary px-[13px] py-2.5 text-[13.5px] text-white">

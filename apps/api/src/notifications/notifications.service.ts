@@ -23,10 +23,10 @@ type DraftItem = Omit<NotificationItem, 'unread'>;
 /**
  * Central de notificações (F11) — derivada das tabelas que o produto já grava.
  *
- * Cinco fontes, cinco queries, um merge por data: conversas novas, leads
- * capturados, agendamentos, conversas abandonadas (cron) e automações que
- * falharam. Nenhum evento é gravado — se a regra de um tipo mudar, o painel
- * inteiro muda retroativamente, que é o comportamento certo para um resumo.
+ * Seis fontes, seis queries, um merge por data: conversas novas, leads,
+ * agendamentos, abandonos, falhas de automação e o estado que já vem de
+ * `ClinicSettings`. Nenhum evento é gravado — se a regra mudar, o painel muda
+ * retroativamente, que é o comportamento certo para um resumo.
  */
 @Injectable()
 export class NotificationsService {
@@ -39,7 +39,13 @@ export class NotificationsService {
       await Promise.all([
         this.prisma.clinicSettings.findUnique({
           where: { clinicId },
-          select: { notificationsSeenAt: true },
+          select: {
+            notificationsSeenAt: true,
+            whatsappInstance: true,
+            whatsappState: true,
+            whatsappStateAt: true,
+            whatsappLastError: true,
+          },
         }),
         this.prisma.conversation.findMany({
           where: { clinicId, createdAt: { gte: since } },
@@ -182,6 +188,24 @@ export class NotificationsService {
           channel: null,
         }),
       ),
+      ...(settings?.whatsappInstance &&
+      settings.whatsappState !== 'conectado' &&
+      settings.whatsappStateAt &&
+      settings.whatsappStateAt >= since
+        ? [
+            {
+              id: `whatsapp_desconectado:${settings.whatsappStateAt.toISOString()}`,
+              type: 'whatsapp_desconectado' as const,
+              title: 'WhatsApp desconectado',
+              description:
+                settings.whatsappState === 'aguardando_leitura'
+                  ? 'A sessão precisa da leitura do QR code em Configurações.'
+                  : settings.whatsappLastError,
+              occurredAt: settings.whatsappStateAt.toISOString(),
+              channel: 'whatsapp' as const,
+            },
+          ]
+        : []),
     ];
 
     drafts.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));

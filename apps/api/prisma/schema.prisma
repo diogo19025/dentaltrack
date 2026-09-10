@@ -39,6 +39,7 @@ model Clinic {
   integrations       ClinicIntegration[]
   automationSettings AutomationSettings?
   outboundMessages   OutboundMessage[]
+  inboundMessages    InboundMessage[]
   optOuts            ContactOptOut[]
   holidays           Holiday[]
 
@@ -101,6 +102,13 @@ model ClinicSettings {
   /// Nome da instância Evolution que atende esta clínica no WhatsApp (WA-1).
   /// Resolve `instância → clínica` no webhook (sem JWT). Único por instância.
   whatsappInstance             String?   @unique @map("whatsapp_instance")
+  /// Último estado observado pelo monitor do WhatsApp (P0.4). String para a
+  /// migration continuar aditiva e compatível com a versão anterior.
+  whatsappState                String?   @map("whatsapp_state")
+  /// Momento em que o estado acima mudou — também é a data do aviso no sino.
+  whatsappStateAt              DateTime? @map("whatsapp_state_at")
+  /// Diagnóstico mais recente do transporte, sem credenciais nem PII.
+  whatsappLastError            String?   @map("whatsapp_last_error")
   createdAt                    DateTime  @default(now()) @map("created_at")
   updatedAt                    DateTime  @updatedAt @map("updated_at")
 
@@ -516,6 +524,22 @@ model OutboundMessage {
   @@map("outbound_message")
 }
 
+/// Claim persistente do webhook da Evolution (P0.4). Nasce **antes** da
+/// transcrição e da IA: uma reentrega concorrente encontra o índice único e
+/// para, inclusive depois de restart ou com mais de uma réplica da API.
+model InboundMessage {
+  id          String   @id @default(uuid()) @db.Uuid
+  clinicId    String   @map("clinic_id") @db.Uuid
+  externalId  String   @map("external_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, externalId])
+  @@index([processedAt])
+  @@map("inbound_message")
+}
+
 /// Descadastro de mensagens automáticas, por telefone e por empresa (F9).
 ///
 /// Até aqui o opt-out era só uma resposta amigável em memória (WA-4) — o que
@@ -662,6 +686,7 @@ enum IntegrationMode {
 
 /// Gatilho automático (espelha AUTOMATION_KINDS no shared).
 enum AutomationKind {
+  resposta_ia
   lembrete_3d
   lembrete_1d
   lembrete_1h

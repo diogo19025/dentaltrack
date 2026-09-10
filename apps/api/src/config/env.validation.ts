@@ -74,6 +74,9 @@ export const envSchema = z.object({
   EVOLUTION_API_URL: z.string().url().optional(),
   // Chave global da Evolution (header `apikey` nas chamadas de saída). (WA-3)
   EVOLUTION_API_KEY: z.string().optional(),
+  // Tempo máximo de uma chamada à Evolution. Leituras transitórias repetem;
+  // escritas nunca são repetidas pelo transporte (P0.4).
+  EVOLUTION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
   // Segredo opcional para autenticar o webhook (header `x-evolution-token`). (WA-4)
   EVOLUTION_WEBHOOK_TOKEN: z.string().optional(),
 

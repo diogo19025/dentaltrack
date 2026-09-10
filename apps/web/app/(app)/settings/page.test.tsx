@@ -1,4 +1,7 @@
-import { DEFAULT_AVAILABILITY, type ClinicSettingsDto } from "@dentaltrack/shared";
+import {
+  DEFAULT_AVAILABILITY,
+  type ClinicSettingsDto,
+} from "@dentaltrack/shared";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import SettingsPage from "./page";
@@ -12,6 +15,7 @@ import SettingsPage from "./page";
 
 const state = vi.hoisted(() => ({
   data: null as ClinicSettingsDto | null,
+  tab: null as string | null,
   update: {
     mutate: vi.fn(),
     isPending: false,
@@ -25,11 +29,22 @@ vi.mock("@/hooks/use-settings", () => ({
   useUpdateSettings: () => state.update,
 }));
 
+vi.mock("next/navigation", () => ({
+  useSearchParams: () =>
+    new URLSearchParams(state.tab ? `tab=${state.tab}` : ""),
+}));
+
+vi.mock("@/components/settings/whatsapp-tab", () => ({
+  WhatsappTab: () => <div>Configuração da conexão WhatsApp</div>,
+}));
+
 // A sidebar/topbar não entram aqui; os hooks de leads/pipeline usados por elas
 // não são exercitados nesta página, mas os filhos de outras abas importam hooks
 // — a aba padrão ("identidade") não os renderiza, então não precisam de mock.
 
-function makeSettings(over: Partial<ClinicSettingsDto> = {}): ClinicSettingsDto {
+function makeSettings(
+  over: Partial<ClinicSettingsDto> = {},
+): ClinicSettingsDto {
   return {
     clinicName: "Empresa Demo",
     specialty: "",
@@ -55,6 +70,23 @@ function makeSettings(over: Partial<ClinicSettingsDto> = {}): ClinicSettingsDto 
 afterEach(() => {
   vi.clearAllMocks();
   state.data = null;
+  state.tab = null;
+});
+
+describe("SettingsPage — aba pela URL", () => {
+  it("abre e acompanha ?tab=whatsapp sem remontar a página", () => {
+    state.data = makeSettings();
+    const { rerender } = render(<SettingsPage />);
+    expect(screen.getByText("Preview do assistente")).toBeInTheDocument();
+
+    state.tab = "whatsapp";
+    rerender(<SettingsPage />);
+
+    expect(
+      screen.getByText("Configuração da conexão WhatsApp"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Preview do assistente")).toBeNull();
+  });
 });
 
 describe("SettingsPage — edição do nome da empresa", () => {

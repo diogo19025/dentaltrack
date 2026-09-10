@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AiUnavailableError } from '../ai/generate-reply';
 import { OptOutService } from '../automations/opt-out.service';
+import { OutboundService } from '../automations/outbound.service';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from './evolution.service';
@@ -28,7 +29,10 @@ function payload(
 
 describe('WhatsappService', () => {
   let service: WhatsappService;
-  const prismaMock = { clinicSettings: { findUnique: jest.fn() } };
+  const prismaMock = {
+    clinicSettings: { findUnique: jest.fn() },
+    inboundMessage: { create: jest.fn(), deleteMany: jest.fn() },
+  };
   const chatMock = { processInboundMessage: jest.fn() };
   /** Descadastro persistido (F9) — o adapter só registra e confirma. */
   const optOutMock = {
@@ -41,12 +45,16 @@ describe('WhatsappService', () => {
     getMediaBase64: jest.fn(),
     resolveLidJid: jest.fn(),
   };
+  const outboundMock = { enqueue: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
     prismaMock.clinicSettings.findUnique.mockResolvedValue({
       clinicId: CLINIC_ID,
     });
+    prismaMock.inboundMessage.create.mockResolvedValue({});
+    prismaMock.inboundMessage.deleteMany.mockResolvedValue({ count: 0 });
+    outboundMock.enqueue.mockResolvedValue('criado');
     chatMock.processInboundMessage.mockResolvedValue({
       conversationId: 'c1',
       reply: 'Claro! Para quando?',
@@ -59,6 +67,7 @@ describe('WhatsappService', () => {
         { provide: ChatService, useValue: chatMock },
         { provide: EvolutionService, useValue: evolutionMock },
         { provide: OptOutService, useValue: optOutMock },
+        { provide: OutboundService, useValue: outboundMock },
       ],
     }).compile();
     service = moduleRef.get(WhatsappService);
@@ -151,9 +160,22 @@ describe('WhatsappService', () => {
     expect(evolutionMock.sendText).not.toHaveBeenCalled();
   });
 
-  it('deduplica o mesmo messageId (processa só uma vez)', async () => {
+  it('deduplica no banco o mesmo messageId, inclusive após restart', async () => {
+    prismaMock.inboundMessage.create
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce({ code: 'P2002' });
     await service.handleWebhook(payload());
     await service.handleWebhook(payload());
+    expect(chatMock.processInboundMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('falha do banco da dedupe é fail-open: o atendimento continua', async () => {
+    prismaMock.inboundMessage.create.mockRejectedValueOnce(
+      new Error('banco indisponível'),
+    );
+
+    await service.handleWebhook(payload());
+
     expect(chatMock.processInboundMessage).toHaveBeenCalledTimes(1);
   });
 
@@ -211,6 +233,29 @@ describe('WhatsappService', () => {
     expect(evolutionMock.sendText).not.toHaveBeenCalled();
   });
 
+  it('falha do envio direto enfileira uma única resposta reativa', async () => {
+    evolutionMock.sendText.mockRejectedValueOnce(new Error('Evolution 503'));
+    prismaMock.inboundMessage.create
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce({ code: 'P2002' });
+
+    await service.handleWebhook(payload());
+    await service.handleWebhook(payload());
+
+    expect(outboundMock.enqueue).toHaveBeenCalledTimes(1);
+    expect(outboundMock.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clinicId: CLINIC_ID,
+        kind: 'resposta_ia',
+        dedupeKey: 'resposta:MSG1',
+        body: 'Claro! Para quando?',
+        phone: '5511999998888',
+        conversationId: 'c1',
+        respectSendWindow: false,
+      }),
+    );
+  });
+
   it('envia a mídia (F6) do turno após o texto, uma a uma', async () => {
     chatMock.processInboundMessage.mockResolvedValueOnce({
       conversationId: 'c1',
@@ -260,5 +305,17 @@ describe('WhatsappService', () => {
       new Error('db down'),
     );
     await expect(service.handleWebhook(payload())).resolves.toBeUndefined();
+  });
+
+  it('remove claims de inbound com mais de sete dias', async () => {
+    prismaMock.inboundMessage.deleteMany.mockResolvedValueOnce({ count: 4 });
+    const now = new Date('2026-09-10T12:00:00.000Z');
+
+    await expect(service.cleanupInboundMessages(now)).resolves.toBe(4);
+    expect(prismaMock.inboundMessage.deleteMany).toHaveBeenCalledWith({
+      where: {
+        processedAt: { lt: new Date('2026-09-03T12:00:00.000Z') },
+      },
+    });
   });
 });

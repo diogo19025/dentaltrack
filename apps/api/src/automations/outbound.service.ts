@@ -39,6 +39,8 @@ import { OptOutService } from './opt-out.service';
  * confiança do cliente na mensagem automática. Passou do limite, suprime.
  */
 const MAX_DELAY_MINUTES: Record<AutomationKind, number> = {
+  // Nunca consultado: resposta reativa passa `respectSendWindow: false`.
+  resposta_ia: 0,
   lembrete_3d: 24 * 60,
   lembrete_1d: 14 * 60,
   lembrete_1h: 45,
@@ -72,6 +74,11 @@ export interface EnqueueInput {
   appointmentId?: string | null;
   /** Tentativa da cadência (só a falta usa > 1). */
   attempt?: number;
+  /**
+   * `false` para resposta reativa: a janela protege disparo iniciado pela
+   * empresa, não a resposta a quem acabou de escrever. Default `true`.
+   */
+  respectSendWindow?: boolean;
 }
 
 export type EnqueueResult = 'criado' | 'duplicado' | 'suprimido';
@@ -151,7 +158,6 @@ export class OutboundService {
     // Sem "existe?" antes do insert (P0.5): a dedupe é o índice único, e o
     // `P2002` na escrita é a resposta — duas rodadas do planejador
     // sobrepostas não passam mais as duas pela checagem e criam as duas.
-    const settings = await this.settings.get(input.clinicId);
     const phone = OptOutService.normalizePhone(input.phone);
 
     const suppression = await this.preflight(input.clinicId, phone);
@@ -161,6 +167,13 @@ export class OutboundService {
         : 'duplicado';
     }
 
+    if (input.respectSendWindow === false) {
+      return (await this.create(input, input.scheduledFor, phone, null))
+        ? 'criado'
+        : 'duplicado';
+    }
+
+    const settings = await this.settings.get(input.clinicId);
     const slot = await this.nextAllowedSlot(
       input.clinicId,
       input.scheduledFor,
@@ -495,9 +508,10 @@ export class OutboundService {
       return this.handleFailure(message, err);
     }
 
-    // A mensagem entra na conversa do contato: a resposta cai no mesmo fio e o
-    // agente assume dali com todo o histórico. Sem isso, o cliente responderia
-    // a um lembrete que o bot não sabe que existiu.
+    // A mensagem proativa entra na conversa do contato: a resposta cai no
+    // mesmo fio e o agente assume dali com todo o histórico. `resposta_ia` já
+    // foi persistida pelo ChatService antes da primeira tentativa de envio;
+    // gravá-la outra vez aqui duplicaria a bolha e a métrica.
     const conversationId =
       message.conversationId ??
       (
@@ -508,17 +522,19 @@ export class OutboundService {
         )
       ).id;
 
-    await this.conversations.appendMessage(
-      conversationId,
-      'assistant',
-      message.body,
-      {},
-      message.clinicId,
-    );
-    await this.prisma.conversation.updateMany({
-      where: { id: conversationId, status: 'abandonada' },
-      data: { status: 'em_andamento' },
-    });
+    if (message.kind !== 'resposta_ia') {
+      await this.conversations.appendMessage(
+        conversationId,
+        'assistant',
+        message.body,
+        {},
+        message.clinicId,
+      );
+      await this.prisma.conversation.updateMany({
+        where: { id: conversationId, status: 'abandonada' },
+        data: { status: 'em_andamento' },
+      });
+    }
 
     await this.prisma.outboundMessage.update({
       where: { id: message.id },

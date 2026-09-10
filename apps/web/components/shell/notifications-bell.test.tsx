@@ -98,6 +98,26 @@ describe("NotificationsBell", () => {
     expect(state.push).toHaveBeenCalledWith("/");
   });
 
+  it("queda do WhatsApp leva direto à aba de reconexão", () => {
+    state.data = dto({
+      items: [
+        {
+          ...item,
+          id: "whatsapp_desconectado:1",
+          type: "whatsapp_desconectado",
+          title: "WhatsApp desconectado",
+        },
+      ],
+      unreadCount: 1,
+    });
+    render(<NotificationsBell />);
+
+    fireEvent.click(screen.getByLabelText("Notificações (1 não lidas)"));
+    fireEvent.click(screen.getByText("WhatsApp desconectado"));
+
+    expect(state.push).toHaveBeenCalledWith("/settings?tab=whatsapp");
+  });
+
   it("sem eventos → estado vazio explica o que aparece aqui", () => {
     state.data = dto();
     render(<NotificationsBell />);

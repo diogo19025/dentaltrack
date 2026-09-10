@@ -25,6 +25,7 @@ import { z } from "zod";
  * - `retorno` — compareceu, não deixou a próxima marcada, N dias depois.
  */
 export const AUTOMATION_KINDS = [
+  "resposta_ia",
   "lembrete_3d",
   "lembrete_1d",
   "lembrete_1h",
@@ -36,6 +37,7 @@ export const automationKindSchema = z.enum(AUTOMATION_KINDS);
 export type AutomationKind = (typeof AUTOMATION_KINDS)[number];
 
 export const AUTOMATION_LABELS: Record<AutomationKind, string> = {
+  resposta_ia: "Resposta do assistente",
   lembrete_3d: "Lembrete — 3 dias antes",
   lembrete_1d: "Lembrete — 1 dia antes",
   lembrete_1h: "Lembrete — 1 hora antes",
@@ -303,9 +305,12 @@ export const updateOutboundMessageSchema = z
     /** Novo horário de envio (ISO 8601). O servidor reencaixa na janela. */
     scheduledFor: z.string().min(1).optional(),
   })
-  .refine((value) => value.body !== undefined || value.scheduledFor !== undefined, {
-    message: "Informe o texto ou o novo horário.",
-  });
+  .refine(
+    (value) => value.body !== undefined || value.scheduledFor !== undefined,
+    {
+      message: "Informe o texto ou o novo horário.",
+    },
+  );
 export type UpdateOutboundMessageInput = z.infer<
   typeof updateOutboundMessageSchema
 >;

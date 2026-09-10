@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { OptOutModule } from '../automations/opt-out.module';
+import { AutomationsModule } from '../automations/automations.module';
 import { ChatModule } from '../chat/chat.module';
 import { WhatsappConnectionController } from './connection.controller';
 import { WhatsappConnectionService } from './connection.service';
-import { EvolutionService } from './evolution.service';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
+import { WhatsappTransportModule } from './whatsapp-transport.module';
 
 /**
  * Adapter do canal WhatsApp (WA-3) — Evolution API (Baileys, não-oficial). É só
@@ -15,10 +16,14 @@ import { WhatsappService } from './whatsapp.service';
  * do PrismaModule global.
  */
 @Module({
-  imports: [ChatModule, OptOutModule],
+  imports: [
+    ChatModule,
+    OptOutModule,
+    AutomationsModule,
+    WhatsappTransportModule,
+  ],
   controllers: [WhatsappController, WhatsappConnectionController],
-  providers: [WhatsappService, EvolutionService, WhatsappConnectionService],
-  // EvolutionService é reusado pelo RemindersModule (envio de lembretes do CRM).
-  exports: [EvolutionService],
+  providers: [WhatsappService, WhatsappConnectionService],
+  exports: [WhatsappService, WhatsappConnectionService],
 })
 export class WhatsappModule {}

@@ -1,12 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { MediaAttachment } from '@dentaltrack/shared';
+import { withRetry } from '../common/http-retry';
 import type { Env } from '../config/env.validation';
 
 /** Limites do "digitando" (delay anti-ban) antes de enviar uma resposta. */
 const TYPING_MS_PER_CHAR = 35;
 const TYPING_MIN_MS = 1200;
 const TYPING_MAX_MS = 8000;
+const DEFAULT_EVOLUTION_TIMEOUT_MS = 20_000;
+
+/** Erro HTTP/timeout tipado o bastante para a política de retry decidir. */
+export class EvolutionRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly timedOut = false,
+  ) {
+    super(message);
+    this.name = 'EvolutionRequestError';
+  }
+}
 
 /**
  * Cliente de **saída** da Evolution API (WA-3). Envia mensagens e busca mídia
@@ -225,21 +239,77 @@ export class EvolutionService {
         'Evolution API não configurada (EVOLUTION_API_URL / EVOLUTION_API_KEY).',
       );
     }
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        apikey: this.apiKey,
+
+    const execute = () => this.requestOnce<T>(method, path, body);
+    if (method !== 'GET') return execute();
+
+    return withRetry(execute, {
+      isRetryable: isEvolutionRetryable,
+      onRetry: ({ attempt, delayMs, err }) => {
+        this.logger.warn({
+          event: 'whatsapp.transport.retry',
+          path,
+          attempt,
+          delayMs,
+          reason: err instanceof Error ? err.name : 'desconhecido',
+        });
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+  }
+
+  /** Uma única tentativa. Cada repetição de GET recebe timeout próprio. */
+  private async requestOnce<T>(
+    method: 'GET' | 'POST' | 'DELETE',
+    path: string,
+    body?: unknown,
+  ): Promise<T | undefined> {
+    const controller = new AbortController();
+    const timeoutMs =
+      this.config.get('EVOLUTION_TIMEOUT_MS', { infer: true }) ??
+      DEFAULT_EVOLUTION_TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let res: Response;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: this.apiKey!,
+        },
+        signal: controller.signal,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        throw new EvolutionRequestError(
+          `Evolution ${path} excedeu o tempo limite de ${timeoutMs}ms.`,
+          undefined,
+          true,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      throw new Error(
+      throw new EvolutionRequestError(
         `Evolution ${path} respondeu ${res.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`,
+        res.status,
       );
     }
     // Algumas rotas devolvem corpo vazio — toleramos.
     return (await res.json().catch(() => undefined)) as T | undefined;
   }
+}
+
+/** Só leitura transitória repete: timeout/rede, 429 e 5xx. */
+function isEvolutionRetryable(err: unknown): boolean {
+  if (err instanceof EvolutionRequestError) {
+    return err.timedOut || err.status === 429 || (err.status ?? 0) >= 500;
+  }
+  // `fetch` lança TypeError em falha de rede no Node/browser.
+  return err instanceof TypeError;
 }

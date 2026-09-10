@@ -9,6 +9,7 @@ import {
   TriangleAlert,
   UserMinus,
   UserPlus,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react";
 import type { NotificationItem, NotificationType } from "@dentaltrack/shared";
@@ -39,6 +40,7 @@ const ICONS: Record<NotificationType, LucideIcon> = {
   agendamento_criado: CalendarCheck2,
   conversa_abandonada: UserMinus,
   automacao_falhou: TriangleAlert,
+  whatsapp_desconectado: WifiOff,
 };
 
 /** Para onde o clique leva — a tela onde o dono age sobre aquele evento. */
@@ -48,6 +50,7 @@ const ROUTES: Record<NotificationType, string> = {
   agendamento_criado: "/agenda",
   conversa_abandonada: "/leads",
   automacao_falhou: "/agenda",
+  whatsapp_desconectado: "/settings?tab=whatsapp",
 };
 
 export function NotificationsBell() {
@@ -133,7 +136,9 @@ export function NotificationsBell() {
           <ul role="list" className="max-h-[420px] overflow-y-auto py-1">
             {data.items.map((item) => {
               const Icon = ICONS[item.type];
-              const alert = item.type === "automacao_falhou";
+              const alert =
+                item.type === "automacao_falhou" ||
+                item.type === "whatsapp_desconectado";
               return (
                 <li key={item.id}>
                   <button

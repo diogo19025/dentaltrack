@@ -9,6 +9,8 @@ import {
 } from './connection.service';
 import { EvolutionService } from './evolution.service';
 
+jest.mock('../common/sentry', () => ({ reportException: jest.fn() }));
+
 const CLINIC = '00000000-0000-0000-0000-0000000c1141';
 const INSTANCE = 'empresa-sorriso-00000000';
 
@@ -17,7 +19,11 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
 
   const prismaMock = {
     clinic: { findUniqueOrThrow: jest.fn() },
-    clinicSettings: { upsert: jest.fn(), updateMany: jest.fn() },
+    clinicSettings: {
+      upsert: jest.fn(),
+      updateMany: jest.fn(),
+      findMany: jest.fn(),
+    },
   };
   const evolutionMock = {
     isConfigured: jest.fn(),
@@ -36,6 +42,9 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
     settings: {
       whatsappInstance?: string | null;
       whatsappOnboardingAnsweredAt?: Date | null;
+      whatsappState?: string | null;
+      whatsappStateAt?: Date | null;
+      whatsappLastError?: string | null;
     } | null = null,
   ) => {
     prismaMock.clinic.findUniqueOrThrow.mockResolvedValue({
@@ -45,6 +54,9 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
             whatsappInstance: settings.whatsappInstance ?? null,
             whatsappOnboardingAnsweredAt:
               settings.whatsappOnboardingAnsweredAt ?? null,
+            whatsappState: settings.whatsappState ?? null,
+            whatsappStateAt: settings.whatsappStateAt ?? null,
+            whatsappLastError: settings.whatsappLastError ?? null,
           }
         : null,
     });
@@ -57,6 +69,7 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
     evolutionMock.isConfigured.mockReturnValue(true);
     prismaMock.clinicSettings.upsert.mockResolvedValue({});
     prismaMock.clinicSettings.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.clinicSettings.findMany.mockResolvedValue([]);
     withClinic();
 
     const moduleRef = await Test.createTestingModule({
@@ -146,6 +159,11 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
       expect(status.state).toBe('conectado');
       expect(status.phone).toBe('5511999998888');
       expect(status.onboardingAnswered).toBe(true);
+      expect(prismaMock.clinicSettings.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ whatsappState: 'conectado' }),
+        }),
+      );
     });
 
     it('sessão caída: desconectado', async () => {
@@ -171,6 +189,14 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
 
       expect(status.state).toBe('desconectado');
       expect(status.lastError).toContain('ECONNREFUSED');
+      expect(prismaMock.clinicSettings.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            whatsappState: 'desconectado',
+            whatsappLastError: 'ECONNREFUSED',
+          }),
+        }),
+      );
     });
   });
 
@@ -293,7 +319,11 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
 
       expect(evolutionMock.logoutInstance).toHaveBeenCalledWith(INSTANCE);
       expect(evolutionMock.deleteInstance).not.toHaveBeenCalled();
-      expect(prismaMock.clinicSettings.updateMany).not.toHaveBeenCalled();
+      expect(prismaMock.clinicSettings.updateMany).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ whatsappInstance: null }),
+        }),
+      );
     });
 
     it('sem WhatsApp conectado, desconectar é pedido inválido', async () => {
@@ -312,7 +342,9 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
 
       expect(evolutionMock.deleteInstance).toHaveBeenCalledWith(INSTANCE);
       expect(prismaMock.clinicSettings.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { whatsappInstance: null } }),
+        expect.objectContaining({
+          data: expect.objectContaining({ whatsappInstance: null }),
+        }),
       );
     });
 
@@ -322,6 +354,26 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
 
       await expect(connection.reset(CLINIC)).resolves.toBeDefined();
       expect(prismaMock.clinicSettings.updateMany).toHaveBeenCalled();
+    });
+  });
+
+  describe('monitor de conexão', () => {
+    it('tenta reconectar no máximo uma vez por instância a cada 15 minutos', async () => {
+      withClinic({ whatsappInstance: INSTANCE, whatsappState: 'conectado' });
+      prismaMock.clinicSettings.findMany.mockResolvedValue([
+        { clinicId: CLINIC, whatsappInstance: INSTANCE },
+      ]);
+      evolutionMock.connectionState.mockResolvedValue({ state: 'close' });
+      evolutionMock.fetchInstance.mockResolvedValue([]);
+      evolutionMock.connectInstance.mockResolvedValue({});
+      const now = new Date('2026-09-10T12:00:00.000Z');
+
+      await connection.checkAllConnections(now);
+      await connection.checkAllConnections(
+        new Date(now.getTime() + 5 * 60_000),
+      );
+
+      expect(evolutionMock.connectInstance).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -171,6 +171,25 @@ describe('NotificationsService (sino do topbar · F11)', () => {
     expect(dto.items[0].description).toContain('Maria');
   });
 
+  it('WhatsApp desconectado vira alerta enquanto exige ação', async () => {
+    prismaMock.clinicSettings.findUnique.mockResolvedValue({
+      notificationsSeenAt: null,
+      whatsappInstance: 'empresa-demo',
+      whatsappState: 'desconectado',
+      whatsappStateAt: hoursAgo(1),
+      whatsappLastError: 'Evolution indisponível',
+    });
+
+    const dto = await service.getNotifications(CLINIC);
+
+    expect(dto.items[0]).toMatchObject({
+      type: 'whatsapp_desconectado',
+      title: 'WhatsApp desconectado',
+      channel: 'whatsapp',
+      unread: true,
+    });
+  });
+
   it('leads importados em massa não afogam o sino (filtro na query)', async () => {
     await service.getNotifications(CLINIC);
     expect(prismaMock.lead.findMany).toHaveBeenCalledWith(

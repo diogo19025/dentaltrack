@@ -142,6 +142,26 @@ describe('OutboundService (fila de saída · F9)', () => {
     });
   });
 
+  describe('enqueue — resposta reativa', () => {
+    it('ignora a janela de envio e preserva o horário imediato', async () => {
+      const scheduledFor = new Date('2026-09-10T01:00:00.000Z'); // 22h em SP
+
+      expect(
+        await outbound.enqueue({
+          ...baseEnqueue,
+          kind: 'resposta_ia',
+          dedupeKey: 'resposta:MSG1',
+          scheduledFor,
+          respectSendWindow: false,
+        }),
+      ).toBe('criado');
+
+      expect(created().scheduledFor).toEqual(scheduledFor);
+      expect(settingsMock.get).not.toHaveBeenCalled();
+      expect(holidaysMock.isHoliday).not.toHaveBeenCalled();
+    });
+  });
+
   describe('enqueue — o que nunca poderia sair vira registro suprimido', () => {
     it('sem telefone', async () => {
       // Vira linha, e não silêncio: o dono precisa ver que o lembrete não saiu
@@ -365,6 +385,17 @@ describe('OutboundService (fila de saída · F9)', () => {
           data: expect.objectContaining({ status: 'enviado' }),
         }),
       );
+    });
+
+    it('resposta da IA já persistida não cria uma segunda mensagem', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        { ...pending, kind: 'resposta_ia' },
+      ]);
+
+      await outbound.dispatchDue(NOW);
+
+      expect(evolutionMock.sendText).toHaveBeenCalledTimes(1);
+      expect(conversationsMock.appendMessage).not.toHaveBeenCalled();
     });
 
     it('abre uma conversa quando a mensagem ainda não tem uma', async () => {

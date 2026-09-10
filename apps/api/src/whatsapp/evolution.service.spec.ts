@@ -3,10 +3,13 @@ import type { Env } from '../config/env.validation';
 import { EvolutionService } from './evolution.service';
 
 /** ConfigService mínimo com a Evolution configurada. */
-function makeConfig(): ConfigService<Env, true> {
+function makeConfig(
+  overrides: Record<string, string> = {},
+): ConfigService<Env, true> {
   const values: Record<string, string> = {
     EVOLUTION_API_URL: 'http://evo.local',
     EVOLUTION_API_KEY: 'k',
+    ...overrides,
   };
   return {
     get: (k: string) => values[k],
@@ -153,7 +156,7 @@ describe('EvolutionService.resolveLidJid', () => {
   });
 
   it('erro na Evolution: não propaga, devolve null', async () => {
-    fetchMock.mockResolvedValueOnce({
+    fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
       json: () => Promise.resolve({}),
@@ -163,5 +166,62 @@ describe('EvolutionService.resolveLidJid', () => {
     expect(
       await service.resolveLidJid('dentaltrack', '5583@s.whatsapp.net', 'M'),
     ).toBeNull();
+  });
+});
+
+describe('EvolutionService — resiliência do transporte (P0.4)', () => {
+  it('GET repete falha transitória e para quando a Evolution responde', async () => {
+    const service = new EvolutionService(makeConfig());
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        text: () => Promise.resolve('indisponível'),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ instance: { state: 'open' } }),
+      });
+    global.fetch = fetchMock;
+
+    await expect(service.connectionState('demo')).resolves.toEqual({
+      instance: { state: 'open' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('POST não repete: a fila é a dona da recuperação de escrita', async () => {
+    const service = new EvolutionService(makeConfig());
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      text: () => Promise.resolve('indisponível'),
+    });
+    global.fetch = fetchMock;
+
+    await expect(
+      service.sendText('demo', '5511999998888', 'Oi'),
+    ).rejects.toThrow(/503/);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('timeout aborta uma escrita pendurada', async () => {
+    const service = new EvolutionService(
+      makeConfig({ EVOLUTION_TIMEOUT_MS: '5' }),
+    );
+    global.fetch = jest.fn(
+      (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        }),
+    ) as jest.Mock;
+
+    await expect(
+      service.sendText('demo', '5511999998888', 'Oi'),
+    ).rejects.toThrow(/tempo limite de 5ms/);
   });
 });
