@@ -137,6 +137,9 @@ trata isso (`status-heuristics.ts`), mas confira na tela.
 | Ids numéricos rejeitados como texto | `normalizeEntityIds` converte os campos de id conhecidos para inteiro nativo — e só eles: telefone, documento e ids com zero à esquerda continuam texto |
 | Datas sem offset | São hora de parede da clínica, não UTC. Tratá-las como UTC erraria o lembrete em três horas |
 | Sem webhook | Varredura a cada 10 minutos (`AgendaJobs.syncAgenda`) |
+| **Sem rota de reagendamento** no inventário | Remarcar é **cancelar + recriar** (`cancel_appointment` → `create_appointment_by_api`): o `AppointmentId` muda, e a linha local acompanha. Se o cancelamento passar e a criação falhar, o horário antigo já foi liberado e o novo não existe — o erro sobe dizendo isso, e a tela não confirma nada. **Não validado ao vivo** (depende da credencial). Efeito colateral conhecido: a varredura seguinte pode importar o agendamento antigo como uma linha `cancelado` separada, porque o id dele já não é o da linha remarcada |
+| 404 ao cancelar | Conta como cancelado: é o estado final que se queria, e repetir a operação (duplo clique, retry) não pode virar erro |
+| **Sem reserva atômica de horário** | O `book()` re-checa `list_available_times` antes de criar, **fail-open**: só é conflito se a rota respondeu com horários e o pedido não está entre eles; lista vazia ou erro → cria mesmo assim, porque a autoridade final é a agenda. A janela entre a oferta e a escrita fica menor, não zero |
 
 ## 6. Ligar as automações
 
