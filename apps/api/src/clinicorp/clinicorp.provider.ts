@@ -8,6 +8,7 @@ import type {
 import {
   type AgendaProvider,
   AgendaProviderError,
+  AgendaSlotReleasedError,
   type AgendaWindow,
   type AvailabilityQuery,
   type CancelAppointmentInput,
@@ -115,6 +116,7 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
     if (!unitId) {
       throw new AgendaProviderError(
         'Nenhuma unidade selecionada na integração — escolha a unidade em Configurações.',
+        { kind: 'config' },
       );
     }
     const professionalId =
@@ -222,6 +224,7 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
     if (!id) {
       throw new AgendaProviderError(
         `O Clinicorp aceitou a criação do paciente mas não devolveu o identificador (${describeResult(payload)}).`,
+        { kind: 'resposta_invalida' },
       );
     }
     return {
@@ -263,6 +266,7 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
     if (!externalId) {
       throw new AgendaProviderError(
         `O Clinicorp respondeu sem criar o agendamento (${describeResult(payload)}).`,
+        { kind: 'resposta_invalida' },
       );
     }
 
@@ -326,7 +330,11 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
       return await this.createAppointment(input);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      throw new AgendaProviderError(
+      // Tipo próprio (P0.1): o chamador precisa saber que o horário antigo já
+      // não está mais reservado, para não deixar a linha local afirmando o
+      // contrário. Uma mensagem de erro genérica aqui deixava a divergência
+      // visível só para quem lesse o log.
+      throw new AgendaSlotReleasedError(
         `O horário anterior foi cancelado no Clinicorp, mas o novo não pôde ser criado: ${detail}`,
         err,
       );
@@ -380,13 +388,14 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
 }
 
 /**
- * O client traduz todo HTTP ≠ 2xx em `AgendaProviderError` com o status na
- * mensagem ("respondeu 404"). É o único sinal disponível para "não existe".
+ * "Não existe lá" — o sinal de que um cancelamento já aconteceu.
+ *
+ * Lê o `status` que o client passou a guardar (P0.1) em vez de procurar
+ * "respondeu 404" no texto da mensagem: qualquer ajuste de redação naquela
+ * string quebrava a idempotência do cancelamento sem quebrar nenhum teste.
  */
 function isNotFound(err: unknown): boolean {
-  return (
-    err instanceof AgendaProviderError && /respondeu 404\b/.test(err.message)
-  );
+  return err instanceof AgendaProviderError && err.status === 404;
 }
 
 /** "HH:mm" no fuso da empresa (formato que a criação de agendamento espera). */

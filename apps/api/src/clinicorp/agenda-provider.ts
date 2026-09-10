@@ -1,4 +1,5 @@
 import type {
+  AgendaErrorKind,
   AvailableSlot,
   ExternalProfessional,
   ExternalStatus,
@@ -169,13 +170,96 @@ export interface ExternalAppointment {
  * Falha de comunicação com o sistema de gestão. Existe para que o chamador
  * possa degradar com elegância (cair para a disponibilidade declarada, adiar a
  * sincronização) em vez de propagar um 500 para o cliente no WhatsApp.
+ *
+ * O `kind` (P0.1) é a parte que faz a falha ser **acionável**: a tela usa a
+ * categoria para dizer ao operador o que fazer, e o transporte a usa para
+ * decidir o que pode ser repetido. Antes dele, "credencial recusada" e "Google
+ * fora do ar" chegavam à mesma caixa de texto cinza.
  */
 export class AgendaProviderError extends Error {
+  readonly kind: AgendaErrorKind;
+  /**
+   * Status HTTP quando a falha veio de uma resposta. Guardado além do `kind`
+   * porque há decisão que precisa do código exato: um 404 no cancelamento
+   * significa "já não existe" (sucesso), e o `kind` sozinho — `config` — não
+   * distingue isso de "a agenda configurada não existe".
+   */
+  readonly status?: number;
+
   constructor(
     message: string,
-    readonly cause?: unknown,
+    /**
+     * Objeto e não parâmetro posicional de propósito: os campos são todos
+     * opcionais, e um `new AgendaProviderError(msg, err)` que passasse a
+     * significar "kind = err" seria um bug silencioso em cada chamada antiga.
+     */
+    options: {
+      kind?: AgendaErrorKind;
+      status?: number;
+      cause?: unknown;
+    } = {},
   ) {
     super(message);
     this.name = 'AgendaProviderError';
+    this.kind = options.kind ?? 'desconhecido';
+    this.status = options.status;
+    this.cause = options.cause;
   }
+}
+
+/**
+ * O horário antigo foi liberado na agenda da empresa e o novo **não** foi
+ * criado (P0.1).
+ *
+ * Nasce do adapter que remarca cancelando e recriando — o Clinicorp, que não
+ * expõe reagendamento. Falhar no meio dessa sequência deixa os dois sistemas
+ * divergentes: a agenda da empresa ficou sem nada e o DentalTrack continua
+ * dizendo que a consulta está de pé no horário velho.
+ *
+ * O tipo existe para que o chamador possa **registrar a divergência** em vez de
+ * só reportar a falha: é a diferença entre um lembrete que sai para uma consulta
+ * que não existe mais e um pedido honestamente marcado como não reservado.
+ */
+export class AgendaSlotReleasedError extends AgendaProviderError {
+  constructor(message: string, cause?: unknown) {
+    super(message, { kind: 'indisponivel', cause });
+    this.name = 'AgendaSlotReleasedError';
+  }
+}
+
+/**
+ * Categoria de uma falha qualquer. Erro que não é do domínio da agenda vira
+ * `desconhecido` — não `indisponivel` — porque supor transitoriedade é o que
+ * faz um retry insistir contra um bug de código.
+ */
+export function agendaErrorKind(err: unknown): AgendaErrorKind {
+  return err instanceof AgendaProviderError ? err.kind : 'desconhecido';
+}
+
+/**
+ * A falha passa? Só `indisponivel` e `timeout` — é a lista de motivos em que
+ * tentar de novo tem chance de dar outro resultado. Credencial recusada,
+ * configuração errada e resposta ilegível não melhoram com insistência: elas
+ * precisam de alguém.
+ */
+export function isTransientAgendaError(err: unknown): boolean {
+  const kind = agendaErrorKind(err);
+  return kind === 'indisponivel' || kind === 'timeout';
+}
+
+/**
+ * Status HTTP → categoria, comum aos dois adapters.
+ *
+ * `404` vira `config` porque, nas rotas que usamos, o recurso é sempre algo que
+ * a empresa escolheu (a agenda, a unidade): "não existe" quer dizer que o que
+ * está salvo aqui não corresponde ao que existe lá. O caso em que 404 significa
+ * "já foi apagado" é tratado por quem chama — o cancelamento —, que conhece a
+ * intenção; este mapa, não.
+ */
+export function kindFromHttpStatus(status: number): AgendaErrorKind {
+  if (status === 401 || status === 403) return 'auth';
+  if (status === 404) return 'config';
+  if (status === 409) return 'conflito';
+  if (status === 408 || status === 429 || status >= 500) return 'indisponivel';
+  return 'desconhecido';
 }

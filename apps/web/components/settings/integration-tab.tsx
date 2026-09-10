@@ -2,6 +2,7 @@
 
 import { type ReactNode, useState } from "react";
 import {
+  AGENDA_ERROR_MESSAGES,
   APPOINTMENT_STATUS_LABELS,
   APPOINTMENT_STATUSES,
   type AppointmentStatus,
@@ -16,13 +17,16 @@ import {
 import {
   AlertTriangle,
   CalendarDays,
+  Check,
   CheckCircle2,
+  Copy,
   Info,
   Link2,
   PlugZap,
   RefreshCw,
   XCircle,
 } from "lucide-react";
+import { ApiError, errorMessage } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -519,6 +523,11 @@ function ProviderPanel({
             )}
           </div>
 
+          {/* A chamada em si falhou (rede, sessão expirada, 500) — diferente de
+              a verificação rodar e um passo dar errado, que aparece abaixo. */}
+          {check.isError && <RequestError error={check.error} />}
+          {update.isError && <RequestError error={update.error} />}
+
           {data.lastError && !result && (
             <div className="flex gap-2 rounded-[var(--radius-sm)] border border-border bg-secondary p-3 text-[13px]">
               <AlertTriangle className="mt-0.5 size-4 flex-none text-muted-foreground" />
@@ -527,6 +536,10 @@ function ProviderPanel({
           )}
         </div>
       </Card>
+
+      {provider === "clinicorp" && mode === "live" && !data.hasCredentials && (
+        <CredentialRequest />
+      )}
 
       {result && <CheckResult result={result} />}
 
@@ -703,6 +716,13 @@ function CheckResult({ result }: { result: ConnectionCheck }) {
               >
                 {step.detail}
               </div>
+              {/* O que fazer a respeito. A mensagem do fornecedor diz o que
+                  aconteceu; esta diz de quem é a próxima ação (P0.1). */}
+              {!step.ok && step.kind && (
+                <div className="mt-1.5 text-[13px] text-secondary-foreground">
+                  {AGENDA_ERROR_MESSAGES[step.kind]}
+                </div>
+              )}
             </div>
             <span className="tabular text-xs text-muted-foreground">
               {step.durationMs} ms
@@ -710,7 +730,133 @@ function CheckResult({ result }: { result: ConnectionCheck }) {
           </li>
         ))}
       </ul>
+      {result.requestId && (
+        <div className="border-t border-border px-6 py-3">
+          <SupportCode requestId={result.requestId} />
+        </div>
+      )}
     </Card>
+  );
+}
+
+/**
+ * A chamada à API falhou — não um passo da verificação.
+ *
+ * Antes do P0.1 esta aba não tinha **nenhum** tratamento de erro: um `check`
+ * que falhasse deixava a tela exatamente como estava, e o operador concluía
+ * que o botão não funcionava.
+ */
+function RequestError({ error }: { error: unknown }) {
+  const requestId = error instanceof ApiError ? error.requestId : undefined;
+  return (
+    <div
+      role="alert"
+      className="flex gap-2 rounded-[var(--radius-sm)] border border-border bg-secondary p-3 text-[13px]"
+    >
+      <XCircle className="mt-0.5 size-4 flex-none text-muted-foreground" />
+      <div className="flex flex-col gap-1">
+        <span className="text-secondary-foreground">
+          {errorMessage(error)}
+        </span>
+        {requestId && <SupportCode requestId={requestId} />}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * O `requestId` da chamada (P0.3), copiável.
+ *
+ * É o que transforma "deu erro aqui" num chamado investigável: o mesmo código
+ * está em toda linha de log daquela operação no servidor.
+ */
+function SupportCode({ requestId }: { requestId: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <span>Código para o suporte:</span>
+      <code className="tabular rounded-[var(--radius-sm)] bg-background px-1.5 py-0.5">
+        {requestId}
+      </code>
+      <CopyButton text={requestId} label="Copiar" size="xs" />
+    </div>
+  );
+}
+
+/**
+ * O texto do pedido ao suporte do Clinicorp, pronto para copiar.
+ *
+ * A credencial da API é pedida pelo **assinante**, não por nós, e é o que
+ * segura a integração hoje. O pedido travar por não se saber o que pedir é um
+ * problema de produto que se resolve com um bloco de texto.
+ */
+function CredentialRequest() {
+  const text = [
+    "Olá! Preciso das credenciais de acesso à API REST do Clinicorp para",
+    "integrar a agenda da minha clínica a um sistema de atendimento.",
+    "",
+    "Poderiam me enviar:",
+    "1. Usuário da API (não é o login do painel web)",
+    "2. Token de acesso à API REST",
+    "3. Subscriber ID da minha conta",
+    "",
+    "As rotas que preciso ter liberadas no meu plano são as de listagem de",
+    "unidades, profissionais, status e horários disponíveis, além da criação e",
+    "do cancelamento de agendamentos.",
+  ].join("\n");
+
+  return (
+    <Card className="gap-0 p-0">
+      <div className="border-b border-border px-6 py-[18px]">
+        <div className="text-base font-semibold tracking-[-0.01em]">
+          Ainda não tenho a credencial
+        </div>
+        <div className="mt-0.5 text-[13px] text-muted-foreground">
+          Quem pede é o assinante da conta. Copie o texto abaixo e mande ao
+          suporte do Clinicorp — enquanto isso, o modo simulado deixa você
+          conhecer o fluxo inteiro.
+        </div>
+      </div>
+      <div className="flex flex-col gap-3 p-6">
+        <pre className="overflow-x-auto whitespace-pre-wrap rounded-[var(--radius-sm)] border border-border bg-secondary p-3 text-[13px] text-secondary-foreground">
+          {text}
+        </pre>
+        <div>
+          <CopyButton text={text} label="Copiar o pedido" variant="outline" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function CopyButton({
+  text,
+  label,
+  variant = "ghost",
+  size = "sm",
+}: {
+  text: string;
+  label: string;
+  variant?: "ghost" | "outline";
+  size?: "xs" | "sm";
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Área de transferência bloqueada (http, permissão negada): o texto está
+      // na tela e pode ser selecionado à mão — não vale um alerta de erro.
+    }
+  }
+
+  return (
+    <Button type="button" variant={variant} size={size} onClick={copy}>
+      {copied ? <Check /> : <Copy />}
+      {copied ? "Copiado" : label}
+    </Button>
   );
 }
 

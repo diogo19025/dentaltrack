@@ -37,6 +37,31 @@ async function errorFrom(res: Response, requestId: string): Promise<ApiError> {
 }
 
 /**
+ * A frase que se mostra ao usuário a partir de um erro qualquer.
+ *
+ * O corpo de erro do Nest é JSON (`{ statusCode, message, requestId }`), e o
+ * `ApiError` guarda esse texto cru: exibi-lo direto põe chaves e aspas na tela.
+ * Aqui ele volta a ser uma frase — e `message` também pode ser **lista**
+ * (o ValidationPipe devolve um erro por campo), caso em que as linhas são
+ * juntadas em vez de virarem "[object Object]".
+ */
+export function errorMessage(err: unknown): string {
+  if (!(err instanceof Error)) return "Não foi possível concluir a operação.";
+  const raw = err.message?.trim();
+  if (!raw) return "Não foi possível concluir a operação.";
+  if (!raw.startsWith("{")) return raw;
+  try {
+    const body = JSON.parse(raw) as { message?: unknown };
+    const message = body.message;
+    if (Array.isArray(message)) return message.join(" · ");
+    if (typeof message === "string" && message.trim()) return message;
+  } catch {
+    // Corpo que não é JSON: o texto cru já é a melhor informação disponível.
+  }
+  return raw;
+}
+
+/**
  * Fetch tipado para a API NestJS. Anexa o JWT do Supabase (Bearer) em toda
  * chamada. Usado pelo TanStack Query nos componentes de cliente.
  */

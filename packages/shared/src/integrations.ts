@@ -38,6 +38,63 @@ export const INTEGRATION_MODES = ["desligado", "mock", "live"] as const;
 export const integrationModeSchema = z.enum(INTEGRATION_MODES);
 export type IntegrationMode = (typeof INTEGRATION_MODES)[number];
 
+/**
+ * **Por que a agenda falhou** (P0.1). Até aqui toda falha de provedor era uma
+ * string, e "a credencial foi recusada" chegava à tela indistinguível de "o
+ * Google não respondeu" — sendo que uma exige o operador e a outra exige
+ * esperar. A categoria é o que separa as duas.
+ *
+ * É também o que decide o que se pode repetir: só `indisponivel` e `timeout`
+ * são transitórios. Repetir um `auth` só multiplica a recusa, e repetir uma
+ * escrita é como se criam duplicatas — por isso o retry olha para o motivo,
+ * nunca para o verbo HTTP sozinho.
+ *
+ * `desconhecido` é o default deliberado: uma falha nova nunca deve virar um
+ * palpite errado com cara de diagnóstico.
+ */
+export const AGENDA_ERROR_KINDS = [
+  "auth",
+  "config",
+  "indisponivel",
+  "timeout",
+  "resposta_invalida",
+  "conflito",
+  "desconhecido",
+] as const;
+export const agendaErrorKindSchema = z.enum(AGENDA_ERROR_KINDS);
+export type AgendaErrorKind = (typeof AGENDA_ERROR_KINDS)[number];
+
+/** Rótulo curto da causa — prefixa o erro guardado em `lastError`. */
+export const AGENDA_ERROR_LABELS: Record<AgendaErrorKind, string> = {
+  auth: "Credencial recusada",
+  config: "Configuração não confere",
+  indisponivel: "Agenda indisponível",
+  timeout: "Agenda não respondeu a tempo",
+  resposta_invalida: "Resposta ilegível da agenda",
+  conflito: "Horário já ocupado",
+  desconhecido: "Falha não identificada",
+};
+
+/**
+ * O que o operador precisa fazer a respeito — escrito para quem está na tela
+ * às 9h da manhã com a agenda parada, não para quem lê o log.
+ */
+export const AGENDA_ERROR_MESSAGES: Record<AgendaErrorKind, string> = {
+  auth: "A credencial foi recusada. Confira o que está salvo aqui e, no caso do Google, se a agenda continua compartilhada com a conta de serviço.",
+  config:
+    "A conexão respondeu, mas o que foi configurado não existe do outro lado — o ID da agenda ou a unidade escolhida. Revise os campos acima.",
+  indisponivel:
+    "A agenda não está respondendo agora. É do lado do provedor: nada precisa ser corrigido aqui, tente de novo em alguns minutos.",
+  timeout:
+    "A agenda demorou demais para responder. Costuma ser instabilidade passageira — tente de novo.",
+  resposta_invalida:
+    "A agenda respondeu algo que não dá para interpretar. Se persistir, o suporte precisa do código abaixo.",
+  conflito:
+    "O horário deixou de estar livre entre a consulta e a gravação. Escolha outro horário.",
+  desconhecido:
+    "A agenda falhou por um motivo que não reconhecemos. O suporte precisa do código abaixo.",
+};
+
 /** Credenciais da API (write-only — nunca retornam em nenhum GET). */
 export const clinicorpCredentialsSchema = z.object({
   /** Usuário da API (HTTP Basic) — não é o login do painel web. */
@@ -199,6 +256,11 @@ export const connectionStepSchema = z.object({
   ok: z.boolean(),
   /** Resumo do que voltou ("3 unidades") ou do erro. */
   detail: z.string(),
+  /**
+   * Categoria da falha (P0.1) — `null` quando o passo passou. É o que permite à
+   * tela dizer o que fazer a respeito em vez de repetir a mensagem técnica.
+   */
+  kind: agendaErrorKindSchema.nullable().default(null),
   /** Duração da chamada em ms (ajuda a flagrar rota lenta). */
   durationMs: z.number().int().nonnegative(),
 });
@@ -210,6 +272,12 @@ export const connectionCheckSchema = z.object({
   mode: integrationModeSchema,
   checkedAt: z.string(),
   steps: z.array(connectionStepSchema),
+  /**
+   * Id de correlação desta verificação (P0.3) — é o que a tela mostra como
+   * "código para o suporte". Sem ele, uma falha vira "deu erro" e o log do
+   * servidor não tem por onde ser procurado.
+   */
+  requestId: z.string().nullable().default(null),
   /** Descobertas do wizard, para o operador escolher unidade/profissional. */
   units: z.array(externalUnitSchema),
   professionals: z.array(externalProfessionalSchema),

@@ -2,11 +2,11 @@
 
 > Fase 1 da etapa de maturidade. Deriva de [`maturity-audit.md`](maturity-audit.md).
 > Objetivo: encerrar o desenvolvimento exploratório e deixar o produto em estado de **validação comercial**.
-> Criado em 2026-09-08 · placar atualizado em 2026-09-09.
+> Criado em 2026-09-08 · placar atualizado em 2026-09-10.
 
 ## Placar
 
-**4 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
+**5 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
 
 | # | PR | Entrega | Status | Migration |
 |---|---|---|---|---|
@@ -14,7 +14,7 @@
 | 1 | **Observabilidade** (P0.3) | Correlação, logs JSON com redação de PII, filtro de exceções, Sentry | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
 | 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` no índice único | ✅ **2026-09-09** | `f13_booking_idempotency` ✅ aplicada 2026-09-09 |
 | 3 | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar (3 adapters + endpoints + tela); re-checagem de horário no `book()`; `dispatchDue` com claim; `enqueue` e sync sem check-then-create | ✅ **2026-09-09** | `f14_outbound_claim` ✅ aplicada 2026-09-09 |
-| 4 | **Agenda real endurecida** (P0.1) | Retry só em leitura, erros tipados, `google:smoke` com escrita | ⬜ a fazer | — |
+| 4 | **Agenda real endurecida** (P0.1) | Retry só em leitura, erros tipados, `google:smoke` com escrita, UI de erro na aba Integração | ✅ **2026-09-10** | — |
 | 5 | **Handoff humano** (P0.2) | IA pausável por conversa, endpoints, UI no dialog | ⬜ a fazer | `f15_handoff` |
 | 6 | **WhatsApp robusto** (P0.4) | `InboundMessage`, fila da resposta reativa, estado persistido | ⬜ a fazer | `f16_whatsapp_robustez` |
 | 7 | **Estados de erro e carregamento** (P1.3) | `ErrorState`, error boundaries, `api-client` | ⬜ a fazer | — |
@@ -149,9 +149,19 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.1 · Agenda real ponta a ponta ⬜ *PR 4*
+## P0.1 · Agenda real ponta a ponta ✅ *entregue em 2026-09-10*
 
-**Estado atual.** Adapters completos, timeout de 15s, **sem retry**. `AgendaProviderError` só tem mensagem — a UI não distingue credencial recusada de API fora do ar. A aba Integração tem zero tratamento de erro. O caminho de escrita nunca foi exercitado contra API real (o smoke é só-leitura por design).
+> **O que mudou em relação ao planejado**, registrado por honestidade:
+> - **`BookResult` ganhou `failureKind` e perdeu `conflict`**, em vez de ganhar os dois. O plano previa acrescentar `failureKind`/`failureDetail` ao lado do booleano; manter os dois seria a mesma informação contada duas vezes, com chance de discordarem. `failureDetail` ficou de fora por não ter consumidor — a mensagem técnica já vai para o log, e mandá-la ao modelo seria expor texto de fornecedor numa conversa com o cliente.
+> - **`AgendaProviderError` também guarda o `status` HTTP**, não só a categoria. O cancelamento precisa distinguir "a agenda configurada não existe" de "este agendamento já não existe lá" — as duas são `config` —, e antes disso a idempotência do cancelamento dependia de achar a string `respondeu 404` na mensagem do erro: qualquer ajuste de redação a quebraria sem quebrar nenhum teste.
+> - **`events.delete` é a única escrita com retry.** A regra "escrita não repete" existe porque repetir cria duplicata; apagar é idempotente por contrato (404/410 = já apagado), e um cancelamento que falha por instabilidade deixa a agenda da empresa ocupada com um horário que o DentalTrack já considera livre.
+> - **`freeBusy` é `POST` e tem retry.** A decisão do que repetir passou a ser do chamador, não do verbo HTTP: o que importa é o efeito, e free/busy não cria nada.
+> - **Fora do escopo planejado, corrigida a divergência do remarcar do Clinicorp** (achada na revisão do PR 3). O adapter remarca cancelando e recriando; falhar no meio liberava o horário antigo e deixava a linha local dizendo `agendado` no horário velho — lembrete sairia para uma consulta inexistente. Agora essa falha tem tipo próprio (`AgendaSlotReleasedError`) e o serviço **registra a divergência**: a linha vira `pedido` sem id externo, que é o mesmo estado honesto do conflito no `book()`. A operação continua falhando com 503 para quem pediu.
+> - **`errorMessage(err)` entrou no `api-client` antes da hora** (é do P1.3). A aba precisava dele agora, e duplicá-lo localmente para apagar no PR 7 seria pior.
+> - **Dois specs eram bombas-relógio e foram consertados de passagem.** `outbound.service.spec.ts` fixava o relógio em 2026-09-09 enquanto o serviço lia `Date.now()` real: passou no dia em que foi escrito e ficou vermelho no dia seguinte (três testes). `agenda.service.spec.ts` tinha a mesma armadilha, com validade até 02/10. Os dois passaram a congelar `Date.now`.
+> - **`EvolutionService` não entrou**, como o plano já previa: o transporte do WhatsApp usa o `withRetry` no PR 6.
+
+**Estado anterior.** Adapters completos, timeout de 15s, **sem retry**. `AgendaProviderError` só tem mensagem — a UI não distingue credencial recusada de API fora do ar. A aba Integração tem zero tratamento de erro. O caminho de escrita nunca foi exercitado contra API real (o smoke é só-leitura por design).
 
 **Mudança necessária.**
 
@@ -238,9 +248,11 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ## P1.3 · Estados de erro e carregamento ⬜ *PR 7*
 
-**Estado atual.** Sem error boundary; `integration-tab` e `automations-tab` sem nenhum `isError`; o padrão `isLoading || !data ? <Skeleton/>` gera **skeleton eterno** em erro (dashboard, automações, WhatsApp); `onExport` com `try/finally` sem `catch`; `catch {}` vazio no bootstrap do layout; `api-client` sem timeout e com `res.json()` sem guard (quebra em 204).
+**Estado atual.** Sem error boundary; `automations-tab` sem nenhum `isError`; o padrão `isLoading || !data ? <Skeleton/>` gera **skeleton eterno** em erro (dashboard, automações, WhatsApp); `onExport` com `try/finally` sem `catch`; `catch {}` vazio no bootstrap do layout; `api-client` sem timeout e com `res.json()` sem guard (quebra em 204).
 
-**Mudança.** `lib/api-client.ts` ganha timeout, guard de corpo vazio, `requestId` e mensagem extraída do JSON do Nest (hoje só a tela de leads parseia à mão). `providers.tsx` ganha `retry` que não repete 4xx e `onError` global mandando para o Sentry. Um primitivo `components/ui/error-state.tsx` (mensagem + "tentar de novo") substitui o padrão do skeleton eterno nos cinco pontos. Mais `app/(app)/error.tsx`, `app/global-error.tsx` e um `confirm-dialog.tsx` sobre o `ui/dialog.tsx` existente, no lugar do `window.confirm()` nativo. `/settings` passa a sincronizar a aba com `?tab=`.
+> **Adiantado pelo PR 4:** a `integration-tab` já trata erro de mutação e mostra o `requestId`, e o `errorMessage(err)` já está no `api-client` — a aba precisava dos dois para o P0.1, e duplicá-los para apagar aqui seria pior. Faltam o timeout, o guard de 204 e o primitivo compartilhado.
+
+**Mudança.** `lib/api-client.ts` ganha timeout e guard de corpo vazio (o `requestId` e a mensagem extraída do JSON do Nest já entraram no PR 4). `providers.tsx` ganha `retry` que não repete 4xx e `onError` global mandando para o Sentry. Um primitivo `components/ui/error-state.tsx` (mensagem + "tentar de novo") substitui o padrão do skeleton eterno nos cinco pontos. Mais `app/(app)/error.tsx`, `app/global-error.tsx` e um `confirm-dialog.tsx` sobre o `ui/dialog.tsx` existente, no lugar do `window.confirm()` nativo. `/settings` passa a sincronizar a aba com `?tab=`.
 
 **Sem biblioteca de toast.** O toast é elemento visual fora do handoff, e a mensagem inline já é o padrão da aplicação — para erro de mutação (salvar falhou) ela também é melhor, porque fica ao lado do campo que falhou.
 

@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { AppointmentStatus, StatusMapping } from '@dentaltrack/shared';
+import {
+  AGENDA_ERROR_LABELS,
+  type AppointmentStatus,
+  type StatusMapping,
+} from '@dentaltrack/shared';
+import { agendaErrorKind } from '../clinicorp/agenda-provider';
 import type { ExternalAppointment } from '../clinicorp/agenda-provider';
 import { IntegrationService } from '../clinicorp/integration.service';
 import { suggestStatus } from '../clinicorp/status-heuristics';
@@ -59,7 +64,14 @@ export class AgendaSyncService {
         this.logger.error(
           `Falha ao sincronizar a agenda da empresa ${clinicId}: ${detail}`,
         );
-        await this.integrations.recordSync(clinicId, detail.slice(0, 500));
+        // Mesmo formato do erro que a verificação de conexão guarda (P0.1) —
+        // a tela mostra os dois no mesmo lugar, e alternar entre prosa e
+        // mensagem crua conforme a origem confundiria quem lê.
+        const label = AGENDA_ERROR_LABELS[agendaErrorKind(err)];
+        await this.integrations.recordSync(
+          clinicId,
+          `${label}: ${detail}`.slice(0, 500),
+        );
       }
     }
     return total;

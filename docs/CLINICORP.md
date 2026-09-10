@@ -81,15 +81,47 @@ OK   Listar status de agendamento (2ms)
      8=Orçamento enviado → (decidir)
 ```
 
-### 3.2 Quando algum passo falhar
+### 3.2 Exercitar a escrita (opcional, opt-in duplo)
 
-O conserto é confinado a dois arquivos, por desenho:
+A leitura passar não prova que a criação funciona — e a criação é o que marca
+consulta de verdade. Para exercitá-la:
+
+```bash
+CLINICORP_WRITE_TEST=1 pnpm --filter @dentaltrack/api clinicorp:smoke -- --write
+```
+
+**Duas travas de propósito** (flag no comando **e** variável no ambiente): o
+sistema do outro lado é o prontuário de uma clínica, e um agendamento de teste
+criado por engano aparece na tela da recepção.
+
+O ciclo é criar paciente → criar agendamento (400 dias no futuro, ~3h da manhã,
+paciente `TESTE INTEGRACAO DENTALTRACK`) → cancelar. **O id sai impresso sempre**:
+`cancel_appointment` é justamente a rota que nunca foi validada ao vivo, então
+confira na tela do Clinicorp e remova à mão se o cancelamento falhou.
+
+### 3.3 Quando algum passo falhar
+
+Cada falha sai com a **categoria** entre colchetes (`[auth]`, `[config]`,
+`[indisponivel]`, `[timeout]`, `[resposta_invalida]`) — a mesma que a aba
+Integração usa para dizer ao operador o que fazer. O conserto é confinado a
+dois arquivos, por desenho:
 
 | Sintoma | Onde mexer |
 |---|---|
-| 404 numa rota | `CLINICORP_ROUTES` em [`clinicorp.client.ts`](../apps/api/src/clinicorp/clinicorp.client.ts) |
-| Campo veio com outro nome | os candidatos em [`clinicorp.provider.ts`](../apps/api/src/clinicorp/clinicorp.provider.ts) |
-| 401/403 | credencial errada ou rota não liberada no plano |
+| `[config]` / 404 numa rota | `CLINICORP_ROUTES` em [`clinicorp.client.ts`](../apps/api/src/clinicorp/clinicorp.client.ts) |
+| `[resposta_invalida]` / campo com outro nome | os candidatos em [`clinicorp.provider.ts`](../apps/api/src/clinicorp/clinicorp.provider.ts) |
+| `[auth]` / 401/403 | credencial errada ou rota não liberada no plano |
+| `[indisponivel]` / 5xx | do lado do fornecedor — a leitura já repetiu sozinha e não adiantou |
+
+> **Escrita nunca é repetida automaticamente.** `create_appointment_by_api` não
+> é idempotente (e já respondeu 200 sem criar nada), então um retry cego
+> marcaria a mesma consulta duas vezes. Só as leituras (`get`) repetem.
+
+> **Remarcar tem um limite conhecido.** A API não expõe reagendamento: o
+> adapter cancela e recria. Se a recriação falhar, o horário antigo já foi
+> liberado — e desde o P0.1 o DentalTrack **registra isso**, rebaixando o
+> agendamento para `pedido` sem id externo, para nenhum lembrete sair
+> prometendo uma consulta que a agenda não tem mais.
 
 A leitura é toda tolerante ([`field-reader.ts`](../apps/api/src/clinicorp/field-reader.ts)):
 cada campo tenta várias grafias (`PatientName`, `patient_name`, `patientName`) e a
@@ -99,7 +131,7 @@ divergência é uma entrada numa lista, não uma revisão das automações.
 > **Grafias erradas são reproduzidas de propósito.** `get_avaliable_days` está
 > assim no fornecedor; corrigir a ortografia dá 404.
 
-### 3.3 Ligar o modo real
+### 3.4 Ligar o modo real
 
 1. `INTEGRATION_ENCRYPTION_KEY` no ambiente da API (32 bytes). Sem ela a empresa
    não consegue salvar credencial — falhar fechado é melhor do que guardar

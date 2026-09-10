@@ -66,8 +66,50 @@ Em `/settings` → aba **Integração** → provedor **Google Agenda**:
   erro); remarcar faz `PATCH` só de início/fim — o id do evento e o que o
   agente gravou nele ficam. O Google é escrito **antes** do banco: se recusar,
   o horário antigo continua valendo e a tela mostra a resposta dele. Nenhum
-  dos dois é tool do agente. Ainda **não validado ao vivo** — é o próximo alvo
-  natural do `google:smoke` (PR 4), que cria, confirma e apaga um evento.
+  dos dois é tool do agente. Validável com o `google:smoke` abaixo.
+
+## Fechar o ciclo real: `google:smoke` (P0.1)
+
+O smoke do Clinicorp é só-leitura de propósito — o sistema do outro lado é o
+prontuário do cliente. Aqui é diferente, e o ciclo precisa fechar: sem
+exercitar a **escrita**, "a agenda está conectada" continua sendo uma
+afirmação sobre leitura, e o caminho que marca consulta de verdade só seria
+usado pela primeira vez com um paciente real do outro lado.
+
+```bash
+GOOGLE_CALENDAR_SA_EMAIL=... GOOGLE_CALENDAR_SA_KEY=... GOOGLE_CALENDAR_ID=... \
+  pnpm --filter @dentaltrack/api google:smoke
+```
+
+Cinco passos: ler a agenda (valida o compartilhamento) → horários livres →
+eventos da semana → **criar um evento de teste → confirmar que ele aparece na
+leitura → apagar**. O evento nasce a 400 dias no futuro, às ~3h da manhã e com
+o título `TESTE INTEGRACAO DENTALTRACK`: se algo der errado e ele sobreviver,
+não atrapalha agenda nenhuma — e o script imprime o id para remoção manual.
+
+`--somente-leitura` pula a parte de escrita.
+
+Cada falha sai com a **categoria** entre colchetes, que é a informação
+acionável:
+
+```
+FALHA Ler a agenda (valida o compartilhamento) (140ms)
+     [auth] Google Calendar respondeu 403 em /calendars/...
+```
+
+| Categoria | O que fazer |
+|---|---|
+| `auth` | a agenda não está compartilhada com a conta de serviço, ou a chave está errada |
+| `config` | o `GOOGLE_CALENDAR_ID` não existe para esta conta |
+| `indisponivel` | é do lado do Google — o transporte já repetiu sozinho e não adiantou |
+| `timeout` | instabilidade de rede |
+| `resposta_invalida` | o Google respondeu algo que não é o esperado (proxy no caminho?) |
+
+> **O que é repetido automaticamente:** só leitura. `createEvent` **nunca** é
+> repetido — repetir uma escrita que na verdade funcionou é exatamente como se
+> cria um agendamento duplicado. A recuperação de escrita é a `bookingKey` do
+> P0.5, não o transporte. `events.delete` é a exceção, e só porque é
+> idempotente por contrato (404 = já apagado).
 - **Sem reserva atômica:** antes de criar, o `book()` re-checa os horários
   livres (fail-open — só é conflito se a resposta veio e o horário sumiu). A
   janela entre a oferta e a escrita fica menor, não zero.

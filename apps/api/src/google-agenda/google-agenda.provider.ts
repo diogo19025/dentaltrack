@@ -11,6 +11,7 @@ import {
   toZonedParts,
   zonedTimeToUtc,
 } from '../common/time';
+import { AgendaProviderError } from '../clinicorp/agenda-provider';
 import type {
   PatientQuery,
   AgendaProvider,
@@ -241,7 +242,9 @@ export class GoogleAgendaProvider implements AgendaProvider {
     const created = this.toAppointment(event);
     if (!created) {
       // Contrato da porta: sucesso sem id externo confirmado não existe.
-      throw new Error('O Google não devolveu o evento criado.');
+      throw new AgendaProviderError('O Google não devolveu o evento criado.', {
+        kind: 'resposta_invalida',
+      });
     }
     return created;
   }

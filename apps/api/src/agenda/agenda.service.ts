@@ -6,13 +6,18 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type {
+  AgendaErrorKind,
   AgendaQuery,
   AgendaResponse,
   AppointmentSummary,
   Availability,
 } from '@dentaltrack/shared';
 import { dateKeyToUtc, DEFAULT_TIMEZONE } from '../common/time';
-import type { AgendaProvider } from '../clinicorp/agenda-provider';
+import {
+  agendaErrorKind,
+  AgendaSlotReleasedError,
+  type AgendaProvider,
+} from '../clinicorp/agenda-provider';
 import { IntegrationService } from '../clinicorp/integration.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { bookingKey } from './appointment-keys';
@@ -54,12 +59,16 @@ export interface BookResult {
   confirmed: boolean;
   externalId: string | null;
   /**
-   * `true` quando a re-checagem viu o horário ocupado antes da escrita (P0.5).
-   * O pedido fica registrado sem reserva e o agente deve oferecer outro
-   * horário — não prometer retorno da equipe, que é a orientação da falha
-   * genérica.
+   * **Por que** o horário não foi reservado — `null` quando foi (P0.1).
+   *
+   * Substituiu o booleano `conflict` do P0.5: a distinção que importa não é
+   * "houve conflito ou não", é o motivo, porque cada um pede uma conduta
+   * diferente do agente. `conflito` (a re-checagem viu o horário ocupado) manda
+   * oferecer outro horário; o resto manda prometer o retorno da equipe. Um
+   * segundo campo booleano ao lado da categoria seria a mesma informação
+   * contada duas vezes, com uma chance de discordarem.
    */
-  conflict: boolean;
+  failureKind: AgendaErrorKind | null;
 }
 
 /**
@@ -182,7 +191,7 @@ export class AgendaService {
         startsAt: local.startsAt,
         confirmed: local.confirmed,
         externalId: local.externalId,
-        conflict: false,
+        failureKind: null,
       };
     }
 
@@ -191,7 +200,7 @@ export class AgendaService {
     let externalId: string | null = null;
     let professionalName: string | null = null;
     let confirmed = false;
-    let conflict = false;
+    let failureKind: AgendaErrorKind | null = null;
 
     if (provider && input.startsAt && input.patientName) {
       try {
@@ -252,7 +261,7 @@ export class AgendaService {
           // O horário deixou de existir: a linha local não pode continuar
           // `agendado` (lembrete sairia para uma consulta que não há). Vira
           // `pedido`, com o horário desejado guardado, e o agente oferece outro.
-          conflict = true;
+          failureKind = 'conflito';
           await this.prisma.appointment.update({
             where: { id: local.id },
             data: { status: PEDIDO },
@@ -264,6 +273,7 @@ export class AgendaService {
           // O pedido já está registrado (passo 1): perder o interesse do
           // cliente por uma falha de integração seria pior. `confirmed` fica
           // false e o agente promete retorno em vez de confirmar.
+          failureKind = agendaErrorKind(err);
           this.logger.error(
             `Falha ao gravar o agendamento na agenda da empresa ${clinicId}: ${detail}`,
             err instanceof Error ? err.stack : undefined,
@@ -290,7 +300,7 @@ export class AgendaService {
       confirmado: confirmed,
       integracao: provider !== null,
       comHorario: input.startsAt !== null,
-      ...(conflict ? { reason: 'conflito' } : {}),
+      ...(failureKind ? { reason: failureKind } : {}),
     });
 
     return {
@@ -298,7 +308,7 @@ export class AgendaService {
       startsAt: input.startsAt,
       confirmed,
       externalId,
-      conflict,
+      failureKind,
     };
   }
 
@@ -327,11 +337,16 @@ export class AgendaService {
       return this.summaryOf(clinicId, id);
     }
 
-    await this.withProvider(clinicId, row.externalId, 'cancelar', (provider) =>
-      provider.cancelAppointment({
-        externalId: row.externalId as string,
-        unitId: row.unitExternalId,
-      }),
+    await this.withProvider(
+      clinicId,
+      row.externalId,
+      'cancelar',
+      null,
+      (provider) =>
+        provider.cancelAppointment({
+          externalId: row.externalId as string,
+          unitId: row.unitExternalId,
+        }),
     );
 
     await this.prisma.appointment.update({
@@ -404,6 +419,11 @@ export class AgendaService {
       clinicId,
       row.externalId,
       'remarcar',
+      // Adapter que remarca cancelando e recriando (Clinicorp) pode falhar com
+      // o horário antigo já liberado. A operação falha de qualquer jeito, mas a
+      // linha local não pode continuar afirmando um agendamento que não existe
+      // mais em lugar nenhum — senão o lembrete sai para uma consulta fantasma.
+      (err) => this.recordReleasedSlot(err, clinicId, id, startsAt, endsAt),
       async (provider) => {
         const moved = await provider.rescheduleAppointment({
           externalId: row.externalId as string,
@@ -456,6 +476,12 @@ export class AgendaService {
     clinicId: string,
     externalId: string | null,
     action: 'cancelar' | 'remarcar',
+    /**
+     * Chance de registrar localmente o que a falha deixou para trás, antes de
+     * ela virar 503. Sem este gancho, o `catch` não teria como distinguir uma
+     * recusa (nada mudou lá) de uma falha no meio do caminho (algo mudou).
+     */
+    onFailure: ((err: unknown) => Promise<void>) | null,
     run: (provider: AgendaProvider) => Promise<void>,
   ): Promise<void> {
     if (!externalId) return;
@@ -474,8 +500,50 @@ export class AgendaService {
         `Não foi possível ${action} o agendamento ${externalId} na agenda da empresa ${clinicId}: ${detail}`,
         err instanceof Error ? err.stack : undefined,
       );
+      await onFailure?.(err);
       throw new ServiceUnavailableException(
         `A agenda da empresa não aceitou ${action} agora: ${detail}`,
+      );
+    }
+  }
+
+  /**
+   * A remarcação falhou **depois** de liberar o horário antigo: registra a
+   * verdade em vez de deixar a linha mentindo (P0.1).
+   *
+   * O estado honesto é o mesmo do conflito no `book()` — `pedido`, com o
+   * horário desejado guardado e sem id externo: o cliente quer aquele horário,
+   * nada está reservado em lugar nenhum. E `pedido` fica fora do filtro do
+   * planejador de lembretes (`agendado`/`confirmado`), então nenhuma mensagem
+   * sai prometendo uma consulta que a agenda da empresa não tem.
+   *
+   * Falhar aqui não pode piorar nada: o erro original já está a caminho da
+   * tela, e engoli-lo com um log é melhor do que trocá-lo por outro.
+   */
+  private async recordReleasedSlot(
+    err: unknown,
+    clinicId: string,
+    id: string,
+    startsAt: Date,
+    endsAt: Date,
+  ): Promise<void> {
+    if (!(err instanceof AgendaSlotReleasedError)) return;
+    try {
+      await this.prisma.appointment.update({
+        where: { id },
+        data: { status: PEDIDO, startsAt, endsAt, externalId: null },
+      });
+      this.logger.warn({
+        event: 'agenda.reschedule',
+        outcome: 'fail',
+        appointmentId: id,
+        reason: 'horario_liberado',
+      });
+    } catch (updateErr) {
+      const detail =
+        updateErr instanceof Error ? updateErr.message : String(updateErr);
+      this.logger.error(
+        `Agendamento ${id} da empresa ${clinicId} perdeu a reserva externa e não pôde ser rebaixado para pedido: ${detail}`,
       );
     }
   }

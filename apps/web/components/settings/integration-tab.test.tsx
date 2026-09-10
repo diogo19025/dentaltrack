@@ -1,10 +1,12 @@
 import type {
   ConnectionCheck,
+  ConnectionStep,
   IntegrationProvider,
   IntegrationStatus,
 } from "@dentaltrack/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api-client";
 import { IntegrationTab } from "./integration-tab";
 
 /**
@@ -13,6 +15,10 @@ import { IntegrationTab } from "./integration-tab";
  * tela, o mapeamento sugerido é uma sugestão para confirmar — não uma decisão
  * aplicada pelas nossas costas — e a escolha entre Clinicorp e Google Agenda é
  * explícita, inclusive o efeito de ligar um desligar o outro.
+ *
+ * Desde o P0.1, protegem também que uma falha **apareça**: esta aba não tinha
+ * tratamento de erro nenhum, e um botão que não faz nada era indistinguível de
+ * um botão quebrado.
  */
 
 const state = vi.hoisted(() => ({
@@ -23,9 +29,16 @@ const state = vi.hoisted(() => ({
   check: {
     mutate: vi.fn(),
     isPending: false,
+    isError: false,
+    error: null as unknown,
     data: undefined as ConnectionCheck | undefined,
   },
-  update: { mutate: vi.fn(), isPending: false },
+  update: {
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null as unknown,
+  },
 }));
 
 // A aba dispara uma sincronização depois de uma verificação bem-sucedida.
@@ -80,11 +93,43 @@ function googleStatus(over: Partial<IntegrationStatus> = {}): IntegrationStatus 
   });
 }
 
+/** Um passo da verificação — `kind` é null quando passou (P0.1). */
+function step(over: Partial<ConnectionStep> = {}): ConnectionStep {
+  return {
+    key: "credenciais",
+    label: "Credenciais e modo",
+    ok: true,
+    detail: "Modo real.",
+    kind: null,
+    durationMs: 0,
+    ...over,
+  };
+}
+
+function check(over: Partial<ConnectionCheck> = {}): ConnectionCheck {
+  return {
+    ok: true,
+    mode: "live",
+    checkedAt: new Date().toISOString(),
+    steps: [],
+    requestId: null,
+    units: [],
+    professionals: [],
+    statuses: [],
+    suggestedMappings: [],
+    ...over,
+  };
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   state.data.clinicorp = null;
   state.data.google = null;
   state.check.data = undefined;
+  state.check.isError = false;
+  state.check.error = null;
+  state.update.isError = false;
+  state.update.error = null;
 });
 
 describe("IntegrationTab", () => {
@@ -116,35 +161,114 @@ describe("IntegrationTab", () => {
 
   it("mostra o passo a passo da verificação, com o erro que a parou", () => {
     state.data.clinicorp = status();
-    state.check.data = {
+    state.check.data = check({
       ok: false,
-      mode: "live",
-      checkedAt: new Date().toISOString(),
       steps: [
-        {
-          key: "credenciais",
-          label: "Credenciais e modo",
-          ok: true,
-          detail: "Modo real.",
-          durationMs: 0,
-        },
-        {
+        step(),
+        step({
           key: "unidades",
           label: "Listar unidades",
           ok: false,
           detail: "Clinicorp respondeu 401 (verifique usuário/token da API)",
+          kind: "auth",
           durationMs: 320,
-        },
+        }),
       ],
-      units: [],
-      professionals: [],
-      statuses: [],
-      suggestedMappings: [],
-    };
+    });
     render(<IntegrationTab />);
 
     expect(screen.getByText(/A verificação parou/i)).toBeInTheDocument();
     expect(screen.getByText(/respondeu 401/i)).toBeInTheDocument();
+  });
+
+  /**
+   * O ponto do P0.1: "credencial recusada" e "Google fora do ar" chegavam à
+   * tela como a mesma caixa cinza, e uma exige o operador enquanto a outra
+   * exige esperar.
+   */
+  describe("o que fazer a respeito (P0.1)", () => {
+    it("credencial recusada manda conferir o que está salvo", () => {
+      state.data.clinicorp = status();
+      state.check.data = check({
+        ok: false,
+        steps: [step({ ok: false, detail: "401", kind: "auth" })],
+      });
+      render(<IntegrationTab />);
+
+      expect(screen.getByText(/credencial foi recusada/i)).toBeInTheDocument();
+    });
+
+    it("agenda fora do ar diz que não há nada a corrigir aqui", () => {
+      state.data.clinicorp = status();
+      state.check.data = check({
+        ok: false,
+        steps: [step({ ok: false, detail: "503", kind: "indisponivel" })],
+      });
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByText(/nada precisa ser corrigido aqui/i),
+      ).toBeInTheDocument();
+    });
+
+    it("passo que deu certo não ganha orientação de erro", () => {
+      state.data.clinicorp = status();
+      state.check.data = check({ steps: [step()] });
+      render(<IntegrationTab />);
+
+      expect(screen.queryByText(/credencial foi recusada/i)).toBeNull();
+    });
+
+    it("mostra o código de correlação para o suporte", () => {
+      state.data.clinicorp = status();
+      state.check.data = check({ requestId: "req-abc-123" });
+      render(<IntegrationTab />);
+
+      expect(screen.getByText("req-abc-123")).toBeInTheDocument();
+    });
+  });
+
+  describe("a chamada em si falhou", () => {
+    it("verificação que nem chegou ao servidor aparece na tela", () => {
+      state.data.clinicorp = status();
+      state.check.isError = true;
+      state.check.error = new ApiError(
+        503,
+        JSON.stringify({ statusCode: 503, message: "Serviço indisponível" }),
+        "req-xyz",
+      );
+      render(<IntegrationTab />);
+
+      // A frase, não o JSON cru do corpo de erro do Nest.
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Serviço indisponível",
+      );
+      expect(screen.getByText("req-xyz")).toBeInTheDocument();
+    });
+
+    it("falha ao salvar não passa despercebida", () => {
+      state.data.clinicorp = status();
+      state.update.isError = true;
+      state.update.error = new Error("Sessão expirada");
+      render(<IntegrationTab />);
+
+      expect(screen.getByRole("alert")).toHaveTextContent("Sessão expirada");
+    });
+  });
+
+  it("sem credencial salva, oferece o texto do pedido ao suporte", () => {
+    state.data.clinicorp = status({ hasCredentials: false });
+    render(<IntegrationTab />);
+
+    expect(screen.getByText(/Ainda não tenho a credencial/i)).toBeInTheDocument();
+    expect(screen.getByText(/Subscriber ID da minha conta/i)).toBeInTheDocument();
+  });
+
+  it("com a credencial já salva, o pedido some da tela", () => {
+    state.data.clinicorp = status({ hasCredentials: true });
+    render(<IntegrationTab />);
+
+    expect(screen.queryByText(/Ainda não tenho a credencial/i)).toBeNull();
   });
 
   it("avisa quando falta mapear um status de que as automações dependem", () => {
@@ -160,18 +284,12 @@ describe("IntegrationTab", () => {
 
   it("usa o mapeamento sugerido pela verificação, sem aplicá-lo sozinho", () => {
     state.data.clinicorp = status();
-    state.check.data = {
-      ok: true,
-      mode: "live",
-      checkedAt: new Date().toISOString(),
-      steps: [],
-      units: [],
-      professionals: [],
+    state.check.data = check({
       statuses: [{ id: "6", name: "Faltou" }],
       suggestedMappings: [
         { externalId: "6", externalName: "Faltou", status: "faltou" },
       ],
-    };
+    });
     render(<IntegrationTab />);
 
     // A sugestão aparece na tela (o nome da conta e o significado escolhido)…

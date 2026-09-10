@@ -249,6 +249,7 @@ export class MockAgendaProvider implements AgendaProvider {
     if (!current) {
       throw new AgendaProviderError(
         `Agendamento ${input.externalId} não existe na agenda simulada.`,
+        { kind: 'config', status: 404 },
       );
     }
     const moved: ExternalAppointment = {

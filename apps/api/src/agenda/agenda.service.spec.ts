@@ -1,6 +1,26 @@
+import {
+  AgendaProviderError,
+  AgendaSlotReleasedError,
+} from '../clinicorp/agenda-provider';
 import { AgendaService, type BookInput } from './agenda.service';
 
 const CLINIC = '00000000-0000-0000-0000-0000000c1141';
+
+/**
+ * Relógio congelado — as datas dos cenários são fixas (outubro de 2026) e o
+ * `reschedule` recusa horário no passado consultando `Date.now()`. Sem congelar,
+ * este arquivo passaria a falhar sozinho em 02/10/2026, sem ninguém ter mexido
+ * em nada. Ver a mesma armadilha em `outbound.service.spec.ts`.
+ */
+const NOW = new Date('2026-09-09T13:00:00.000Z');
+
+beforeAll(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(NOW.getTime());
+});
+
+afterAll(() => {
+  jest.restoreAllMocks();
+});
 
 /** Erro do Prisma para violação de índice único. */
 const p2002 = () =>
@@ -173,7 +193,7 @@ describe('AgendaService.book', () => {
         startsAt: INPUT.startsAt,
         confirmed: true,
         externalId: 'ext-9',
-        conflict: false,
+        failureKind: null,
       });
       expect(provider.createAppointment).not.toHaveBeenCalled();
       expect(prisma.appointment.update).not.toHaveBeenCalled();
@@ -346,7 +366,10 @@ describe('AgendaService.book', () => {
       const res = await service.book(CLINIC, INPUT);
 
       expect(provider.createAppointment).not.toHaveBeenCalled();
-      expect(res).toMatchObject({ confirmed: false, conflict: true });
+      expect(res).toMatchObject({
+        confirmed: false,
+        failureKind: 'conflito',
+      });
       expect(prisma.appointment.update).toHaveBeenCalledWith({
         where: { id: 'apt-1' },
         data: { status: 'pedido' },
@@ -364,7 +387,7 @@ describe('AgendaService.book', () => {
       const res = await service.book(CLINIC, INPUT);
 
       expect(provider.createAppointment).toHaveBeenCalledTimes(1);
-      expect(res).toMatchObject({ confirmed: true, conflict: false });
+      expect(res).toMatchObject({ confirmed: true, failureKind: null });
     });
 
     // Fail-open deliberado: nenhum provedor oferece reserva atômica, e uma
@@ -385,6 +408,43 @@ describe('AgendaService.book', () => {
       const res = await service.book(CLINIC, INPUT);
       expect(provider.createAppointment).toHaveBeenCalledTimes(1);
       expect(res.confirmed).toBe(true);
+    });
+  });
+
+  /**
+   * O motivo da falha chega ao chamador (P0.1). É o que permite ao agente
+   * mandar o cliente escolher outro horário quando faz sentido, e prometer o
+   * retorno da equipe quando o problema é nosso.
+   */
+  describe('motivo da falha (P0.1)', () => {
+    it.each([
+      ['auth' as const, 'Credencial recusada'],
+      ['indisponivel' as const, 'Google fora do ar'],
+      ['timeout' as const, 'não respondeu'],
+    ])('falha %s chega em failureKind', async (kind, message) => {
+      const provider = providerMock({
+        createAppointment: jest
+          .fn()
+          .mockRejectedValue(new AgendaProviderError(message, { kind })),
+      });
+      const { service } = setup({ provider });
+
+      const res = await service.book(CLINIC, INPUT);
+
+      expect(res).toMatchObject({ confirmed: false, failureKind: kind });
+    });
+
+    it('erro que não é da agenda vira desconhecido, não indisponível', async () => {
+      const provider = providerMock({
+        createAppointment: jest
+          .fn()
+          .mockRejectedValue(new TypeError('undefined is not a function')),
+      });
+      const { service } = setup({ provider });
+
+      const res = await service.book(CLINIC, INPUT);
+
+      expect(res.failureKind).toBe('desconhecido');
     });
   });
 });
@@ -554,6 +614,55 @@ describe('AgendaService.reschedule (P0.5)', () => {
     await expect(
       service.reschedule(CLINIC, 'apt-1', NEW),
     ).rejects.toMatchObject({ status: 503 });
+    expect(prisma.appointment.update).not.toHaveBeenCalled();
+  });
+
+  /**
+   * O caso feio do Clinicorp (P0.1): ele não expõe reagendamento, então o
+   * adapter cancela e recria. Falhar no meio libera o horário antigo sem criar
+   * o novo — e a linha local, se ficasse como estava, mandaria um lembrete
+   * para uma consulta que não existe mais em lugar nenhum.
+   */
+  it('horário liberado e novo não criado → vira "pedido" sem id externo, e ainda assim 503', async () => {
+    const provider = providerMock({
+      rescheduleAppointment: jest
+        .fn()
+        .mockRejectedValue(
+          new AgendaSlotReleasedError('cancelou mas não recriou'),
+        ),
+    });
+    const { service, prisma } = setup({ provider });
+    jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+    prisma.appointment.findFirst.mockResolvedValueOnce(appointmentRow());
+
+    await expect(
+      service.reschedule(CLINIC, 'apt-1', NEW),
+    ).rejects.toMatchObject({ status: 503 });
+
+    // A operação falhou para quem pediu — mas o banco conta a verdade.
+    expect(prisma.appointment.update).toHaveBeenCalledWith({
+      where: { id: 'apt-1' },
+      data: {
+        status: 'pedido',
+        startsAt: NEW,
+        endsAt: new Date('2026-10-02T14:00:00.000Z'),
+        externalId: null,
+      },
+    });
+  });
+
+  it('falha comum não rebaixa a linha — o horário antigo continua reservado lá', async () => {
+    const provider = providerMock({
+      rescheduleAppointment: jest
+        .fn()
+        .mockRejectedValue(
+          new AgendaProviderError('Google 500', { kind: 'indisponivel' }),
+        ),
+    });
+    const { service, prisma } = setup({ provider });
+    prisma.appointment.findFirst.mockResolvedValueOnce(appointmentRow());
+
+    await expect(service.reschedule(CLINIC, 'apt-1', NEW)).rejects.toThrow();
     expect(prisma.appointment.update).not.toHaveBeenCalled();
   });
 

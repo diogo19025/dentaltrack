@@ -19,6 +19,7 @@
     "db:smoke:f3": "ts-node scripts/f3-smoke.ts",
     "ai:smoke": "ts-node scripts/ai-smoke.ts",
     "clinicorp:smoke": "ts-node scripts/clinicorp-smoke.ts",
+    "google:smoke": "ts-node scripts/google-agenda-smoke.ts",
     "db:studio": "prisma studio",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

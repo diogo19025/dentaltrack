@@ -8,7 +8,7 @@
 >
 > O **que fazer a seguir** está em [`maturity-plan.md`](maturity-plan.md); o
 > **estado auditado** que o originou, em [`maturity-audit.md`](maturity-audit.md).
-> Atualizado em: 2026-09-09.
+> Atualizado em: 2026-09-10.
 
 ---
 
@@ -245,7 +245,9 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm --filter @dentaltrack/web e2e   # Playwright — roda offline com LLM_PROVIDER=mock
 ```
 
-Estado em 2026-09-09: **496 testes na API** (Jest, ao lado do código) e **145 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
+Estado em 2026-09-10: **575 testes na API** (Jest, ao lado do código) e **158 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
+
+> **Cuidado com teste que expira.** Dois specs já fixaram um `NOW` no fixture enquanto o serviço lia `Date.now()` real: passaram no dia em que foram escritos e ficaram vermelhos no dia seguinte, sem ninguém mexer em nada. Quando o cenário depende de uma data, congele o relógio (`jest.spyOn(Date, 'now')`) — é o que `outbound.service.spec.ts` e `agenda.service.spec.ts` fazem, com o porquê escrito no topo.
 
 ---
 
@@ -294,6 +296,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 | 2026-09-09 | Cartão "Assistente ativo" da sidebar virou dispensável, com a dispensa amarrada ao **login** (claim `session_id` do JWT) e não ao navegador — F5 e navegação não o trazem de volta; o próximo login traz. |
 | 2026-09-09 | **Idempotência do agendamento** (P0.5, PR 2): o pedido passa a ser gravado **antes** da chamada à agenda externa, com uma `bookingKey` sob índice único. Duplo clique, retry após timeout, webhook reentregue e o modelo chamando a tool duas vezes deixam de virar dois agendamentos. Migration `f13_booking_idempotency`. |
 | 2026-09-09 | **Cancelar/remarcar + claim da fila** (P0.5, PR 3): a porta `AgendaProvider` ganhou `cancelAppointment` e `rescheduleAppointment` nos três adapters, com `POST /agenda/:id/cancelar` e `/remarcar` e o menu por agendamento na `/agenda` (não são tools do agente). `book()` re-checa o horário antes de gravar (fail-open; conflito → `pedido` e o agente oferece outro). A fila de saída reivindica cada linha antes de enviar (`pendente → enviando`), `enqueue` e a sincronização deixaram de ser check-then-create. Migration `f14_outbound_claim` (`enviando` + `Appointment.canceledAt`). |
+| 2026-09-10 | **Agenda real endurecida** (P0.1, PR 4): toda falha de agenda ganhou **categoria** (`auth`, `config`, `indisponivel`, `timeout`, `resposta_invalida`, `conflito`) — a tela passou a dizer o que fazer a respeito em vez de repetir a mensagem do fornecedor, e o transporte passou a repetir **só leitura** (`createEvent` nunca repete: é assim que se duplica agendamento). `google:smoke` fecha o ciclo real criando, confirmando e apagando um evento; `clinicorp:smoke --write` faz o equivalente com opt-in duplo. A aba Integração ganhou tratamento de erro — não tinha nenhum — com o `requestId` para o suporte. Corrigida a divergência do remarcar do Clinicorp (cancela e recria; falhar no meio deixava a linha local prometendo uma consulta que não existia mais). Sem migration. |
 
 ---
 
@@ -301,12 +304,12 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 
 O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial.
 
-**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **2 de 12 concluídos** (auditoria e observabilidade). Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
+**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **5 de 12 concluídos** (auditoria, observabilidade, idempotência do agendamento, cancelar/remarcar e agenda endurecida). Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
 
 **Riscos abertos, registrados honestamente:**
 
 - **Disparo ativo no WhatsApp.** Com as automações da F9 o produto passou de receptivo a emissor. O canal é Baileys (não-oficial), e disparo ativo é o padrão que mais gera banimento. As mitigações estão embutidas (janela de envio, jitter, teto diário, opt-out persistido, idempotência, `AUTOMATIONS_ENABLED` como kill switch), mas o risco residual é decisão do dono, não técnica.
-- **Clinicorp não validado ao vivo.** Os nomes de campo e rota do adapter vêm de um inventário não-oficial; o caminho de escrita nunca foi exercitado contra a API real. A credencial é pedida ao suporte **pelo dono da empresa**.
+- **Clinicorp não validado ao vivo.** Os nomes de campo e rota do adapter vêm de um inventário não-oficial; o caminho de escrita nunca foi exercitado contra a API real. A credencial é pedida ao suporte **pelo dono da empresa**. O roteiro do dia D está pronto (`clinicorp:smoke`, com `--write` opcional), e o **Google Agenda** é o caminho de validação escolhido justamente por não depender disso — o `google:smoke` já fecha o ciclo de escrita hoje.
 - **Sem reserva atômica de slot.** Nenhum dos provedores de agenda oferece. Duas conversas simultâneas podem fechar o mesmo horário; a re-checagem antes da escrita estreita a janela sem eliminá-la.
 
 ---

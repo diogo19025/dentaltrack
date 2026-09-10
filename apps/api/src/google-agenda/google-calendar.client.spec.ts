@@ -28,6 +28,9 @@ describe('GoogleCalendarClient (transporte · F12)', () => {
       privateKey: PEM,
       fetchImpl: fetchMock,
       now: () => new Date('2026-09-01T12:00:00.000Z'),
+      // Sem espera de verdade: o que se verifica é quantas tentativas houve,
+      // não quanto tempo o backoff dorme (isso é do http-retry.spec).
+      retry: { sleep: () => Promise.resolve() },
     });
   }
 
@@ -239,6 +242,139 @@ describe('GoogleCalendarClient (transporte · F12)', () => {
       expect(JSON.parse(String(init.body))).toEqual({
         start: { dateTime: '2026-09-04T14:00:00.000Z' },
       });
+    });
+  });
+
+  /**
+   * A categoria da falha (P0.1) é o que faz a tela dizer "revise a credencial"
+   * em vez de repetir o código HTTP, e o que decide o que pode ser repetido.
+   */
+  describe('categoria da falha (P0.1)', () => {
+    async function kindOf(response: Response): Promise<string> {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockResolvedValue(response);
+      try {
+        await makeClient(fetchMock).getCalendar(CALENDAR);
+        throw new Error('deveria ter falhado');
+      } catch (err) {
+        expect(err).toBeInstanceOf(AgendaProviderError);
+        return (err as AgendaProviderError).kind;
+      }
+    }
+
+    it.each([
+      [401, 'auth'],
+      [403, 'auth'],
+      [404, 'config'],
+      [429, 'indisponivel'],
+      [500, 'indisponivel'],
+      [503, 'indisponivel'],
+    ])('HTTP %i → %s', async (status, expected) => {
+      expect(await kindOf(new Response('erro', { status }))).toBe(expected);
+    });
+
+    it('200 com HTML no corpo → resposta_invalida, não SyntaxError cru', async () => {
+      const html = new Response('<html>portal cativo</html>', {
+        status: 200,
+        headers: { 'Content-Type': 'text/html' },
+      });
+      expect(await kindOf(html)).toBe('resposta_invalida');
+    });
+
+    it('abort do timeout → timeout', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockImplementation((_url: URL, init: RequestInit) =>
+          Promise.reject(
+            Object.assign(new Error('aborted'), {
+              name: 'AbortError',
+              signal: init.signal,
+            }),
+          ),
+        );
+      // O client decide pelo `signal.aborted`, então o teste precisa abortá-lo.
+      const client = new GoogleCalendarClient({
+        serviceAccountEmail: SA_EMAIL,
+        privateKey: PEM,
+        fetchImpl: fetchMock,
+        timeoutMs: 1,
+        now: () => new Date('2026-09-01T12:00:00.000Z'),
+        retry: { sleep: () => Promise.resolve() },
+      });
+
+      await expect(client.getCalendar(CALENDAR)).rejects.toMatchObject({
+        kind: expect.stringMatching(/timeout|indisponivel/),
+      });
+    });
+
+    it('falha de rede → indisponivel', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockRejectedValue(new TypeError('fetch failed'));
+
+      await expect(
+        makeClient(fetchMock).getCalendar(CALENDAR),
+      ).rejects.toMatchObject({ kind: 'indisponivel' });
+    });
+
+    it('credencial recusada no endpoint de token → auth', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValue(jsonResponse({ error: 'invalid_grant' }, 400));
+
+      await expect(
+        makeClient(fetchMock).getCalendar(CALENDAR),
+      ).rejects.toMatchObject({ kind: 'auth' });
+    });
+  });
+
+  /**
+   * Repetir leitura recupera instabilidade; repetir escrita cria duplicata.
+   * A distinção é do chamador, não do verbo — `freeBusy` é `POST` e é leitura.
+   */
+  describe('retry (P0.1)', () => {
+    it('leitura instável é repetida e acaba dando certo', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockResolvedValueOnce(new Response('boom', { status: 503 }))
+        .mockResolvedValueOnce(jsonResponse({ summary: 'Agenda' }));
+
+      const calendar = await makeClient(fetchMock).getCalendar(CALENDAR);
+
+      expect(calendar.summary).toBe('Agenda');
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('credencial recusada não é repetida — insistir só multiplica a recusa', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockResolvedValue(new Response('nope', { status: 401 }));
+
+      await expect(makeClient(fetchMock).getCalendar(CALENDAR)).rejects.toThrow(
+        '401',
+      );
+
+      // Token + uma única tentativa da rota.
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('criar evento NÃO é repetido — é assim que se duplica um agendamento', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockResolvedValue(new Response('boom', { status: 503 }));
+
+      await expect(
+        makeClient(fetchMock).createEvent(CALENDAR, { summary: 'x' }),
+      ).rejects.toThrow('503');
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
     });
   });
 });

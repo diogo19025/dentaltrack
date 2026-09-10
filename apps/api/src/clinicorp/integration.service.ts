@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  AGENDA_ERROR_LABELS,
   type AppointmentStatus,
   type ClinicorpCredentials,
   type ConnectionCheck,
@@ -16,12 +17,13 @@ import {
   googleAgendaConfigSchema,
   statusMappingSchema,
 } from '@dentaltrack/shared';
+import { getContext } from '../common/request-context';
 import { DEFAULT_TIMEZONE } from '../common/time';
 import type { Env } from '../config/env.validation';
 import { GoogleAgendaProvider } from '../google-agenda/google-agenda.provider';
 import { GoogleCalendarClient } from '../google-agenda/google-calendar.client';
 import { PrismaService } from '../prisma/prisma.service';
-import type { AgendaProvider } from './agenda-provider';
+import { agendaErrorKind, type AgendaProvider } from './agenda-provider';
 import { ClinicorpClient } from './clinicorp.client';
 import { ClinicorpAgendaProvider } from './clinicorp.provider';
 import {
@@ -221,12 +223,16 @@ export class IntegrationService {
           };
     const provider = resolved.provider;
 
+    const requestId = getContext()?.requestId ?? null;
+
     if (!provider) {
+      // Falta configuração deste lado — não houve chamada externa nenhuma.
       steps.push({
         key: 'credenciais',
         label: 'Credenciais e modo',
         ok: false,
         detail: resolved.reason ?? 'A integração não pôde ser montada.',
+        kind: 'config',
         durationMs: 0,
       });
       return {
@@ -234,6 +240,7 @@ export class IntegrationService {
         mode: status.mode,
         checkedAt: checkedAt.toISOString(),
         steps,
+        requestId,
         units,
         professionals,
         statuses,
@@ -250,6 +257,7 @@ export class IntegrationService {
           ? `Modo real (agenda ${status.google?.calendarId ?? '?'}).`
           : `Modo real${status.usernameHint ? ` (usuário ${status.usernameHint})` : ''}.`
         : 'Modo simulado — nenhuma chamada externa é feita.',
+      kind: null,
       durationMs: 0,
     });
 
@@ -266,6 +274,7 @@ export class IntegrationService {
           label,
           ok: true,
           detail,
+          kind: null,
           durationMs: Date.now() - started,
         });
         return true;
@@ -275,6 +284,9 @@ export class IntegrationService {
           label,
           ok: false,
           detail: err instanceof Error ? err.message : String(err),
+          // A categoria é o que faz a tela dizer "revise a credencial" em vez
+          // de repetir a mensagem técnica do fornecedor (P0.1).
+          kind: agendaErrorKind(err),
           durationMs: Date.now() - started,
         });
         return false;
@@ -323,9 +335,10 @@ export class IntegrationService {
       }));
 
     const ok = chain;
-    const lastError = ok
-      ? null
-      : (steps.find((s) => !s.ok)?.detail ?? 'Falha desconhecida.');
+    // O motivo entra no **mesmo** `lastError` que a tela já exibe (P0.1): a
+    // causa em prosa, seguida do detalhe técnico. Guardar a categoria numa
+    // coluna nova custaria uma migration para a mesma informação.
+    const lastError = ok ? null : describeFailure(steps, requestId);
 
     await this.prisma.clinicIntegration.updateMany({
       where: { clinicId, provider: providerName },
@@ -337,6 +350,7 @@ export class IntegrationService {
       mode: status.mode,
       checkedAt: checkedAt.toISOString(),
       steps,
+      requestId,
       units,
       professionals,
       statuses,
@@ -523,6 +537,25 @@ export class IntegrationService {
       return null;
     }
   }
+}
+
+/**
+ * A falha da verificação em uma linha guardável: causa em prosa, detalhe
+ * técnico e o código de correlação.
+ *
+ * O código vai junto porque `lastError` é o que fica visível dias depois, e sem
+ * ele o suporte tem a mensagem mas não tem como achar as linhas de log daquela
+ * verificação específica.
+ */
+function describeFailure(
+  steps: ConnectionStep[],
+  requestId: string | null,
+): string {
+  const failed = steps.find((s) => !s.ok);
+  if (!failed) return 'Falha desconhecida.';
+  const label = AGENDA_ERROR_LABELS[failed.kind ?? 'desconhecido'];
+  const code = requestId ? ` [${requestId}]` : '';
+  return `${label}: ${failed.detail}${code}`;
 }
 
 /** Json do banco → lista validada de mapeamentos (entrada inválida é ignorada). */

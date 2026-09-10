@@ -1,5 +1,10 @@
 import { Logger } from '@nestjs/common';
-import { AgendaProviderError } from './agenda-provider';
+import { withRetry, type RetryOptions } from '../common/http-retry';
+import {
+  AgendaProviderError,
+  isTransientAgendaError,
+  kindFromHttpStatus,
+} from './agenda-provider';
 import { normalizeEntityIds } from './field-reader';
 
 /**
@@ -62,6 +67,10 @@ export interface ClinicorpConfig {
   subscriberId: string | null;
   baseUrl?: string | null;
   timeoutMs?: number;
+  /** Injetável para teste — nenhum teste deste repositório toca a rede. */
+  fetchImpl?: typeof fetch;
+  /** Política de repetição das leituras (o teste substitui a espera). */
+  retry?: Pick<RetryOptions, 'attempts' | 'baseDelayMs' | 'sleep'>;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -70,14 +79,17 @@ export class ClinicorpClient {
   private readonly logger = new Logger(ClinicorpClient.name);
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly fetchImpl: typeof fetch;
 
   constructor(private readonly config: ClinicorpConfig) {
     this.baseUrl = (
       config.baseUrl?.trim() || CLINICORP_DEFAULT_BASE_URL
     ).replace(/\/+$/, '');
     this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    this.fetchImpl = config.fetchImpl ?? fetch;
   }
 
+  /** Leitura: repetida quando a falha é transitória (P0.1). */
   async get(
     path: string,
     query: Record<string, string | number | null | undefined> = {},
@@ -89,9 +101,22 @@ export class ClinicorpClient {
       if (value === null || value === undefined || value === '') continue;
       url.searchParams.set(key, String(value));
     }
-    return this.request(path, url, { method: 'GET' });
+    return withRetry(() => this.request(path, url, { method: 'GET' }), {
+      ...this.config.retry,
+      isRetryable: isTransientAgendaError,
+      onRetry: ({ attempt, delayMs }) =>
+        this.logger.warn(
+          `Clinicorp ${path} falhou (tentativa ${attempt}); repetindo em ${delayMs}ms.`,
+        ),
+    });
   }
 
+  /**
+   * Escrita: **nunca repetida**. As rotas de criação do Clinicorp não são
+   * idempotentes e já respondem 200 sem criar nada em alguns casos — repetir
+   * um `create_appointment_by_api` que na verdade funcionou é exatamente como
+   * se marca a mesma consulta duas vezes na agenda do cliente.
+   */
   async post(path: string, body: Record<string, unknown>): Promise<unknown> {
     const url = new URL(`${this.baseUrl}${path}`);
     const payload = normalizeEntityIds(this.withSubscriber(path, body));
@@ -126,7 +151,7 @@ export class ClinicorpClient {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      const res = await fetch(url, {
+      const res = await this.fetchImpl(url, {
         ...init,
         signal: controller.signal,
         headers: {
@@ -148,6 +173,7 @@ export class ClinicorpClient {
           `Clinicorp ${path} respondeu ${res.status}${hint}${
             detail ? `: ${detail.slice(0, 300)}` : ''
           }`,
+          { kind: kindFromHttpStatus(res.status), status: res.status },
         );
       }
 
@@ -158,6 +184,7 @@ export class ClinicorpClient {
       } catch {
         throw new AgendaProviderError(
           `Clinicorp ${path} devolveu uma resposta que não é JSON: ${text.slice(0, 200)}`,
+          { kind: 'resposta_invalida', status: res.status },
         );
       }
     } catch (err) {
@@ -165,14 +192,14 @@ export class ClinicorpClient {
       if (err instanceof Error && err.name === 'AbortError') {
         throw new AgendaProviderError(
           `Clinicorp ${path} não respondeu em ${this.timeoutMs}ms.`,
-          err,
+          { kind: 'timeout', cause: err },
         );
       }
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Falha na chamada ${path}: ${detail}`);
       throw new AgendaProviderError(
         `Não foi possível falar com o Clinicorp (${path}): ${detail}`,
-        err,
+        { kind: 'indisponivel', cause: err },
       );
     } finally {
       clearTimeout(timer);

@@ -1,6 +1,11 @@
 import { createSign } from 'node:crypto';
 import { Logger } from '@nestjs/common';
-import { AgendaProviderError } from '../clinicorp/agenda-provider';
+import {
+  AgendaProviderError,
+  isTransientAgendaError,
+  kindFromHttpStatus,
+} from '../clinicorp/agenda-provider';
+import { withRetry, type RetryOptions } from '../common/http-retry';
 
 /**
  * Cliente HTTP do Google Calendar (F12). Só transporte: autenticação, montagem
@@ -30,6 +35,12 @@ export interface GoogleCalendarConfig {
   /** Injetáveis para teste. */
   fetchImpl?: typeof fetch;
   now?: () => Date;
+  /**
+   * Política de repetição das leituras. Existe sobretudo para o teste poder
+   * substituir a espera: um backoff de verdade transformaria um caso de erro
+   * de milissegundos em segundos, e a suíte inteira paga por isso.
+   */
+  retry?: Pick<RetryOptions, 'attempts' | 'baseDelayMs' | 'sleep'>;
 }
 
 /** Evento como o Google o devolve (só os campos que usamos). */
@@ -76,6 +87,7 @@ export class GoogleCalendarClient {
     return (await this.request(
       'GET',
       `/calendars/${encodeURIComponent(calendarId)}`,
+      { retry: true },
     )) as GoogleCalendarInfo;
   }
 
@@ -90,8 +102,11 @@ export class GoogleCalendarClient {
       timeMax: to.toISOString(),
       items: [{ id: calendarId }],
     };
+    // `POST` que é leitura: o free/busy não cria nada, então repeti-lo é
+    // seguro — a regra "escrita não repete" olha para o efeito, não para o verbo.
     const result = (await this.request('POST', '/freeBusy', {
       body,
+      retry: true,
     })) as {
       calendars?: Record<string, { busy?: { start: string; end: string }[] }>;
     };
@@ -128,6 +143,7 @@ export class GoogleCalendarClient {
             maxResults: '2500',
             ...(pageToken ? { pageToken } : {}),
           },
+          retry: true,
         },
       )) as { items?: GoogleEvent[]; nextPageToken?: string };
       events.push(...(page.items ?? []));
@@ -168,16 +184,27 @@ export class GoogleCalendarClient {
    * Apaga o evento (P0.5 — cancelar). **Idempotente:** 404 (não existe) e 410
    * (já apagado) contam como sucesso — o estado final é o mesmo, e a porta
    * exige que repetir o cancelamento não vire erro.
+   *
+   * É a única escrita com retry (P0.1), e justamente pela idempotência: repetir
+   * um apagar que já tinha funcionado dá 404, que aqui é sucesso. Um cancelamento
+   * que falha por instabilidade deixa a agenda da empresa ocupada com um horário
+   * que o DentalTrack já considera livre — a divergência que este produto mais
+   * precisa evitar.
    */
   async deleteEvent(calendarId: string, eventId: string): Promise<void> {
     await this.request(
       'DELETE',
       `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
-      { tolerateStatuses: [404, 410] },
+      { tolerateStatuses: [404, 410], retry: true },
     );
   }
 
-  private async request(
+  /**
+   * Executa a chamada, repetindo-a quando (e só quando) o pedido é seguro de
+   * repetir e a falha é transitória. Ver `common/http-retry.ts` para o porquê
+   * de a decisão ser do chamador e não do verbo HTTP.
+   */
+  private request(
     method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     options: {
@@ -185,7 +212,30 @@ export class GoogleCalendarClient {
       body?: Record<string, unknown>;
       /** Códigos de erro que valem como sucesso sem corpo (ver `deleteEvent`). */
       tolerateStatuses?: number[];
+      /** Só para chamadas sem efeito colateral (ou idempotentes). */
+      retry?: boolean;
     } = {},
+  ): Promise<unknown> {
+    const run = () => this.sendRequest(method, path, options);
+    if (!options.retry) return run();
+    return withRetry(run, {
+      ...this.config.retry,
+      isRetryable: isTransientAgendaError,
+      onRetry: ({ attempt, delayMs }) =>
+        this.logger.warn(
+          `Google Calendar ${path} falhou (tentativa ${attempt}); repetindo em ${delayMs}ms.`,
+        ),
+    });
+  }
+
+  private async sendRequest(
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+    path: string,
+    options: {
+      query?: Record<string, string>;
+      body?: Record<string, unknown>;
+      tolerateStatuses?: number[];
+    },
   ): Promise<unknown> {
     const token = await this.getAccessToken();
     const url = new URL(`${CALENDAR_BASE_URL}${path}`);
@@ -206,11 +256,21 @@ export class GoogleCalendarClient {
       if (options.tolerateStatuses?.includes(response.status)) return undefined;
       throw new AgendaProviderError(
         `Google Calendar respondeu ${response.status} em ${path}: ${await safeBody(response)}`,
+        { kind: kindFromHttpStatus(response.status) },
       );
     }
     // `DELETE` responde 204 sem corpo — `json()` aqui explodiria com sucesso.
     if (response.status === 204) return undefined;
-    return response.json();
+    try {
+      return await response.json();
+    } catch (err) {
+      // 200 com HTML no corpo é o sintoma clássico de proxy/portal no caminho.
+      // Sem esta tradução ele subiria como `SyntaxError` cru, sem categoria.
+      throw new AgendaProviderError(
+        `Google Calendar respondeu algo que não é JSON em ${path}.`,
+        { kind: 'resposta_invalida', cause: err },
+      );
+    }
   }
 
   /**
@@ -245,8 +305,12 @@ export class GoogleCalendarClient {
     });
 
     if (!response.ok) {
+      // Qualquer 4xx aqui é a credencial sendo recusada — o endpoint de token
+      // responde 400 `invalid_grant` para chave errada, relógio fora de sincronia
+      // e conta sem permissão. Só 5xx é o Google com problema.
       throw new AgendaProviderError(
         `O Google recusou a service account (${response.status}): ${await safeBody(response)}`,
+        { kind: response.status >= 500 ? 'indisponivel' : 'auth' },
       );
     }
 
@@ -257,6 +321,7 @@ export class GoogleCalendarClient {
     if (!data.access_token) {
       throw new AgendaProviderError(
         'O Google não devolveu um access token para a service account.',
+        { kind: 'resposta_invalida' },
       );
     }
 
@@ -276,9 +341,11 @@ export class GoogleCalendarClient {
       return `${input}.${signature.toString('base64url')}`;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
+      // `config` e não `auth`: a chave nem chegou a ser apresentada ao Google.
+      // Quem conserta é quem cuida do servidor, não a empresa na tela.
       throw new AgendaProviderError(
         `A chave privada da service account do Google é inválida: ${detail}`,
-        err,
+        { kind: 'config', cause: err },
       );
     }
   }
@@ -292,11 +359,13 @@ export class GoogleCalendarClient {
       const timedOut = controller.signal.aborted;
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Falha ao chamar ${url.pathname}: ${detail}`);
+      // Falha de rede é `indisponivel`: DNS, conexão recusada e socket cortado
+      // são todos "o outro lado não está alcançável agora", e todos passam.
       throw new AgendaProviderError(
         timedOut
           ? `O Google Calendar não respondeu em ${this.timeoutMs} ms.`
           : `Não foi possível falar com o Google Calendar: ${detail}`,
-        err,
+        { kind: timedOut ? 'timeout' : 'indisponivel', cause: err },
       );
     } finally {
       clearTimeout(timer);

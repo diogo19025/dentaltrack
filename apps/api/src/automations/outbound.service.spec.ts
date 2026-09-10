@@ -17,6 +17,29 @@ const APPOINTMENT = '33333333-3333-3333-3333-333333333333';
 /** Quarta-feira, 09/09/2026, 10:00 em São Paulo. */
 const NOW = new Date('2026-09-09T13:00:00.000Z');
 
+/**
+ * O relógio real é congelado em `NOW` durante todo o arquivo.
+ *
+ * Sem isto os testes **expiravam**: parte do serviço recebe o instante por
+ * parâmetro (`dispatchDue(NOW)`) e parte lê `Date.now()` direto — validar
+ * "horário já passou", suprimir consulta vencida, calcular o próximo retry.
+ * Enquanto os dois relógios coincidiam, tudo passava; no dia seguinte à
+ * escrita, três testes viravam vermelhos sem nenhuma linha de código ter
+ * mudado. É a classe de falha que só aparece depois do merge — e que o CI
+ * (PR 11) transformaria em ruído diário.
+ *
+ * `Date.now` e não `useFakeTimers`: o objetivo é só o relógio; substituir
+ * também `setTimeout` prenderia o throttle de envio esperando um tique
+ * que ninguém avança.
+ */
+beforeAll(() => {
+  jest.spyOn(Date, 'now').mockReturnValue(NOW.getTime());
+});
+
+afterAll(() => {
+  jest.restoreAllMocks();
+});
+
 describe('OutboundService (fila de saída · F9)', () => {
   let outbound: OutboundService;
 

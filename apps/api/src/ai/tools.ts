@@ -646,10 +646,13 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             /* status já final / transição não permitida — não bloqueia o agendamento */
           }
 
-          // Conflito (P0.5): o horário sumiu entre a oferta e a escolha. É
-          // diferente de "a agenda falhou" — aqui o cliente precisa escolher
-          // outro, não esperar a equipe.
-          const conflito = 'conflict' in booked && booked.conflict === true;
+          // Conflito (P0.5/P0.1): o horário sumiu entre a oferta e a escolha. É
+          // a única falha em que a conduta muda — o cliente precisa escolher
+          // outro horário agora, não esperar a equipe. As demais (credencial,
+          // agenda fora do ar, timeout) são problema nosso, não dele: o agente
+          // não deve explicá-las nem pedir que ele tente de novo.
+          const conflito =
+            'failureKind' in booked && booked.failureKind === 'conflito';
 
           return {
             ok: true,
