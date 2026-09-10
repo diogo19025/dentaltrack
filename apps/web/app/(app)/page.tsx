@@ -29,6 +29,7 @@ import { Card } from "@/components/ui/card";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { HandoffBadge } from "@/components/ui/handoff-badge";
 import { Tag } from "@/components/ui/tag";
 import { useRecentConversations } from "@/hooks/use-conversations";
 import { useLeads } from "@/hooks/use-leads";
@@ -65,7 +66,9 @@ export default function DashboardPage() {
   const { data: recent } = useRecentConversations(6);
   const { data: leadsData, isLoading: leadsLoading } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    string | null
+  >(null);
 
   return (
     <>
@@ -139,9 +142,12 @@ export default function DashboardPage() {
             <Card className="anim-fade-up gap-0 p-[22px_24px]">
               <div className="mb-[18px] flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-base font-semibold tracking-[-0.01em]">Volume de mensagens</div>
+                  <div className="text-base font-semibold tracking-[-0.01em]">
+                    Volume de mensagens
+                  </div>
                   <div className="mt-[3px] text-[13px] text-muted-foreground">
-                    Bot × cliente por dia · últimos {RANGE_DAYS_LABEL[range]} dias
+                    Bot × cliente por dia · últimos {RANGE_DAYS_LABEL[range]}{" "}
+                    dias
                   </div>
                 </div>
                 <Legend />
@@ -150,8 +156,12 @@ export default function DashboardPage() {
             </Card>
 
             <Card className="anim-fade-up gap-0 p-[22px_24px]">
-              <div className="mb-1 text-base font-semibold tracking-[-0.01em]">Status das conversas</div>
-              <div className="mb-[22px] text-[13px] text-muted-foreground">Distribuição atual</div>
+              <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
+                Status das conversas
+              </div>
+              <div className="mb-[22px] text-[13px] text-muted-foreground">
+                Distribuição atual
+              </div>
               <div className="flex justify-center">
                 <Donut data={data.statusDistribution} />
               </div>
@@ -161,14 +171,18 @@ export default function DashboardPage() {
           {/* Funil + Top tags */}
           <div className="mb-[18px] grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1">
             <Card className="anim-fade-up gap-0 p-[22px_24px]">
-              <div className="mb-1 text-base font-semibold tracking-[-0.01em]">Funil de conversão</div>
+              <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
+                Funil de conversão
+              </div>
               <div className="mb-[22px] text-[13px] text-muted-foreground">
                 Iniciadas → engajadas → agendadas
               </div>
               <Funnel data={data.funnel} />
             </Card>
             <Card className="anim-fade-up gap-0 p-[22px_24px]">
-              <div className="mb-1 text-base font-semibold tracking-[-0.01em]">Tags mais frequentes</div>
+              <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
+                Tags mais frequentes
+              </div>
               <div className="mb-[22px] text-[13px] text-muted-foreground">
                 Interesses detectados nas conversas
               </div>
@@ -184,7 +198,10 @@ export default function DashboardPage() {
 
           {/* Abandono × recorrência — perdas × clientes que voltaram a agendar */}
           <div className="mb-[18px]">
-            <RetentionSection retention={data.retention} rangeDaysLabel={RANGE_DAYS_LABEL[range]} />
+            <RetentionSection
+              retention={data.retention}
+              rangeDaysLabel={RANGE_DAYS_LABEL[range]}
+            />
           </div>
 
           {/* Temperatura dos leads — clique abre o painel de detalhe */}
@@ -206,7 +223,9 @@ export default function DashboardPage() {
           <Card className="anim-fade-up gap-0 overflow-hidden p-0">
             <div className="flex items-start justify-between gap-3 p-[22px_24px] pb-4">
               <div>
-                <div className="text-base font-semibold tracking-[-0.01em]">Conversas recentes</div>
+                <div className="text-base font-semibold tracking-[-0.01em]">
+                  Conversas recentes
+                </div>
                 <div className="mt-[3px] text-[13px] text-muted-foreground">
                   Últimas interações do agente
                 </div>
@@ -252,11 +271,15 @@ export default function DashboardPage() {
                                 {initials(c.leadName, "P")}
                               </AvatarFallback>
                             </Avatar>
-                            <span className="font-medium">{c.leadName ?? "Cliente"}</span>
+                            <span className="font-medium">
+                              {c.leadName ?? "Cliente"}
+                            </span>
                           </div>
                         </td>
                         <td>
-                          <span className="text-muted-foreground">{c.procedure ?? "—"}</span>
+                          <span className="text-muted-foreground">
+                            {c.procedure ?? "—"}
+                          </span>
                         </td>
                         <td>
                           <div className="flex flex-wrap gap-1.5">
@@ -266,10 +289,15 @@ export default function DashboardPage() {
                           </div>
                         </td>
                         <td>
-                          <StatusBadge status={c.status} />
+                          <div className="flex flex-col items-start gap-1.5">
+                            <StatusBadge status={c.status} />
+                            {c.handoffAt && <HandoffBadge active />}
+                          </div>
                         </td>
                         <td className="text-right">
-                          <span className="tabular text-muted-foreground">{timeAgo(c.lastMessageAt)}</span>
+                          <span className="tabular text-muted-foreground">
+                            {timeAgo(c.lastMessageAt)}
+                          </span>
                         </td>
                       </tr>
                     ))}
@@ -306,8 +334,14 @@ function Legend() {
         { c: "var(--chart-1)", l: "Bot" },
         { c: "var(--chart-3)", l: "Cliente" },
       ].map((it) => (
-        <span key={it.l} className="flex items-center gap-[7px] text-[13px] text-muted-foreground">
-          <span className="size-2.5 rounded-[3px]" style={{ background: it.c }} />
+        <span
+          key={it.l}
+          className="flex items-center gap-[7px] text-[13px] text-muted-foreground"
+        >
+          <span
+            className="size-2.5 rounded-[3px]"
+            style={{ background: it.c }}
+          />
           {it.l}
         </span>
       ))}

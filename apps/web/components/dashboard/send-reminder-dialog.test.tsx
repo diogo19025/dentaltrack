@@ -69,7 +69,12 @@ describe("SendReminderDialog", () => {
   it("bloqueado (sem telefone): mostra a ajuda e desabilita o envio", () => {
     mockCtx.mockReturnValue(
       ctxResult({
-        data: { canSend: false, reason: "no_phone", phone: null, draft: "Olá!" },
+        data: {
+          canSend: false,
+          reason: "no_phone",
+          phone: null,
+          draft: "Olá!",
+        },
       }),
     );
     mockSend.mockReturnValue(sendResult());
@@ -78,9 +83,7 @@ describe("SendReminderDialog", () => {
       <SendReminderDialog conversationId="c-1" open onOpenChange={() => {}} />,
     );
 
-    expect(
-      screen.getByText(/não tem telefone capturado/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/não tem telefone capturado/i)).toBeInTheDocument();
     expect(submitButton()).toBeDisabled();
   });
 
@@ -101,7 +104,9 @@ describe("SendReminderDialog", () => {
       <SendReminderDialog conversationId="c-1" open onOpenChange={() => {}} />,
     );
 
-    expect(screen.getByText(/Conecte o WhatsApp da empresa/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Conecte o WhatsApp da empresa/i),
+    ).toBeInTheDocument();
     expect(submitButton()).toBeDisabled();
   });
 
@@ -127,7 +132,43 @@ describe("SendReminderDialog", () => {
       />,
     );
 
-    expect(screen.getByText("Lembrete enviado para Maria.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Lembrete enviado para Maria."),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /fechar/i })).toBeInTheDocument();
+  });
+
+  it("no handoff vira uma caixa de resposta vazia com rótulos próprios", () => {
+    const mutate = vi.fn();
+    mockCtx.mockReturnValue(
+      ctxResult({
+        data: {
+          canSend: true,
+          reason: null,
+          phone: "5511999998888",
+          draft: "Este rascunho não deve entrar na resposta.",
+        },
+      }),
+    );
+    mockSend.mockReturnValue(sendResult({ mutate }));
+
+    render(
+      <SendReminderDialog
+        conversationId="c-1"
+        purpose="reply"
+        open
+        onOpenChange={() => {}}
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Responder cliente" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Mensagem")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Mensagem"), {
+      target: { value: "Vou verificar para você." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /enviar resposta/i }));
+    expect(mutate).toHaveBeenCalledWith("Vou verificar para você.");
   });
 });

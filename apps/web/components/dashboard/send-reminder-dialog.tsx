@@ -34,11 +34,13 @@ const BLOCKER_NOTE: Record<ReminderBlocker, string> = {
 export function SendReminderDialog({
   conversationId,
   contactName,
+  purpose = "reminder",
   open,
   onOpenChange,
 }: {
   conversationId: string | null;
   contactName?: string | null;
+  purpose?: "reminder" | "reply";
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -49,7 +51,11 @@ export function SendReminderDialog({
   // sob demanda), então o valor é derivado no render — sem sincronizar via efeito.
   const [typed, setTyped] = useState("");
   const [dirty, setDirty] = useState(false);
-  const message = dirty ? typed : (ctx.data?.draft ?? "");
+  const message = dirty
+    ? typed
+    : purpose === "reply"
+      ? ""
+      : (ctx.data?.draft ?? "");
 
   const canSend = ctx.data?.canSend ?? false;
   const trimmed = message.trim();
@@ -65,7 +71,9 @@ export function SendReminderDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Enviar lembrete</DialogTitle>
+          <DialogTitle>
+            {purpose === "reply" ? "Responder cliente" : "Enviar lembrete"}
+          </DialogTitle>
           <DialogDescription>
             {ctx.data?.phone ? (
               <>
@@ -84,7 +92,8 @@ export function SendReminderDialog({
               <Check className="size-5" />
             </span>
             <p className="text-[14px] font-medium">
-              Lembrete enviado{firstName ? ` para ${firstName}` : ""}.
+              {purpose === "reply" ? "Resposta" : "Lembrete"} enviado
+              {firstName ? ` para ${firstName}` : ""}.
             </p>
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Fechar
@@ -127,7 +136,11 @@ export function SendReminderDialog({
                 rows={5}
                 maxLength={REMINDER_MAX_LENGTH}
                 disabled={!canSend || send.isPending}
-                placeholder="Escreva o lembrete…"
+                placeholder={
+                  purpose === "reply"
+                    ? "Escreva a resposta…"
+                    : "Escreva o lembrete…"
+                }
               />
               <span className="tabular self-end text-[11.5px] text-muted-foreground">
                 {message.length}/{REMINDER_MAX_LENGTH}
@@ -152,7 +165,11 @@ export function SendReminderDialog({
                 type="submit"
                 disabled={!canSend || send.isPending || trimmed.length === 0}
               >
-                {send.isPending ? "Enviando…" : "Enviar lembrete"}
+                {send.isPending
+                  ? "Enviando…"
+                  : purpose === "reply"
+                    ? "Enviar resposta"
+                    : "Enviar lembrete"}
               </Button>
             </DialogFooter>
           </form>

@@ -8,21 +8,21 @@
 
 **5 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
 
-| # | PR | Entrega | Status | Migration |
-|---|---|---|---|---|
-| 0 | Auditoria e plano | Fases 0 e 1 da spec, versionadas | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
-| 1 | **Observabilidade** (P0.3) | Correlação, logs JSON com redação de PII, filtro de exceções, Sentry | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
-| 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` no índice único | ✅ **2026-09-09** | `f13_booking_idempotency` ✅ aplicada 2026-09-09 |
-| 3 | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar (3 adapters + endpoints + tela); re-checagem de horário no `book()`; `dispatchDue` com claim; `enqueue` e sync sem check-then-create | ✅ **2026-09-09** | `f14_outbound_claim` ✅ aplicada 2026-09-09 |
-| 4 | **Agenda real endurecida** (P0.1) | Retry só em leitura, erros tipados, `google:smoke` com escrita, UI de erro na aba Integração | ✅ **2026-09-10** | — |
-| 5 | **Handoff humano** (P0.2) | IA pausável por conversa, endpoints, UI no dialog | 🚧 **backend pronto 2026-09-10** · falta a UI | `f15_handoff` ⚠️ criada, **não aplicada** |
-| 6 | **WhatsApp robusto** (P0.4) | `InboundMessage`, fila da resposta reativa, estado persistido | ⬜ a fazer | `f16_whatsapp_robustez` |
-| 7 | **Estados de erro e carregamento** (P1.3) | `ErrorState`, error boundaries, `api-client` | ⬜ a fazer | — |
-| 8 | **Permissões owner/staff** (P1.4) | `RolesGuard` + UI | ⬜ a fazer | — |
-| 9 | **LGPD operacional** (P1.5) | Anonimização, opt-out na UI, retenção | ⬜ a fazer | `f17_lgpd` |
-| 10 | **Onboarding + demo** (P1.1, P1.2) | Checklist derivado, seed completo | ⬜ a fazer | — |
-| 11 | **CI dos fluxos críticos** (P1.6) | 5 e2e de API + workflow + `chat.spec.ts` corrigido | ⬜ a fazer | — |
-| 12 | **Runbook de produção** (P1.7) | `docs/production-runbook.md` | ⬜ a fazer | — |
+| #   | PR                                                    | Entrega                                                                                                                                                            | Status                                                                       | Migration                                        |
+| --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ------------------------------------------------ |
+| 0   | Auditoria e plano                                     | Fases 0 e 1 da spec, versionadas                                                                                                                                   | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | —                                                |
+| 1   | **Observabilidade** (P0.3)                            | Correlação, logs JSON com redação de PII, filtro de exceções, Sentry                                                                                               | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | —                                                |
+| 2   | **Idempotência do agendamento** (P0.5, parte 1)       | `book()` reordenado + `bookingKey` no índice único                                                                                                                 | ✅ **2026-09-09**                                                            | `f13_booking_idempotency` ✅ aplicada 2026-09-09 |
+| 3   | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar (3 adapters + endpoints + tela); re-checagem de horário no `book()`; `dispatchDue` com claim; `enqueue` e sync sem check-then-create | ✅ **2026-09-09**                                                            | `f14_outbound_claim` ✅ aplicada 2026-09-09      |
+| 4   | **Agenda real endurecida** (P0.1)                     | Retry só em leitura, erros tipados, `google:smoke` com escrita, UI de erro na aba Integração                                                                       | ✅ **2026-09-10**                                                            | —                                                |
+| 5   | **Handoff humano** (P0.2)                             | IA pausável por conversa, endpoints, UI no dialog                                                                                                                  | 🚧 **código completo 2026-09-10** · aguarda merge                            | `f15_handoff` ⚠️ criada, **não aplicada**        |
+| 6   | **WhatsApp robusto** (P0.4)                           | `InboundMessage`, fila da resposta reativa, estado persistido                                                                                                      | ⬜ a fazer                                                                   | `f16_whatsapp_robustez`                          |
+| 7   | **Estados de erro e carregamento** (P1.3)             | `ErrorState`, error boundaries, `api-client`                                                                                                                       | ⬜ a fazer                                                                   | —                                                |
+| 8   | **Permissões owner/staff** (P1.4)                     | `RolesGuard` + UI                                                                                                                                                  | ⬜ a fazer                                                                   | —                                                |
+| 9   | **LGPD operacional** (P1.5)                           | Anonimização, opt-out na UI, retenção                                                                                                                              | ⬜ a fazer                                                                   | `f17_lgpd`                                       |
+| 10  | **Onboarding + demo** (P1.1, P1.2)                    | Checklist derivado, seed completo                                                                                                                                  | ⬜ a fazer                                                                   | —                                                |
+| 11  | **CI dos fluxos críticos** (P1.6)                     | 5 e2e de API + workflow + `chat.spec.ts` corrigido                                                                                                                 | ⬜ a fazer                                                                   | —                                                |
+| 12  | **Runbook de produção** (P1.7)                        | `docs/production-runbook.md`                                                                                                                                       | ⬜ a fazer                                                                   | —                                                |
 
 Legenda: ✅ concluído · 🚧 em andamento · ⬜ a fazer · ⏸️ bloqueado (com o motivo na linha).
 
@@ -48,7 +48,7 @@ Legenda: ✅ concluído · 🚧 em andamento · ⬜ a fazer · ⏸️ bloqueado 
 
 ### Decisões de escopo tomadas com o dono
 
-- **O Google Agenda é o caminho de validação real** do P0.1: já existe, não depende de credencial de terceiro e fecha o ciclo ponta a ponta hoje. O **Clinicorp recebe o mesmo endurecimento e os mesmos testes**, mas fica marcado como *não validado ao vivo* — a credencial é pedida ao suporte pelo dono da clínica, e nada no plano depende dela.
+- **O Google Agenda é o caminho de validação real** do P0.1: já existe, não depende de credencial de terceiro e fecha o ciclo ponta a ponta hoje. O **Clinicorp recebe o mesmo endurecimento e os mesmos testes**, mas fica marcado como _não validado ao vivo_ — a credencial é pedida ao suporte pelo dono da clínica, e nada no plano depende dela.
 - **O handoff acontece no dialog que já existe**, sem tela de inbox.
 - **Sentry aprovado** para captura de exceptions, junto dos logs estruturados.
 
@@ -56,10 +56,11 @@ Legenda: ✅ concluído · 🚧 em andamento · ⬜ a fazer · ⏸️ bloqueado 
 
 # P0 — obrigatório
 
-## P0.3 · Observabilidade ✅ *entregue em 2026-09-09*
+## P0.3 · Observabilidade ✅ _entregue em 2026-09-09_
 
 > **O que mudou em relação ao planejado**, registrado por honestidade:
-> - `GET /health` ficou **global e sem chamada externa** (versão do deploy, transporte do WhatsApp, monitoramento). Reportar estado *por empresa* num endpoint público vazaria dado de cliente, e um health check que depende da Evolution derruba o serviço inteiro quando só o WhatsApp caiu.
+>
+> - `GET /health` ficou **global e sem chamada externa** (versão do deploy, transporte do WhatsApp, monitoramento). Reportar estado _por empresa_ num endpoint público vazaria dado de cliente, e um health check que depende da Evolution derruba o serviço inteiro quando só o WhatsApp caiu.
 > - O `AllExceptionsFilter` **não escreve nada depois que a resposta começou** — o `POST /chat` responde por SSE, e um JSON no meio do stream o corromperia.
 > - Corrigida de passagem uma dívida de lint **pré-existente** (`argsIgnorePattern: '^_'` faltando na config do ESLint da API, que deixava `pnpm lint` vermelho). O PR 11 vai exigir lint verde.
 > - Verificado ao vivo: `requestId` do corpo da resposta bate com a linha de log; 404 e 401 preservam os corpos que o front já consome.
@@ -98,7 +99,7 @@ agenda.availability → agenda.book → agenda.sync → outbound.dispatch
 
 ---
 
-## P0.5 · Idempotência dos agendamentos ✅ *PR 2 e PR 3 entregues em 2026-09-09*
+## P0.5 · Idempotência dos agendamentos ✅ _PR 2 e PR 3 entregues em 2026-09-09_
 
 > **O que mudou em relação ao planejado** no PR 3:
 >
@@ -133,7 +134,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 - **`bookingKey`** = hash de `(conversationId ?? leadId ?? phone | startsAt ?? preferredTime | procedureId ?? procedureName)`, em `agenda/appointment-keys.ts` — espelha `automations/automation-keys.ts`.
 - **Concorrência:** `pg_advisory_xact_lock(hashtext('<clinicId>:<profId>:<startsAtISO>'))`, cobrindo **só o passo 1**. A chamada externa, que leva até 15s, fica fora do lock.
-- **Double-booking:** a re-checagem estreita a janela sem eliminá-la — nenhum dos provedores oferece reserva atômica. **Fail-open deliberado:** só é conflito se a consulta teve sucesso *e* devolveu lista não-vazia sem o horário; lista vazia ou erro → segue e cria, porque a autoridade final é o provedor. Limite documentado no runbook.
+- **Double-booking:** a re-checagem estreita a janela sem eliminá-la — nenhum dos provedores oferece reserva atômica. **Fail-open deliberado:** só é conflito se a consulta teve sucesso _e_ devolveu lista não-vazia sem o horário; lista vazia ou erro → segue e cria, porque a autoridade final é o provedor. Limite documentado no runbook.
 - **Cancelar e remarcar:** a porta `AgendaProvider` ganha `cancelAppointment` e `rescheduleAppointment` (obrigatórios — são três adapters e o TypeScript pega todos). Clinicorp usa a rota `cancelAppointment` **já declarada e nunca chamada**, e remarca cancelando + recriando (o inventário não expõe rota de reagendamento); Google usa `events.delete`/`events.patch`; mock em memória. Idempotência por transição: cancelar o que já está `cancelado` é **no-op de sucesso**, não erro.
 - **Exposição:** `POST /agenda/:id/cancelar` e `/remarcar` sob `TenantGuard`, com botões na tela `/agenda` que já lista os agendamentos. **Não são dadas como tools ao agente** — o bot cancelando consulta por mal-entendido é dano irreversível, e isso seria feature de produto, não robustez.
 - **Duas correções da mesma classe, no mesmo PR:** `AgendaSyncService.upsert()` vira um `upsert` único (hoje é read-modify-write com corrida entre rodadas); `OutboundService.dispatchDue()` ganha claim otimista (`updateMany` de `pendente` → `enviando`, prossegue só se `count === 1`) — a única defesa contra duas réplicas mandando o mesmo lembrete, já que as flags atuais só valem dentro de um processo. `enqueue()` passa a tratar `P2002` em vez de ser check-then-create.
@@ -149,9 +150,10 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.1 · Agenda real ponta a ponta ✅ *entregue em 2026-09-10*
+## P0.1 · Agenda real ponta a ponta ✅ _entregue em 2026-09-10_
 
 > **O que mudou em relação ao planejado**, registrado por honestidade:
+>
 > - **`BookResult` ganhou `failureKind` e perdeu `conflict`**, em vez de ganhar os dois. O plano previa acrescentar `failureKind`/`failureDetail` ao lado do booleano; manter os dois seria a mesma informação contada duas vezes, com chance de discordarem. `failureDetail` ficou de fora por não ter consumidor — a mensagem técnica já vai para o log, e mandá-la ao modelo seria expor texto de fornecedor numa conversa com o cliente.
 > - **`AgendaProviderError` também guarda o `status` HTTP**, não só a categoria. O cancelamento precisa distinguir "a agenda configurada não existe" de "este agendamento já não existe lá" — as duas são `config` —, e antes disso a idempotência do cancelamento dependia de achar a string `respondeu 404` na mensagem do erro: qualquer ajuste de redação a quebraria sem quebrar nenhum teste.
 > - **`events.delete` é a única escrita com retry.** A regra "escrita não repete" existe porque repetir cria duplicata; apagar é idempotente por contrato (404/410 = já apagado), e um cancelamento que falha por instabilidade deixa a agenda da empresa ocupada com um horário que o DentalTrack já considera livre.
@@ -182,16 +184,19 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.2 · Handoff humano 🚧 *PR 5 — backend entregue em 2026-09-10, UI pendente*
+## P0.2 · Handoff humano 🚧 _PR 5 — código completo em 2026-09-10, aguarda merge_
 
-> **O que já está de pé** (verde nos três pacotes, 17 testes novos):
+> **O que já está de pé** (backend + UI):
+>
 > - migration `f15_handoff` criada — **ainda não aplicada ao vivo**;
 > - `HandoffService` (assumir/devolver, idempotentes nos dois sentidos) e `POST`/`DELETE /conversations/:id/handoff`;
 > - o gate no `ChatService.processInboundMessage`: com atendente no controle a IA não é chamada, mas a mensagem do cliente continua sendo persistida e o lead capturado;
 > - `OutboundService.revalidate()` suprimindo com o motivo `atendimento_humano`;
 > - `handoffAt` no `GET /conversations` e no `GET /conversations/:id`, prontos para a tela consumir.
+> - badge de atendimento humano no `ConversationDetailDialog` e nas conversas recentes;
+> - botão idempotente para assumir/devolver e caixa de resposta pelo mesmo transporte do lembrete manual.
 >
-> **O que falta:** só a UI — o badge no `ConversationDetailDialog` e na lista de conversas recentes, o botão que alterna "Assumir atendimento"/"Devolver para IA" e a caixa de resposta. **Hoje o handoff só é acionável por chamada direta à API.**
+> **O que falta:** aplicar a migration `f15_handoff` e fazer o merge. O código da entrega está completo na branch.
 >
 > **O que mudou em relação ao planejado:** o endpoint `POST /conversations/:id/messages` **não foi criado**. O `POST /conversations/:id/reminder` já faz exatamente o que a resposta do atendente precisa — envia pelo WhatsApp, persiste como `assistant` na conversa e reabre a conversa `abandonada` —, e duas rotas idênticas com nomes diferentes seriam dívida, não clareza. Isso também evita o ciclo de módulos que apareceria se o `ConversationsModule` passasse a depender do `RemindersModule`, que já depende dele.
 
@@ -217,20 +222,20 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.4 · Robustez da conexão WhatsApp ⬜ *PR 6*
+## P0.4 · Robustez da conexão WhatsApp ⬜ _PR 6_
 
 **Estado atual.** Dedupe em memória; falha de envio reativo perdida; transporte sem timeout nem retry; estado da conexão só existe enquanto alguém olha `/settings`.
 
 **Mudança necessária.**
 
-| Problema | Correção |
-|---|---|
-| Dedupe volátil | Tabela `InboundMessage { clinicId, externalId, processedAt }` com `@@unique`. **Insert-first**, antes de qualquer processamento: `create` com catch de `P2002` → é reentrega, `return`. Reusar `Message.externalId` foi descartado porque a linha de `Message` só nasce depois da transcrição e da IA — uma reentrega chegando nesses ~10s passaria pelas duas vias. Exige mover `resolveClinicId` para antes do dedupe. **Fail-open:** erro que não seja `P2002` → processa (responder duas vezes é melhor que nunca responder). Limpeza > 7 dias no cron diário existente |
-| Resposta perdida | Falha de `sendText` → **enfileira** no `OutboundService` (`kind: 'resposta_ia'`, `dedupeKey: 'resposta:<messageId>'`). Ganha de graça retry, idempotência e visibilidade na tela de mensagens programadas. **`enqueue()` ganha `respectSendWindow`** (default `true`), e `resposta_ia` passa `false`: a janela de horário existe para disparo ativo, não para responder quem escreveu às 22h. O envio direto continua sendo o caminho feliz — enfileirar sempre acrescentaria 4s de throttle a toda resposta |
-| Transporte frágil | `EvolutionService.request()` usa o `withRetry` do P0.1 + `AbortController` (`EVOLUTION_TIMEOUT_MS`, default 20s). Retry só em `GET`; envio não repete (a fila cuida) |
-| Estado invisível | `ClinicSettings.whatsappState/StateAt/LastError`, gravados por `getStatus()` **e por um cron de 5 min** — é o cron que faz o aviso aparecer sem ninguém abrir a tela. Queda para desconectado → log `whatsapp.disconnected` + Sentry + evento no sino (o `NotificationsService` já mescla cinco queries; vira a sexta) |
-| Aviso visual | Faixa no topbar quando há instância e o estado ≠ conectado, com link para `/settings?tab=whatsapp` |
-| Sessão expirada | **Não reconectar em laço:** sessão expirada de Baileys exige leitura de QR, e um `connect()` automático a cada tique só gera QR novo. Uma tentativa por instância a cada 15 min (cobre queda de rede com credenciais intactas); fora disso, detectar, avisar e oferecer o botão que já existe |
+| Problema          | Correção                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dedupe volátil    | Tabela `InboundMessage { clinicId, externalId, processedAt }` com `@@unique`. **Insert-first**, antes de qualquer processamento: `create` com catch de `P2002` → é reentrega, `return`. Reusar `Message.externalId` foi descartado porque a linha de `Message` só nasce depois da transcrição e da IA — uma reentrega chegando nesses ~10s passaria pelas duas vias. Exige mover `resolveClinicId` para antes do dedupe. **Fail-open:** erro que não seja `P2002` → processa (responder duas vezes é melhor que nunca responder). Limpeza > 7 dias no cron diário existente |
+| Resposta perdida  | Falha de `sendText` → **enfileira** no `OutboundService` (`kind: 'resposta_ia'`, `dedupeKey: 'resposta:<messageId>'`). Ganha de graça retry, idempotência e visibilidade na tela de mensagens programadas. **`enqueue()` ganha `respectSendWindow`** (default `true`), e `resposta_ia` passa `false`: a janela de horário existe para disparo ativo, não para responder quem escreveu às 22h. O envio direto continua sendo o caminho feliz — enfileirar sempre acrescentaria 4s de throttle a toda resposta                                                                |
+| Transporte frágil | `EvolutionService.request()` usa o `withRetry` do P0.1 + `AbortController` (`EVOLUTION_TIMEOUT_MS`, default 20s). Retry só em `GET`; envio não repete (a fila cuida)                                                                                                                                                                                                                                                                                                                                                                                                        |
+| Estado invisível  | `ClinicSettings.whatsappState/StateAt/LastError`, gravados por `getStatus()` **e por um cron de 5 min** — é o cron que faz o aviso aparecer sem ninguém abrir a tela. Queda para desconectado → log `whatsapp.disconnected` + Sentry + evento no sino (o `NotificationsService` já mescla cinco queries; vira a sexta)                                                                                                                                                                                                                                                      |
+| Aviso visual      | Faixa no topbar quando há instância e o estado ≠ conectado, com link para `/settings?tab=whatsapp`                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Sessão expirada   | **Não reconectar em laço:** sessão expirada de Baileys exige leitura de QR, e um `connect()` automático a cada tique só gera QR novo. Uma tentativa por instância a cada 15 min (cobre queda de rede com credenciais intactas); fora disso, detectar, avisar e oferecer o botão que já existe                                                                                                                                                                                                                                                                               |
 
 **Anti-ban preservado integralmente:** nada muda no delay de digitação, no jitter, na janela de envio ou no teto diário — e a fila de resposta reativa passa pelos mesmos controles.
 
@@ -247,7 +252,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 # P1 — maturidade operacional
 
-## P1.4 · Permissões (owner / staff) ⬜ *PR 8*
+## P1.4 · Permissões (owner / staff) ⬜ _PR 8_
 
 **Estado atual.** `Membership.role` e `enum Role { owner, staff }` existem no schema e **nunca são lidos**.
 
@@ -257,7 +262,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 **Risco:** médio — trancar alguém para fora. Mitigado: todo membership existente é `owner` por default, e `@Roles` fica limitado aos seis grupos listados.
 **Esforço:** M. **Fora:** RBAC genérico, editor de permissões, tela de convite de membros (criar `staff` fica documentado no runbook).
 
-## P1.3 · Estados de erro e carregamento ⬜ *PR 7*
+## P1.3 · Estados de erro e carregamento ⬜ _PR 7_
 
 **Estado atual.** Sem error boundary; `automations-tab` sem nenhum `isError`; o padrão `isLoading || !data ? <Skeleton/>` gera **skeleton eterno** em erro (dashboard, automações, WhatsApp); `onExport` com `try/finally` sem `catch`; `catch {}` vazio no bootstrap do layout; `api-client` sem timeout e com `res.json()` sem guard (quebra em 204).
 
@@ -269,7 +274,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 **Banco.** Nenhuma. **Testes.** `api-client` (204, timeout, requestId), `ErrorState`, `ConfirmDialog`, e um por aba corrigida (erro renderiza mensagem, não skeleton). **Risco:** baixo. **Esforço:** M.
 
-## P1.5 · LGPD operacional ⬜ *PR 9*
+## P1.5 · LGPD operacional ⬜ _PR 9_
 
 **Anonimização, não exclusão física.** `DELETE /leads/:id/dados-pessoais` (owner-only), numa `$transaction`: o lead perde nome, telefone, e-mail e `externalId`; as conversas perdem `contactPhone`; o conteúdo das mensagens e do corpo das mensagens de saída é substituído. **`Appointment` é preservado** — não carrega PII própria, e apagá-lo destruiria histórico e `DailyMetric`. **`ContactOptOut` é mantido, deliberadamente:** aquele telefone é justamente o que impede reenviar mensagem para quem pediu para parar; apagá-lo em nome da privacidade produziria a violação que ele previne.
 
@@ -277,15 +282,15 @@ Logs sem PII já vêm do `redactPhone` do P0.3 — nenhum serviço precisa ser e
 
 **Banco.** `f17_lgpd`: `Lead.anonymizedAt DateTime?`. **Testes.** Anonimiza tudo o que deve, é idempotente, cross-tenant → 404. **Risco:** médio (operação destrutiva) — mitigado por owner-only, confirmação, transação e ausência de delete físico. **Esforço:** M. **Dependências:** P0.3, P1.3, P1.4.
 
-## P1.1 · Onboarding guiado ⬜ *PR 10*
+## P1.1 · Onboarding guiado ⬜ _PR 10_
 
 `GET /onboarding/checklist` **derivado das tabelas existentes**, como o `NotificationsService` faz — nenhuma tabela nova, ~50 linhas. Seis itens `{ key, label, done, href }`: identidade, procedimentos, tags, WhatsApp conectado (usa o `whatsappState` do P0.4), agenda conectada, automações revisadas. Um card no topo do dashboard, que some quando tudo está feito. Depende do `?tab=` do P1.3. **Banco.** Nenhuma. **Risco:** baixo. **Esforço:** P-M. **Dependências:** P0.4, P1.3.
 
-## P1.2 · Ambiente de demonstração ⬜ *PR 10*
+## P1.2 · Ambiente de demonstração ⬜ _PR 10_
 
 `seed.ts` ganha `AutomationSettings`, `ClinicIntegration` em `mode: 'mock'` **com os `statusMappings` já preenchidos** — é isso que faz a `/agenda` demo ter conteúdo real — e feriados. `seed-demo.ts` ganha agendamentos nos seis status com horário real, `OutboundMessage` nos quatro status (cobre a aba Automações e o painel de mensagens programadas), dois opt-outs e duas conversas em handoff. `Membership` só é criada se `DEMO_USER_ID` vier por env — inventar um UUID geraria membership órfã. Correção associada: memoizar o `MockAgendaProvider` por empresa no `IntegrationService` (três linhas), senão a agenda demo se contradiz entre chamadas. **Banco.** Nenhuma. **Validação:** rodar e conferir as sete telas. **Risco:** baixo. **Esforço:** P-M. **Dependências:** P0.2, P0.4.
 
-## P1.6 · CI para os fluxos críticos ⬜ *PR 11*
+## P1.6 · CI para os fluxos críticos ⬜ _PR 11_
 
 Duas camadas, escolhendo a mais barata por fluxo. Os cinco fluxos da spec vão para **supertest na API** — `apps/api/test/jest-e2e.json` já existe, `supertest` já está instalado e não há nenhum spec: é infraestrutura pronta esperando os testes. O guard de auth já aceita HS256, então o CI assina o próprio token sem depender do Supabase real; o Evolution ganha `EVOLUTION_MODE=mock` que registra envios em memória (mesmo movimento do `LLM_PROVIDER=mock` e do `IntegrationMode=mock`, que já se provaram). O Playwright continua cobrindo a UI.
 
@@ -293,7 +298,7 @@ Duas camadas, escolhendo a mais barata por fluxo. Os cinco fluxos da spec vão p
 
 Duas correções de higiene junto: o `chat.spec.ts` **quebrado desde o whitelabel** (espera "clínica"/"consulta"; o código diz "empresa"/"atendimento") — CI vermelho no primeiro dia mata o hábito; e a senha de teste sai de `e2e/credentials.ts` para `E2E_PASSWORD` (hoje está em texto claro no repositório, apontando para o Supabase real). A proteção de branch é configuração do GitHub — documentada no runbook, não versionável. **Risco:** baixo. **Esforço:** M-G. **Dependências:** P0.2 e P0.5 (dois dos specs testam o que eles constroem).
 
-## P1.7 · Runbook de produção ⬜ *PR 12*
+## P1.7 · Runbook de produção ⬜ _PR 12_
 
 `docs/production-runbook.md`, organizado **por sintoma** — que é como um problema de produção chega. "O bot parou de responder", "o cliente não recebeu o lembrete", "agendou e não apareceu na agenda", "WhatsApp desconectado", "erro 500 na tela" (→ pedir o `requestId` e buscar no log). Mais: topologia e onde ficam os logs, envs por serviço com o efeito de faltar cada uma, deploy e rollback (e o que **não** tem rollback), kill switches (`AUTOMATIONS_ENABLED=false`, `mode=desligado`, desconectar a instância), retenção e atendimento a titular, e uma seção honesta de **o que ainda não existe** (sem alertas automáticos, sem réplica, backup só o do Supabase). **Esforço:** P. Escrito por último, quando os outros itens já definiram o que há para diagnosticar.
 
@@ -303,16 +308,16 @@ Duas correções de higiene junto: o `chat.spec.ts` **quebrado desde o whitelabe
 
 > A lista com status vive no **[Placar](#placar)**, no topo. Aqui fica só o porquê da ordem — duas tabelas com a mesma informação divergem na primeira semana.
 
-| # | Esforço | Por que está nesta posição |
-|---|---|---|
-| 1 | M | **Primeiro porque tudo depois loga nela.** Não se conserta o que não se enxerga. |
-| 2–3 | G | O que evita **dano irreversível**: agendamento duplicado na agenda real de um cliente. O PR 2 é o de maior retorno absoluto do plano. |
-| 4 | M | Endurece a agenda com os erros já classificados; independente do 1, pode sair em paralelo. |
-| 5–6 | M · G | O canal: handoff e a robustez do WhatsApp, que dependem da observabilidade para serem verificáveis. |
-| 7–9 | M | Experiência de erro, permissões e governo dos dados — nenhum é pré-requisito do outro. |
-| 10 | M | Onboarding e demo dependem de 5 e 6 para terem o que mostrar. |
-| 11 | M-G | O CI vem tarde de propósito: dois dos cinco fluxos críticos só existem depois de 2 e 5. |
-| 12 | P | O runbook por último, quando os outros já definiram o que há para diagnosticar. |
+| #   | Esforço | Por que está nesta posição                                                                                                            |
+| --- | ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | M       | **Primeiro porque tudo depois loga nela.** Não se conserta o que não se enxerga.                                                      |
+| 2–3 | G       | O que evita **dano irreversível**: agendamento duplicado na agenda real de um cliente. O PR 2 é o de maior retorno absoluto do plano. |
+| 4   | M       | Endurece a agenda com os erros já classificados; independente do 1, pode sair em paralelo.                                            |
+| 5–6 | M · G   | O canal: handoff e a robustez do WhatsApp, que dependem da observabilidade para serem verificáveis.                                   |
+| 7–9 | M       | Experiência de erro, permissões e governo dos dados — nenhum é pré-requisito do outro.                                                |
+| 10  | M       | Onboarding e demo dependem de 5 e 6 para terem o que mostrar.                                                                         |
+| 11  | M-G     | O CI vem tarde de propósito: dois dos cinco fluxos críticos só existem depois de 2 e 5.                                               |
+| 12  | P       | O runbook por último, quando os outros já definiram o que há para diagnosticar.                                                       |
 
 ---
 

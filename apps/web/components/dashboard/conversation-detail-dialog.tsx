@@ -1,7 +1,15 @@
 "use client";
 
 import type { ChatMessageDto, ConversationDetail } from "@dentaltrack/shared";
-import { Bell, Bot, MessageCircle, User } from "lucide-react";
+import {
+  Bell,
+  Bot,
+  Headphones,
+  MessageCircle,
+  RefreshCw,
+  Send,
+  User,
+} from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,9 +20,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HandoffBadge } from "@/components/ui/handoff-badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tag } from "@/components/ui/tag";
-import { useConversationDetail } from "@/hooks/use-conversations";
+import {
+  useAssumeConversation,
+  useConversationDetail,
+  useReleaseConversation,
+} from "@/hooks/use-conversations";
 import { formatCaptured } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { whatsappUrl } from "@/lib/whatsapp";
@@ -67,11 +80,21 @@ export function ConversationDetailDialog({
 }
 
 /** Conteúdo puro do painel (testável sem rede). */
-export function ConversationDetailContent({ detail }: { detail: ConversationDetail }) {
+export function ConversationDetailContent({
+  detail,
+}: {
+  detail: ConversationDetail;
+}) {
   const thread = detail.messages.filter((m) => m.role !== "system");
   const wa = whatsappUrl(detail.contactPhone);
   const truncated = detail.messageCount > thread.length;
   const [reminderOpen, setReminderOpen] = useState(false);
+  const [replyOpen, setReplyOpen] = useState(false);
+  const assume = useAssumeConversation(detail.id);
+  const release = useReleaseConversation(detail.id);
+  const handoffActive = detail.handoffAt !== null;
+  const handoffPending = assume.isPending || release.isPending;
+  const handoffError = assume.isError || release.isError;
 
   return (
     <>
@@ -99,6 +122,18 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
           <span className="tabular">{detail.messageCount}</span>
         </Field>
         <div className="col-span-full">
+          <Field label="Responsável pelo atendimento">
+            <span className="flex flex-wrap items-center gap-2">
+              <HandoffBadge active={handoffActive} />
+              {handoffActive && detail.handoffAt && (
+                <span className="text-[12.5px] text-muted-foreground">
+                  desde {formatCaptured(detail.handoffAt)}
+                </span>
+              )}
+            </span>
+          </Field>
+        </div>
+        <div className="col-span-full">
           <Field label="Tags detectadas">
             {detail.tags.length > 0 ? (
               <span className="flex flex-wrap gap-1.5">
@@ -107,30 +142,68 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
                 ))}
               </span>
             ) : (
-              <span className="text-muted-foreground">Nenhuma tag detectada ainda.</span>
+              <span className="text-muted-foreground">
+                Nenhuma tag detectada ainda.
+              </span>
             )}
           </Field>
         </div>
       </div>
 
-      {wa ? (
-        <div className="flex flex-wrap items-center gap-2 justify-self-start">
+      <div className="flex flex-wrap items-center gap-2 justify-self-start">
+        <Button
+          type="button"
+          variant={handoffActive ? "outline" : "default"}
+          disabled={handoffPending}
+          onClick={() => (handoffActive ? release.mutate() : assume.mutate({}))}
+        >
+          {handoffActive ? (
+            <RefreshCw className="size-4" />
+          ) : (
+            <Headphones className="size-4" />
+          )}
+          {handoffPending
+            ? "Atualizando…"
+            : handoffActive
+              ? "Devolver para IA"
+              : "Assumir atendimento"}
+        </Button>
+
+        {wa && handoffActive && (
+          <Button type="button" onClick={() => setReplyOpen(true)}>
+            <Send className="size-4" /> Responder cliente
+          </Button>
+        )}
+
+        {wa && !handoffActive && (
           <Button
             type="button"
-            className="w-fit"
+            variant="secondary"
             onClick={() => setReminderOpen(true)}
           >
             <Bell className="size-4" /> Enviar lembrete
           </Button>
+        )}
+
+        {wa && (
           <Button asChild variant="outline" className="w-fit">
             <a href={wa} target="_blank" rel="noreferrer">
               <MessageCircle className="size-4" /> Abrir conversa no WhatsApp
             </a>
           </Button>
-        </div>
-      ) : (
+        )}
+      </div>
+
+      {handoffError && (
+        <p role="alert" className="text-[12.5px] text-destructive">
+          Não foi possível alterar quem responde esta conversa. Tente novamente.
+        </p>
+      )}
+
+      {!wa && (
         <p className="text-[12.5px] text-muted-foreground">
-          Sem telefone do contato — não dá para abrir esta conversa direto no WhatsApp.
+          Sem telefone do contato — não dá para abrir esta conversa direto no
+          WhatsApp.
         </p>
       )}
 
@@ -142,11 +215,21 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
         />
       )}
 
+      {replyOpen && (
+        <SendReminderDialog
+          conversationId={detail.id}
+          purpose="reply"
+          open
+          onOpenChange={setReplyOpen}
+        />
+      )}
+
       <div>
         <SectionLabel>Últimas mensagens ({thread.length})</SectionLabel>
         {truncated && (
           <p className="mt-1 text-[12.5px] text-muted-foreground">
-            Mostrando as últimas {thread.length} de {detail.messageCount} mensagens.
+            Mostrando as últimas {thread.length} de {detail.messageCount}{" "}
+            mensagens.
           </p>
         )}
         {thread.length === 0 ? (
@@ -169,7 +252,12 @@ export function ConversationDetailContent({ detail }: { detail: ConversationDeta
 function MessageBubble({ message }: { message: ChatMessageDto }) {
   const isUser = message.role === "user";
   return (
-    <li className={cn("flex items-end gap-2.5", isUser ? "justify-end" : "justify-start")}>
+    <li
+      className={cn(
+        "flex items-end gap-2.5",
+        isUser ? "justify-end" : "justify-start",
+      )}
+    >
       {!isUser && (
         <span className="flex size-[30px] shrink-0 items-center justify-center rounded-[9px] bg-primary-tint text-primary">
           <Bot className="size-4" />
