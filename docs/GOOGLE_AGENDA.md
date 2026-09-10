@@ -61,6 +61,16 @@ Em `/settings` → aba **Integração** → provedor **Google Agenda**:
   diz "está marcado" (mesma regra `confirmed` da F9).
 - **Sincronização** (mesmo polling da F9) importa também eventos criados à mão
   pela equipe; cancelou no Google, cancela aqui.
+- **Cancelar e remarcar pela tela** (`/agenda`, P0.5): cancelar **apaga** o
+  evento (`events.delete`; 404/410 contam como já apagado, então repetir não é
+  erro); remarcar faz `PATCH` só de início/fim — o id do evento e o que o
+  agente gravou nele ficam. O Google é escrito **antes** do banco: se recusar,
+  o horário antigo continua valendo e a tela mostra a resposta dele. Nenhum
+  dos dois é tool do agente. Ainda **não validado ao vivo** — é o próximo alvo
+  natural do `google:smoke` (PR 4), que cria, confirma e apaga um evento.
+- **Sem reserva atômica:** antes de criar, o `book()` re-checa os horários
+  livres (fail-open — só é conflito se a resposta veio e o horário sumiu). A
+  janela entre a oferta e a escrita fica menor, não zero.
 - **Limite honesto:** o Google não registra presença (compareceu/faltou). As
   automações de **remarcação pós-falta** e **retorno de manutenção** não
   disparam com este provedor; **lembretes** (3d/1d/1h) funcionam normalmente. A

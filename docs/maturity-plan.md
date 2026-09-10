@@ -6,14 +6,14 @@
 
 ## Placar
 
-**3 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
+**4 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
 
 | # | PR | Entrega | Status | Migration |
 |---|---|---|---|---|
 | 0 | Auditoria e plano | Fases 0 e 1 da spec, versionadas | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
 | 1 | **Observabilidade** (P0.3) | Correlação, logs JSON com redação de PII, filtro de exceções, Sentry | ✅ **2026-09-09** · [#23](https://github.com/diogo19025/dentaltrack/pull/23) | — |
-| 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` no índice único | ✅ **2026-09-09** | `f13_booking_idempotency` ⚠️ aplicar |
-| 3 | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar; `dispatchDue` com claim | ⬜ a fazer | `f14_outbound_claim` |
+| 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` no índice único | ✅ **2026-09-09** | `f13_booking_idempotency` ✅ aplicada 2026-09-09 |
+| 3 | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar (3 adapters + endpoints + tela); re-checagem de horário no `book()`; `dispatchDue` com claim; `enqueue` e sync sem check-then-create | ✅ **2026-09-09** | `f14_outbound_claim` ✅ aplicada 2026-09-09 |
 | 4 | **Agenda real endurecida** (P0.1) | Retry só em leitura, erros tipados, `google:smoke` com escrita | ⬜ a fazer | — |
 | 5 | **Handoff humano** (P0.2) | IA pausável por conversa, endpoints, UI no dialog | ⬜ a fazer | `f15_handoff` |
 | 6 | **WhatsApp robusto** (P0.4) | `InboundMessage`, fila da resposta reativa, estado persistido | ⬜ a fazer | `f16_whatsapp_robustez` |
@@ -98,7 +98,16 @@ agenda.availability → agenda.book → agenda.sync → outbound.dispatch
 
 ---
 
-## P0.5 · Idempotência dos agendamentos 🚧 *PR 2 entregue em 2026-09-09 · PR 3 pendente*
+## P0.5 · Idempotência dos agendamentos ✅ *PR 2 e PR 3 entregues em 2026-09-09*
+
+> **O que mudou em relação ao planejado** no PR 3:
+>
+> - **Cancelar e remarcar escrevem na agenda real _antes_ do banco** — a ordem inversa do `book()`, de propósito. Lá, o que não pode se perder é o registro local; aqui, o que não pode acontecer é a agenda da empresa continuar ocupada com um horário que o DentalTrack diz estar livre. Se o provedor recusa, nada muda localmente e a tela recebe 503 com a mensagem dele. Os lembretes não precisaram de nada: a revalidação na hora do envio já suprime o que aponta para agendamento cancelado, e a chave do lembrete carrega o horário — remarcar faz o planejador enfileirar os novos e o despachante matar os velhos.
+> - **Remarcar no Clinicorp muda o `externalId`** (cancela + recria, porque o inventário não expõe reagendamento); a porta devolve o agendamento inteiro e a linha local acompanha. Se o cancelamento passar e a criação falhar, o erro diz isso explicitamente para ninguém confirmar nada ao cliente. No Google é `PATCH` de início/fim e o id não muda. **Não validado ao vivo** em nenhum dos dois — o Google só depende de um evento de teste, e é o próximo passo natural do `google:smoke` do PR 4.
+> - **A re-checagem de horário ficou só no `book()`**, não no remarcar. Quem remarca é a equipe, pela tela, com horário livre em vez de um da grade do provedor — a checagem exata daria falso conflito para 10:15 numa grade de 30 min. A autoridade sobre o horário é a agenda dele. No `book()`, conflito rebaixa a linha para `pedido` (senão sairia lembrete para consulta que não existe) e a tool orienta o agente a **oferecer outro horário**, em vez do "a equipe confirma" da falha genérica — `BookResult.conflict`, que o PR 4 generaliza em `failureKind`.
+> - **`enviando` precisou de um zelador.** Um processo que cai entre reivindicar e concluir deixaria a linha muda para sempre; `dispatchDue` começa devolvendo a `pendente` o que está em `enviando` há mais de 10 min. Nesse caso raro a mensagem pode sair duas vezes — o oposto (nunca sair) é pior.
+> - **O `upsert` da sincronização manteve a leitura prévia**, mas só para enriquecer (status atual como fallback, contato e conversa já vinculados). A escrita é um `upsert` único, que o Prisma executa como `INSERT ... ON CONFLICT` — a corrida entre rodadas era no `create`, e ela foi embora.
+> - **Verificado:** 38 testes novos na API (496 → 534) e 5 no web (145 → 150). **Migration `f14_outbound_claim` aplicada ao vivo em 2026-09-09.** A tela ganhou o menu por agendamento (remarcar em dialog, cancelar com confirmação — é irreversível na agenda real) e a mensagem do servidor com o `requestId` quando a agenda recusa.
 
 > **O que mudou em relação ao planejado** no PR 2:
 >
@@ -107,7 +116,7 @@ agenda.availability → agenda.book → agenda.sync → outbound.dispatch
 > - **`canceledAt` foi adiado para o PR 3**, onde cancelar de fato existe. Coluna que nenhum código lê não cumpre requisito nenhum.
 > - **O segundo ponto de criação também foi fechado.** `ai/tools.ts` tinha um `appointment.create()` próprio para o caso sem agenda conectada — inalcançável em produção hoje (o `ChatService` sempre injeta a agenda), mas é a mesma classe de bug. Ganhou a mesma chave e o mesmo tratamento de colisão.
 > - **Verificado:** 31 testes novos (API de 465 para 496), e o nome do índice na migration conferido contra o que o Prisma gera (`appointment_clinic_id_booking_key_key`).
-> - ⚠️ **A migration `f13_booking_idempotency` ainda não foi aplicada ao vivo** — rodar `pnpm --filter @dentaltrack/api db:deploy` no Supabase. Até lá a coluna não existe e o `create` falha.
+> - **Migration `f13_booking_idempotency` aplicada ao vivo em 2026-09-09** (`db:deploy` no Supabase; índice `appointment_clinic_id_booking_key_key` conferido no banco). Na mesma rodada o `migrate status` acusou uma migration **fora do repositório** (`20260708120000_settings_segment_vocab`, 4 colunas em `clinic_settings` vindas de uma branch apagada). É inofensiva em runtime, mas o job `migrate diff --exit-code` do PR 11 vai tropeçar nela — resolver lá (baseline no repo ou drop das colunas).
 
 **Estado antes do PR 2.** `AgendaService.book()` chamava o provedor **antes** de gravar no banco, e a gravação local não tinha chave de dedupe. Cancelar e remarcar não existem em nenhuma camada (PR 3).
 

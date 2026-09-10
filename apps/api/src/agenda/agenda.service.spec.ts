@@ -40,6 +40,53 @@ function providerMock(overrides: Record<string, unknown> = {}) {
     }),
     listUnits: jest.fn().mockResolvedValue([{ id: 'u1' }]),
     listProfessionals: jest.fn().mockResolvedValue([{ id: 'p1' }]),
+    // Lista vazia = fail-open (segue e cria); os testes de conflito sobrepõem.
+    listAvailableSlots: jest.fn().mockResolvedValue([]),
+    cancelAppointment: jest.fn().mockResolvedValue(undefined),
+    rescheduleAppointment: jest.fn().mockResolvedValue({
+      externalId: 'ext-9',
+      professionalName: 'Dra. Ana',
+    }),
+    ...overrides,
+  };
+}
+
+/** Linha como `requireAppointment` a lê (cancelar/remarcar). */
+function appointmentRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'apt-1',
+    status: 'agendado',
+    startsAt: new Date('2026-10-01T13:00:00.000Z'),
+    endsAt: new Date('2026-10-01T14:00:00.000Z'),
+    externalId: 'ext-9',
+    unitExternalId: 'u1',
+    professionalExternalId: 'p1',
+    professionalName: 'Dra. Ana',
+    notes: 'Implante',
+    procedure: { name: 'Implante', durationMinutes: 60 },
+    lead: { name: 'Ana Silva', phone: '5511987654321', externalId: 'pac-1' },
+    ...overrides,
+  };
+}
+
+/** Linha como `summaryOf` a lê (projeção para a tela). */
+function summaryRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'apt-1',
+    status: 'agendado',
+    source: 'integracao',
+    startsAt: new Date('2026-10-01T13:00:00.000Z'),
+    endsAt: new Date('2026-10-01T14:00:00.000Z'),
+    preferredTime: null,
+    professionalName: 'Dra. Ana',
+    externalId: 'ext-9',
+    canceledAt: null,
+    createdAt: new Date('2026-09-09T12:00:00.000Z'),
+    conversationId: 'conv-1',
+    leadId: 'lead-1',
+    procedure: { name: 'Implante' },
+    notes: 'Implante',
+    lead: { name: 'Ana Silva', phone: '5511987654321' },
     ...overrides,
   };
 }
@@ -126,6 +173,7 @@ describe('AgendaService.book', () => {
         startsAt: INPUT.startsAt,
         confirmed: true,
         externalId: 'ext-9',
+        conflict: false,
       });
       expect(provider.createAppointment).not.toHaveBeenCalled();
       expect(prisma.appointment.update).not.toHaveBeenCalled();
@@ -275,5 +323,259 @@ describe('AgendaService.book', () => {
         confirmed: true,
       });
     });
+  });
+
+  describe('re-checagem do horário antes da escrita (P0.5)', () => {
+    const slot = (iso: string) => ({
+      startsAt: iso,
+      endsAt: null,
+      professionalId: 'p1',
+      professionalName: null,
+      unitId: 'u1',
+    });
+
+    it('horário sumiu da lista → conflito: nada é gravado na agenda e o pedido vira "pedido"', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest
+          .fn()
+          .mockResolvedValue([slot('2026-10-01T14:00:00.000Z')]),
+      });
+      const { service, prisma } = setup({ provider });
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+
+      const res = await service.book(CLINIC, INPUT);
+
+      expect(provider.createAppointment).not.toHaveBeenCalled();
+      expect(res).toMatchObject({ confirmed: false, conflict: true });
+      expect(prisma.appointment.update).toHaveBeenCalledWith({
+        where: { id: 'apt-1' },
+        data: { status: 'pedido' },
+      });
+    });
+
+    it('horário está na lista → segue e grava', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest
+          .fn()
+          .mockResolvedValue([slot('2026-10-01T13:00:00.000Z')]),
+      });
+      const { service } = setup({ provider });
+
+      const res = await service.book(CLINIC, INPUT);
+
+      expect(provider.createAppointment).toHaveBeenCalledTimes(1);
+      expect(res).toMatchObject({ confirmed: true, conflict: false });
+    });
+
+    // Fail-open deliberado: nenhum provedor oferece reserva atômica, e uma
+    // consulta que falhou não é evidência de conflito — a agenda decide.
+    it('lista vazia → fail-open, segue e grava', async () => {
+      const provider = providerMock();
+      const { service } = setup({ provider });
+      await service.book(CLINIC, INPUT);
+      expect(provider.createAppointment).toHaveBeenCalledTimes(1);
+    });
+
+    it('consulta falhou → fail-open, segue e grava', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockRejectedValue(new Error('timeout')),
+      });
+      const { service } = setup({ provider });
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+      const res = await service.book(CLINIC, INPUT);
+      expect(provider.createAppointment).toHaveBeenCalledTimes(1);
+      expect(res.confirmed).toBe(true);
+    });
+  });
+});
+
+describe('AgendaService.cancel (P0.5)', () => {
+  it('cancela na agenda real primeiro e depois aqui, com a data', async () => {
+    const provider = providerMock();
+    const { service, prisma } = setup({ provider });
+    const ordem: string[] = [];
+    prisma.appointment.findFirst
+      .mockResolvedValueOnce(appointmentRow())
+      .mockResolvedValueOnce(
+        summaryRow({ status: 'cancelado', canceledAt: new Date() }),
+      );
+    provider.cancelAppointment.mockImplementation(() => {
+      ordem.push('externo');
+      return Promise.resolve();
+    });
+    prisma.appointment.update.mockImplementation(() => {
+      ordem.push('local');
+      return Promise.resolve({});
+    });
+
+    const res = await service.cancel(CLINIC, 'apt-1');
+
+    expect(ordem).toEqual(['externo', 'local']);
+    expect(provider.cancelAppointment).toHaveBeenCalledWith({
+      externalId: 'ext-9',
+      unitId: 'u1',
+    });
+    expect(prisma.appointment.update).toHaveBeenCalledWith({
+      where: { id: 'apt-1' },
+      data: { status: 'cancelado', canceledAt: expect.any(Date) },
+    });
+    expect(res.status).toBe('cancelado');
+  });
+
+  it('cancelar duas vezes: a segunda é no-op de sucesso, sem chamada externa', async () => {
+    const provider = providerMock();
+    const { service, prisma } = setup({ provider });
+    prisma.appointment.findFirst
+      .mockResolvedValueOnce(appointmentRow({ status: 'cancelado' }))
+      .mockResolvedValueOnce(summaryRow({ status: 'cancelado' }));
+
+    const res = await service.cancel(CLINIC, 'apt-1');
+
+    expect(res.status).toBe('cancelado');
+    expect(provider.cancelAppointment).not.toHaveBeenCalled();
+    expect(prisma.appointment.update).not.toHaveBeenCalled();
+  });
+
+  it('agenda recusou → 503 e nada muda aqui', async () => {
+    const provider = providerMock({
+      cancelAppointment: jest
+        .fn()
+        .mockRejectedValue(new Error('Clinicorp 500')),
+    });
+    const { service, prisma } = setup({ provider });
+    prisma.appointment.findFirst.mockResolvedValueOnce(appointmentRow());
+
+    await expect(service.cancel(CLINIC, 'apt-1')).rejects.toMatchObject({
+      status: 503,
+    });
+    expect(prisma.appointment.update).not.toHaveBeenCalled();
+  });
+
+  it('sem id externo (ou integração desligada) cancela só aqui', async () => {
+    const { service, prisma, integrations } = setup();
+    prisma.appointment.findFirst
+      .mockResolvedValueOnce(appointmentRow({ externalId: null }))
+      .mockResolvedValueOnce(summaryRow({ status: 'cancelado' }));
+
+    await service.cancel(CLINIC, 'apt-1');
+
+    expect(integrations.getProvider).not.toHaveBeenCalled();
+    expect(prisma.appointment.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('agendamento de outra empresa → 404', async () => {
+    const { service, prisma } = setup();
+    prisma.appointment.findFirst.mockResolvedValueOnce(null);
+    await expect(service.cancel(CLINIC, 'apt-1')).rejects.toMatchObject({
+      status: 404,
+    });
+  });
+});
+
+describe('AgendaService.reschedule (P0.5)', () => {
+  const NEW = new Date('2026-10-02T13:00:00.000Z');
+
+  it('move na agenda real e depois aqui; status volta a "agendado"', async () => {
+    const provider = providerMock();
+    const { service, prisma } = setup({ provider });
+    prisma.appointment.findFirst
+      .mockResolvedValueOnce(appointmentRow({ status: 'confirmado' }))
+      .mockResolvedValueOnce(summaryRow({ startsAt: NEW }));
+
+    const res = await service.reschedule(CLINIC, 'apt-1', NEW);
+
+    expect(provider.rescheduleAppointment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        externalId: 'ext-9',
+        startsAt: NEW,
+        endsAt: new Date('2026-10-02T14:00:00.000Z'), // mantém a duração
+        patientId: 'pac-1',
+        patientName: 'Ana Silva',
+        unitId: 'u1',
+        professionalId: 'p1',
+      }),
+    );
+    expect(prisma.appointment.update).toHaveBeenCalledWith({
+      where: { id: 'apt-1' },
+      data: expect.objectContaining({
+        startsAt: NEW,
+        status: 'agendado',
+        canceledAt: null,
+        externalId: 'ext-9',
+      }),
+    });
+    expect(res.startsAt).toBe(NEW.toISOString());
+  });
+
+  it('o id externo pode mudar (Clinicorp cancela e recria) — a linha local acompanha', async () => {
+    const provider = providerMock({
+      rescheduleAppointment: jest
+        .fn()
+        .mockResolvedValue({ externalId: 'ext-novo', professionalName: null }),
+    });
+    const { service, prisma } = setup({ provider });
+    prisma.appointment.findFirst
+      .mockResolvedValueOnce(appointmentRow())
+      .mockResolvedValueOnce(summaryRow({ externalId: 'ext-novo' }));
+
+    await service.reschedule(CLINIC, 'apt-1', NEW);
+
+    expect(prisma.appointment.update.mock.calls[0][0].data.externalId).toBe(
+      'ext-novo',
+    );
+  });
+
+  it('remarcar para o mesmo horário é no-op', async () => {
+    const provider = providerMock();
+    const { service, prisma } = setup({ provider });
+    prisma.appointment.findFirst
+      .mockResolvedValueOnce(appointmentRow())
+      .mockResolvedValueOnce(summaryRow());
+
+    await service.reschedule(
+      CLINIC,
+      'apt-1',
+      new Date('2026-10-01T13:00:00.000Z'),
+    );
+
+    expect(provider.rescheduleAppointment).not.toHaveBeenCalled();
+    expect(prisma.appointment.update).not.toHaveBeenCalled();
+  });
+
+  it('agenda recusou → 503 e o horário antigo continua valendo', async () => {
+    const provider = providerMock({
+      rescheduleAppointment: jest
+        .fn()
+        .mockRejectedValue(new Error('Google 503')),
+    });
+    const { service, prisma } = setup({ provider });
+    prisma.appointment.findFirst.mockResolvedValueOnce(appointmentRow());
+
+    await expect(
+      service.reschedule(CLINIC, 'apt-1', NEW),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(prisma.appointment.update).not.toHaveBeenCalled();
+  });
+
+  it('cancelado ou já atendido não se remarca (400); horário passado idem', async () => {
+    const { service, prisma } = setup();
+    prisma.appointment.findFirst.mockResolvedValueOnce(
+      appointmentRow({ status: 'cancelado' }),
+    );
+    await expect(
+      service.reschedule(CLINIC, 'apt-1', NEW),
+    ).rejects.toMatchObject({ status: 400 });
+
+    await expect(
+      service.reschedule(CLINIC, 'apt-1', new Date('2020-01-01T00:00:00Z')),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('agendamento de outra empresa → 404', async () => {
+    const { service, prisma } = setup();
+    prisma.appointment.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      service.reschedule(CLINIC, 'apt-1', NEW),
+    ).rejects.toMatchObject({ status: 404 });
   });
 });

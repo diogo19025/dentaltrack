@@ -646,13 +646,20 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             /* status já final / transição não permitida — não bloqueia o agendamento */
           }
 
+          // Conflito (P0.5): o horário sumiu entre a oferta e a escolha. É
+          // diferente de "a agenda falhou" — aqui o cliente precisa escolher
+          // outro, não esperar a equipe.
+          const conflito = 'conflict' in booked && booked.conflict === true;
+
           return {
             ok: true,
             appointmentId: booked.appointmentId,
             confirmado: booked.confirmed,
             orientacao: booked.confirmed
               ? 'Horário reservado na agenda. Pode confirmar ao cliente com dia e hora.'
-              : 'O pedido ficou registrado, mas o horário NÃO foi reservado na agenda. Diga ao cliente que a equipe confirma em seguida — não afirme que está marcado.',
+              : conflito
+                ? 'Esse horário acabou de ser ocupado por outra pessoa. Peça desculpas, consulte checkAvailability de novo e ofereça outros horários — não afirme que está marcado.'
+                : 'O pedido ficou registrado, mas o horário NÃO foi reservado na agenda. Diga ao cliente que a equipe confirma em seguida — não afirme que está marcado.',
           };
         } catch {
           return {

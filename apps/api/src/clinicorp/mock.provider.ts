@@ -5,15 +5,18 @@ import type {
   ExternalUnit,
 } from '@dentaltrack/shared';
 import { startOfZonedDay, toZonedParts, zonedTimeToUtc } from '../common/time';
-import type {
-  AgendaProvider,
-  AgendaWindow,
-  AvailabilityQuery,
-  CreateAppointmentInput,
-  CreatePatientInput,
-  ExternalAppointment,
-  ExternalPatient,
-  PatientQuery,
+import {
+  type AgendaProvider,
+  AgendaProviderError,
+  type AgendaWindow,
+  type AvailabilityQuery,
+  type CancelAppointmentInput,
+  type CreateAppointmentInput,
+  type CreatePatientInput,
+  type ExternalAppointment,
+  type ExternalPatient,
+  type PatientQuery,
+  type RescheduleAppointmentInput,
 } from './agenda-provider';
 
 /**
@@ -42,6 +45,12 @@ export class MockAgendaProvider implements AgendaProvider {
   private readonly createdPatients = new Map<string, ExternalPatient>();
   /** Agendamentos criados durante a sessão. */
   private readonly createdAppointments: ExternalAppointment[] = [];
+  /**
+   * Cancelamentos e remarcações da sessão, por id externo (P0.5). Ficam fora
+   * das listas porque os agendamentos de semente são regenerados a cada chamada
+   * a partir do relógio — a sobreposição é o que faz a mudança persistir.
+   */
+  private readonly overrides = new Map<string, Partial<ExternalAppointment>>();
   private sequence = 1000;
 
   constructor(
@@ -145,7 +154,9 @@ export class MockAgendaProvider implements AgendaProvider {
   }
 
   listAppointments(query: AgendaWindow): Promise<ExternalAppointment[]> {
-    const all = [...this.seedAppointments(), ...this.createdAppointments];
+    const all = [...this.seedAppointments(), ...this.createdAppointments].map(
+      (a) => ({ ...a, ...(this.overrides.get(a.externalId) ?? {}) }),
+    );
     const from = query.from.getTime();
     const to = query.to.getTime();
     return Promise.resolve(
@@ -210,6 +221,50 @@ export class MockAgendaProvider implements AgendaProvider {
     };
     this.createdAppointments.push(created);
     return Promise.resolve(created);
+  }
+
+  /**
+   * Cancelar é sobrepor o status. Id desconhecido também é sucesso — a porta
+   * exige idempotência por transição, e "não existe mais" é o estado final.
+   */
+  cancelAppointment(input: CancelAppointmentInput): Promise<void> {
+    this.overrides.set(input.externalId, {
+      ...(this.overrides.get(input.externalId) ?? {}),
+      statusExternalId: '7',
+      statusName: 'Cancelado',
+    });
+    return Promise.resolve();
+  }
+
+  /** Move o horário mantendo o mesmo id — o simulado reagenda no lugar. */
+  async rescheduleAppointment(
+    input: RescheduleAppointmentInput,
+  ): Promise<ExternalAppointment> {
+    const current = (
+      await this.listAppointments({
+        from: new Date(0),
+        to: new Date(8.64e15),
+      })
+    ).find((a) => a.externalId === input.externalId);
+    if (!current) {
+      throw new AgendaProviderError(
+        `Agendamento ${input.externalId} não existe na agenda simulada.`,
+      );
+    }
+    const moved: ExternalAppointment = {
+      ...current,
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+      statusExternalId: '1',
+      statusName: 'Agendado',
+    };
+    this.overrides.set(input.externalId, {
+      startsAt: moved.startsAt,
+      endsAt: moved.endsAt,
+      statusExternalId: moved.statusExternalId,
+      statusName: moved.statusName,
+    });
+    return moved;
   }
 
   private seedPatients(): ExternalPatient[] {

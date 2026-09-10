@@ -293,6 +293,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 | 2026-09-09 | **Observabilidade** (P0.3, PR 1 do plano de maturidade): correlação por `requestId`, logs JSON com redação de PII, filtro global de exceções, Sentry. |
 | 2026-09-09 | Cartão "Assistente ativo" da sidebar virou dispensável, com a dispensa amarrada ao **login** (claim `session_id` do JWT) e não ao navegador — F5 e navegação não o trazem de volta; o próximo login traz. |
 | 2026-09-09 | **Idempotência do agendamento** (P0.5, PR 2): o pedido passa a ser gravado **antes** da chamada à agenda externa, com uma `bookingKey` sob índice único. Duplo clique, retry após timeout, webhook reentregue e o modelo chamando a tool duas vezes deixam de virar dois agendamentos. Migration `f13_booking_idempotency`. |
+| 2026-09-09 | **Cancelar/remarcar + claim da fila** (P0.5, PR 3): a porta `AgendaProvider` ganhou `cancelAppointment` e `rescheduleAppointment` nos três adapters, com `POST /agenda/:id/cancelar` e `/remarcar` e o menu por agendamento na `/agenda` (não são tools do agente). `book()` re-checa o horário antes de gravar (fail-open; conflito → `pedido` e o agente oferece outro). A fila de saída reivindica cada linha antes de enviar (`pendente → enviando`), `enqueue` e a sincronização deixaram de ser check-then-create. Migration `f14_outbound_claim` (`enviando` + `Appointment.canceledAt`). |
 
 ---
 

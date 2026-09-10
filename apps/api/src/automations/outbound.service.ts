@@ -52,6 +52,12 @@ const DEFAULT_BATCH_SIZE = 20;
 /** Reenvios por falha de transporte antes de desistir. */
 const MAX_TRANSPORT_RETRIES = 2;
 const RETRY_DELAY_MS = 10 * 60_000;
+/**
+ * Quanto tempo uma linha pode ficar em `enviando` antes de ser considerada
+ * abandonada (processo caiu no meio). Um envio leva segundos; 10 minutos é
+ * folga para um lote inteiro com throttle.
+ */
+const CLAIM_STALE_MS = 10 * 60_000;
 
 export interface EnqueueInput {
   clinicId: string;
@@ -142,24 +148,17 @@ export class OutboundService {
    * por quê, em vez de olhar para uma fila vazia sem explicação.
    */
   async enqueue(input: EnqueueInput): Promise<EnqueueResult> {
-    const existing = await this.prisma.outboundMessage.findUnique({
-      where: {
-        clinicId_dedupeKey: {
-          clinicId: input.clinicId,
-          dedupeKey: input.dedupeKey,
-        },
-      },
-      select: { id: true },
-    });
-    if (existing) return 'duplicado';
-
+    // Sem "existe?" antes do insert (P0.5): a dedupe é o índice único, e o
+    // `P2002` na escrita é a resposta — duas rodadas do planejador
+    // sobrepostas não passam mais as duas pela checagem e criam as duas.
     const settings = await this.settings.get(input.clinicId);
     const phone = OptOutService.normalizePhone(input.phone);
 
     const suppression = await this.preflight(input.clinicId, phone);
     if (suppression) {
-      await this.create(input, input.scheduledFor, phone, suppression);
-      return 'suprimido';
+      return (await this.create(input, input.scheduledFor, phone, suppression))
+        ? 'suprimido'
+        : 'duplicado';
     }
 
     const slot = await this.nextAllowedSlot(
@@ -170,22 +169,31 @@ export class OutboundService {
     const delayMinutes =
       (slot.getTime() - input.scheduledFor.getTime()) / 60_000;
     if (delayMinutes > MAX_DELAY_MINUTES[input.kind]) {
-      await this.create(input, slot, phone, 'fora_da_janela');
-      return 'suprimido';
+      return (await this.create(input, slot, phone, 'fora_da_janela'))
+        ? 'suprimido'
+        : 'duplicado';
     }
 
-    await this.create(input, slot, phone, null);
-    return 'criado';
+    return (await this.create(input, slot, phone, null))
+      ? 'criado'
+      : 'duplicado';
   }
 
   /**
    * Despacha o que está vencido. Sequencial e espaçado de propósito: rajada de
    * mensagens idênticas no mesmo minuto é o padrão que a plataforma reconhece
    * como robô.
+   *
+   * Cada linha é **reivindicada** antes de sair (`pendente → enviando`, num
+   * `updateMany` condicional): só quem mudou a linha prossegue. É a única
+   * defesa contra duas réplicas — ou dois tiques que se sobrepuseram — mandarem
+   * o mesmo lembrete; a flag em memória do cron só vale dentro de um processo.
    */
   async dispatchDue(now = new Date()): Promise<DispatchSummary> {
     const summary: DispatchSummary = { enviados: 0, suprimidos: 0, falhas: 0 };
     if (!this.enabled()) return summary;
+
+    await this.releaseStaleClaims(now);
 
     const due = await this.prisma.outboundMessage.findMany({
       where: { status: 'pendente', scheduledFor: { lte: now } },
@@ -195,6 +203,13 @@ export class OutboundService {
     if (due.length === 0) return summary;
 
     for (const message of due) {
+      const claimed = await this.prisma.outboundMessage.updateMany({
+        where: { id: message.id, status: 'pendente' },
+        data: { status: 'enviando' },
+      });
+      // Outro despachante chegou primeiro: a mensagem é dele.
+      if (claimed.count !== 1) continue;
+
       const reason = await this.revalidate(message);
       if (reason) {
         await this.suppress(message.id, reason);
@@ -515,6 +530,9 @@ export class OutboundService {
       where: { id: message.id },
       data: canRetry
         ? {
+            // Devolve o claim: a linha estava em `enviando` e precisa voltar
+            // para a fila, senão o reenvio nunca aconteceria.
+            status: 'pendente',
             retries: { increment: 1 },
             scheduledFor: new Date(Date.now() + RETRY_DELAY_MS),
             error: detail.slice(0, 500),
@@ -582,29 +600,57 @@ export class OutboundService {
     return false;
   }
 
+  /** `false` = a chave já existia (colisão no índice único): nada criado. */
   private async create(
     input: EnqueueInput,
     scheduledFor: Date,
     phone: string | null,
     suppression: OutboundSuppressionReason | null,
-  ): Promise<void> {
-    await this.prisma.outboundMessage.create({
-      data: {
-        clinicId: input.clinicId,
-        kind: input.kind,
-        dedupeKey: input.dedupeKey,
-        scheduledFor,
-        body: input.body,
-        phone,
-        leadId: input.leadId ?? null,
-        conversationId: input.conversationId ?? null,
-        appointmentId: input.appointmentId ?? null,
-        attempt: input.attempt ?? 1,
-        ...(suppression
-          ? { status: 'suprimido' as const, reason: suppression }
-          : {}),
+  ): Promise<boolean> {
+    try {
+      await this.prisma.outboundMessage.create({
+        data: {
+          clinicId: input.clinicId,
+          kind: input.kind,
+          dedupeKey: input.dedupeKey,
+          scheduledFor,
+          body: input.body,
+          phone,
+          leadId: input.leadId ?? null,
+          conversationId: input.conversationId ?? null,
+          appointmentId: input.appointmentId ?? null,
+          attempt: input.attempt ?? 1,
+          ...(suppression
+            ? { status: 'suprimido' as const, reason: suppression }
+            : {}),
+        },
+      });
+      return true;
+    } catch (err) {
+      if (isUniqueViolation(err)) return false;
+      throw err;
+    }
+  }
+
+  /**
+   * Um processo que caiu entre reivindicar e concluir deixa a linha presa em
+   * `enviando`. Passado o teto, ela volta a `pendente` e o próximo tique a
+   * despacha — a mensagem pode até sair duas vezes nesse caso raro, mas nunca
+   * fica muda para sempre.
+   */
+  private async releaseStaleClaims(now: Date): Promise<void> {
+    const released = await this.prisma.outboundMessage.updateMany({
+      where: {
+        status: 'enviando',
+        updatedAt: { lt: new Date(now.getTime() - CLAIM_STALE_MS) },
       },
+      data: { status: 'pendente' },
     });
+    if (released.count > 0) {
+      this.logger.warn(
+        `${released.count} mensagem(ns) presa(s) em "enviando" devolvida(s) à fila.`,
+      );
+    }
   }
 
   private async suppress(
@@ -665,6 +711,15 @@ export class OutboundService {
   private enabled(): boolean {
     return this.config.get('AUTOMATIONS_ENABLED', { infer: true }) !== false;
   }
+}
+
+/** Violação de índice único no Prisma (por `code`, sem acoplar ao client gerado). */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
 }
 
 function isReminderKind(

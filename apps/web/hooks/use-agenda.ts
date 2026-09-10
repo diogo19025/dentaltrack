@@ -1,7 +1,11 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { AgendaResponse, Availability } from "@dentaltrack/shared";
+import type {
+  AgendaResponse,
+  AppointmentSummary,
+  Availability,
+} from "@dentaltrack/shared";
 import { apiFetch } from "@/lib/api-client";
 
 const AGENDA_KEY = ["agenda"] as const;
@@ -47,6 +51,34 @@ export function useSyncAgenda() {
         "/agenda/sync",
         { method: "POST" },
       ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: AGENDA_KEY }),
+  });
+}
+
+/**
+ * Cancela um agendamento (POST /agenda/:id/cancelar) — na agenda real da
+ * empresa e aqui. Idempotente no servidor: repetir devolve o já cancelado.
+ */
+export function useCancelAppointment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<AppointmentSummary>(`/agenda/${id}/cancelar`, {
+        method: "POST",
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: AGENDA_KEY }),
+  });
+}
+
+/** Move um agendamento para outro horário (POST /agenda/:id/remarcar). */
+export function useRescheduleAppointment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, startsAt }: { id: string; startsAt: string }) =>
+      apiFetch<AppointmentSummary>(`/agenda/${id}/remarcar`, {
+        method: "POST",
+        body: JSON.stringify({ startsAt }),
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: AGENDA_KEY }),
   });
 }

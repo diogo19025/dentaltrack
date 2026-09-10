@@ -110,9 +110,36 @@ export const appointmentSummarySchema = z.object({
   conversationId: z.string().uuid().nullable(),
   /** Id no sistema externo, quando sincronizado. */
   externalId: z.string().nullable(),
+  /** Quando foi cancelado (P0.5); `null` enquanto estiver de pé. */
+  canceledAt: z.string().nullable(),
   createdAt: z.string(),
 });
 export type AppointmentSummary = z.infer<typeof appointmentSummarySchema>;
+
+/**
+ * Status a partir dos quais ainda faz sentido cancelar ou remarcar (P0.5).
+ * `compareceu` é história; `cancelado` já está lá — e cancelar de novo é
+ * no-op de sucesso no servidor, não erro.
+ */
+export const REVISABLE_APPOINTMENT_STATUSES = [
+  "pedido",
+  "agendado",
+  "confirmado",
+  "faltou",
+] as const satisfies readonly AppointmentStatus[];
+
+/**
+ * Corpo de POST /agenda/:id/remarcar — o novo horário (ISO 8601 com offset).
+ * Cancelar (POST /agenda/:id/cancelar) não tem corpo. Nenhum dos dois é dado
+ * como tool ao agente: o bot cancelando consulta por mal-entendido é dano
+ * irreversível.
+ */
+export const rescheduleAppointmentSchema = z.object({
+  startsAt: z.string().min(1),
+});
+export type RescheduleAppointmentInput = z.infer<
+  typeof rescheduleAppointmentSchema
+>;
 
 /** GET /agenda — janela de agendamentos da empresa. */
 export const agendaQuerySchema = z.object({

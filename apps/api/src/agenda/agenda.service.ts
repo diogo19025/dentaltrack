@@ -1,4 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type {
   AgendaQuery,
   AgendaResponse,
@@ -6,6 +12,7 @@ import type {
   Availability,
 } from '@dentaltrack/shared';
 import { dateKeyToUtc, DEFAULT_TIMEZONE } from '../common/time';
+import type { AgendaProvider } from '../clinicorp/agenda-provider';
 import { IntegrationService } from '../clinicorp/integration.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { bookingKey } from './appointment-keys';
@@ -46,6 +53,13 @@ export interface BookResult {
    */
   confirmed: boolean;
   externalId: string | null;
+  /**
+   * `true` quando a re-checagem viu o horário ocupado antes da escrita (P0.5).
+   * O pedido fica registrado sem reserva e o agente deve oferecer outro
+   * horário — não prometer retorno da equipe, que é a orientação da falha
+   * genérica.
+   */
+  conflict: boolean;
 }
 
 /**
@@ -168,6 +182,7 @@ export class AgendaService {
         startsAt: local.startsAt,
         confirmed: local.confirmed,
         externalId: local.externalId,
+        conflict: false,
       };
     }
 
@@ -176,9 +191,34 @@ export class AgendaService {
     let externalId: string | null = null;
     let professionalName: string | null = null;
     let confirmed = false;
+    let conflict = false;
 
     if (provider && input.startsAt && input.patientName) {
       try {
+        const startsAt = input.startsAt;
+        const endsAt = new Date(startsAt.getTime() + duration * 60_000);
+        const unitId =
+          input.unitId ?? (await this.defaultUnitId(clinicId, provider));
+        const professionalId =
+          input.professionalId ??
+          (await this.defaultProfessionalId(clinicId, provider));
+
+        // Entre a oferta do horário e a escolha do cliente passam minutos; a
+        // re-checagem estreita essa janela. Ela não a elimina — nenhum dos
+        // provedores oferece reserva atômica —, e por isso é fail-open: só é
+        // conflito quando a agenda respondeu e o horário sumiu da lista.
+        if (
+          await this.slotTaken(provider, {
+            startsAt,
+            endsAt,
+            unitId,
+            professionalId,
+            durationMinutes: duration,
+          })
+        ) {
+          throw new SlotConflictError(startsAt);
+        }
+
         const patient =
           (await provider.findPatient({
             phone: input.patientPhone,
@@ -193,13 +233,10 @@ export class AgendaService {
           patientId: patient.id,
           patientName: input.patientName,
           patientPhone: input.patientPhone,
-          startsAt: input.startsAt,
-          endsAt: new Date(input.startsAt.getTime() + duration * 60_000),
-          unitId:
-            input.unitId ?? (await this.defaultUnitId(clinicId, provider)),
-          professionalId:
-            input.professionalId ??
-            (await this.defaultProfessionalId(clinicId, provider)),
+          startsAt,
+          endsAt,
+          unitId,
+          professionalId,
           procedureName: input.procedureName,
         });
         externalId = created.externalId;
@@ -211,13 +248,27 @@ export class AgendaService {
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        // O pedido já está registrado (passo 1): perder o interesse do cliente
-        // por uma falha de integração seria pior. `confirmed` fica false e o
-        // agente promete retorno em vez de confirmar.
-        this.logger.error(
-          `Falha ao gravar o agendamento na agenda da empresa ${clinicId}: ${detail}`,
-          err instanceof Error ? err.stack : undefined,
-        );
+        if (err instanceof SlotConflictError) {
+          // O horário deixou de existir: a linha local não pode continuar
+          // `agendado` (lembrete sairia para uma consulta que não há). Vira
+          // `pedido`, com o horário desejado guardado, e o agente oferece outro.
+          conflict = true;
+          await this.prisma.appointment.update({
+            where: { id: local.id },
+            data: { status: PEDIDO },
+          });
+          this.logger.warn(
+            `Horário ${input.startsAt.toISOString()} já ocupado na agenda da empresa ${clinicId}; pedido ${local.id} mantido sem reserva.`,
+          );
+        } else {
+          // O pedido já está registrado (passo 1): perder o interesse do
+          // cliente por uma falha de integração seria pior. `confirmed` fica
+          // false e o agente promete retorno em vez de confirmar.
+          this.logger.error(
+            `Falha ao gravar o agendamento na agenda da empresa ${clinicId}: ${detail}`,
+            err instanceof Error ? err.stack : undefined,
+          );
+        }
       }
     }
 
@@ -239,6 +290,7 @@ export class AgendaService {
       confirmado: confirmed,
       integracao: provider !== null,
       comHorario: input.startsAt !== null,
+      ...(conflict ? { reason: 'conflito' } : {}),
     });
 
     return {
@@ -246,7 +298,258 @@ export class AgendaService {
       startsAt: input.startsAt,
       confirmed,
       externalId,
+      conflict,
     };
+  }
+
+  /**
+   * Cancela o agendamento (P0.5) — na agenda real primeiro, depois aqui.
+   *
+   * A ordem é a inversa do `book()` de propósito: lá o registro local é o que
+   * não pode se perder; aqui o que não pode acontecer é a agenda da empresa
+   * continuar ocupada com um horário que o DentalTrack diz estar livre. Se a
+   * agenda recusar, nada muda localmente e o erro sobe para a tela.
+   *
+   * **Idempotente por transição:** cancelar o que já está cancelado devolve o
+   * agendamento como está, sem tocar no provedor — repetição não é erro.
+   * Lembretes pendentes morrem sozinhos: a revalidação na hora do envio já
+   * suprime o que aponta para agendamento `cancelado`.
+   */
+  async cancel(clinicId: string, id: string): Promise<AppointmentSummary> {
+    const row = await this.requireAppointment(clinicId, id);
+    if (row.status === 'cancelado') {
+      this.logger.log({
+        event: 'agenda.cancel',
+        outcome: 'ok',
+        appointmentId: id,
+        reaproveitado: true,
+      });
+      return this.summaryOf(clinicId, id);
+    }
+
+    await this.withProvider(clinicId, row.externalId, 'cancelar', (provider) =>
+      provider.cancelAppointment({
+        externalId: row.externalId as string,
+        unitId: row.unitExternalId,
+      }),
+    );
+
+    await this.prisma.appointment.update({
+      where: { id },
+      data: { status: 'cancelado', canceledAt: new Date() },
+    });
+    this.logger.log({
+      event: 'agenda.cancel',
+      outcome: 'ok',
+      appointmentId: id,
+      integracao: row.externalId !== null,
+    });
+    return this.summaryOf(clinicId, id);
+  }
+
+  /**
+   * Move o agendamento para outro horário (P0.5). Mesmo desenho do `cancel()`:
+   * agenda real primeiro; se ela recusar, o horário antigo continua valendo.
+   *
+   * Remarcar para o **mesmo** horário é no-op de sucesso. O status volta a
+   * `agendado` (uma confirmação era do horário antigo; uma falta, idem), e os
+   * lembretes se ajustam sozinhos — a chave deles carrega o horário, então o
+   * planejador enfileira os novos e a revalidação suprime os velhos.
+   *
+   * Não há re-checagem de disponibilidade aqui: quem remarca é a equipe, pela
+   * tela, com horários que não vêm da grade do provedor — e a autoridade final
+   * sobre o horário é a agenda dele.
+   */
+  async reschedule(
+    clinicId: string,
+    id: string,
+    startsAt: Date,
+  ): Promise<AppointmentSummary> {
+    if (Number.isNaN(startsAt.getTime())) {
+      throw new BadRequestException('Horário inválido.');
+    }
+    if (startsAt.getTime() < Date.now() - 60_000) {
+      throw new BadRequestException('O novo horário já passou.');
+    }
+    const row = await this.requireAppointment(clinicId, id);
+    if (row.status === 'cancelado' || row.status === 'compareceu') {
+      throw new BadRequestException(
+        'Só agendamentos ainda de pé podem ser remarcados.',
+      );
+    }
+    if (row.startsAt && row.startsAt.getTime() === startsAt.getTime()) {
+      this.logger.log({
+        event: 'agenda.reschedule',
+        outcome: 'ok',
+        appointmentId: id,
+        reaproveitado: true,
+      });
+      return this.summaryOf(clinicId, id);
+    }
+
+    const duration =
+      row.startsAt && row.endsAt
+        ? Math.max(
+            1,
+            Math.round(
+              (row.endsAt.getTime() - row.startsAt.getTime()) / 60_000,
+            ),
+          )
+        : (row.procedure?.durationMinutes ?? DEFAULT_DURATION_MINUTES);
+    const endsAt = new Date(startsAt.getTime() + duration * 60_000);
+
+    let externalId = row.externalId;
+    let professionalName = row.professionalName;
+    await this.withProvider(
+      clinicId,
+      row.externalId,
+      'remarcar',
+      async (provider) => {
+        const moved = await provider.rescheduleAppointment({
+          externalId: row.externalId as string,
+          patientId: row.lead?.externalId ?? null,
+          patientName: row.lead?.name ?? 'Cliente',
+          patientPhone: row.lead?.phone ?? null,
+          startsAt,
+          endsAt,
+          unitId:
+            row.unitExternalId ??
+            (await this.defaultUnitId(clinicId, provider)),
+          professionalId:
+            row.professionalExternalId ??
+            (await this.defaultProfessionalId(clinicId, provider)),
+          procedureName: row.procedure?.name ?? row.notes,
+        });
+        externalId = moved.externalId;
+        professionalName = moved.professionalName ?? professionalName;
+      },
+    );
+
+    await this.prisma.appointment.update({
+      where: { id },
+      data: {
+        startsAt,
+        endsAt,
+        externalId,
+        professionalName,
+        status: AGENDADO,
+        canceledAt: null,
+      },
+    });
+    this.logger.log({
+      event: 'agenda.reschedule',
+      outcome: 'ok',
+      appointmentId: id,
+      integracao: row.externalId !== null,
+      externalIdMudou: externalId !== row.externalId,
+    });
+    return this.summaryOf(clinicId, id);
+  }
+
+  /**
+   * Executa a operação na agenda real quando há o que executar — o
+   * agendamento tem id externo **e** a integração está ligada. Integração
+   * desligada depois do agendamento: opera só aqui e avisa no log. Falha do
+   * provedor vira 503 com a mensagem dele, e nada local muda.
+   */
+  private async withProvider(
+    clinicId: string,
+    externalId: string | null,
+    action: 'cancelar' | 'remarcar',
+    run: (provider: AgendaProvider) => Promise<void>,
+  ): Promise<void> {
+    if (!externalId) return;
+    const provider = await this.integrations.getProvider(clinicId);
+    if (!provider) {
+      this.logger.warn(
+        `Agendamento ${externalId} tem id externo mas a integração da empresa ${clinicId} está desligada — ${action} só no DentalTrack.`,
+      );
+      return;
+    }
+    try {
+      await run(provider);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Não foi possível ${action} o agendamento ${externalId} na agenda da empresa ${clinicId}: ${detail}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw new ServiceUnavailableException(
+        `A agenda da empresa não aceitou ${action} agora: ${detail}`,
+      );
+    }
+  }
+
+  /**
+   * Re-checagem de disponibilidade antes de gravar (P0.5). **Fail-open
+   * deliberado:** erro na consulta ou lista vazia → `false` (segue e cria),
+   * porque a autoridade final é o provedor e uma consulta que falhou não é
+   * evidência de conflito. Só é conflito quando a agenda respondeu com
+   * horários e o pedido não está entre eles.
+   */
+  private async slotTaken(
+    provider: AgendaProvider,
+    slot: {
+      startsAt: Date;
+      endsAt: Date;
+      unitId: string;
+      professionalId: string;
+      durationMinutes: number;
+    },
+  ): Promise<boolean> {
+    try {
+      const free = await provider.listAvailableSlots({
+        from: slot.startsAt,
+        to: slot.endsAt,
+        unitId: slot.unitId,
+        professionalId: slot.professionalId,
+        durationMinutes: slot.durationMinutes,
+      });
+      if (free.length === 0) return false;
+      const wanted = slot.startsAt.getTime();
+      return !free.some((s) => new Date(s.startsAt).getTime() === wanted);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Re-checagem de disponibilidade falhou (${detail}); seguindo — a agenda decide.`,
+      );
+      return false;
+    }
+  }
+
+  /** O agendamento existe e é desta empresa? 404 cross-tenant. */
+  private async requireAppointment(clinicId: string, id: string) {
+    const row = await this.prisma.appointment.findFirst({
+      where: { id, clinicId },
+      select: {
+        id: true,
+        status: true,
+        startsAt: true,
+        endsAt: true,
+        externalId: true,
+        unitExternalId: true,
+        professionalExternalId: true,
+        professionalName: true,
+        notes: true,
+        procedure: { select: { name: true, durationMinutes: true } },
+        lead: { select: { name: true, phone: true, externalId: true } },
+      },
+    });
+    if (!row) throw new NotFoundException('Agendamento não encontrado.');
+    return row;
+  }
+
+  /** Projeção de um agendamento para a tela, depois de uma mutação. */
+  private async summaryOf(
+    clinicId: string,
+    id: string,
+  ): Promise<AppointmentSummary> {
+    const row = await this.prisma.appointment.findFirst({
+      where: { id, clinicId },
+      select: SUMMARY_SELECT,
+    });
+    if (!row) throw new NotFoundException('Agendamento não encontrado.');
+    return toSummary(row);
   }
 
   /**
@@ -354,46 +657,14 @@ export class AgendaService {
       },
       orderBy: { startsAt: 'asc' },
       take: 500,
-      select: {
-        id: true,
-        status: true,
-        source: true,
-        startsAt: true,
-        endsAt: true,
-        preferredTime: true,
-        professionalName: true,
-        externalId: true,
-        createdAt: true,
-        conversationId: true,
-        leadId: true,
-        procedure: { select: { name: true } },
-        notes: true,
-        lead: { select: { name: true, phone: true } },
-      },
+      select: SUMMARY_SELECT,
     });
 
     const integration = await this.integrations.activeStatus(clinicId);
 
     return {
       lastSyncedAt: integration.lastSyncedAt,
-      appointments: rows.map(
-        (row): AppointmentSummary => ({
-          id: row.id,
-          status: row.status,
-          source: row.source,
-          startsAt: row.startsAt?.toISOString() ?? null,
-          endsAt: row.endsAt?.toISOString() ?? null,
-          preferredTime: row.preferredTime,
-          procedureName: row.procedure?.name ?? row.notes ?? null,
-          professionalName: row.professionalName,
-          leadId: row.leadId,
-          leadName: row.lead?.name ?? null,
-          leadPhone: row.lead?.phone ?? null,
-          conversationId: row.conversationId,
-          externalId: row.externalId,
-          createdAt: row.createdAt.toISOString(),
-        }),
-      ),
+      appointments: rows.map(toSummary),
     };
   }
 
@@ -443,6 +714,71 @@ export class AgendaService {
       throw new Error('A conta não tem nenhum profissional disponível.');
     }
     return first;
+  }
+}
+
+/** Projeção comum de um agendamento para o formato que a UI consome. */
+const SUMMARY_SELECT = {
+  id: true,
+  status: true,
+  source: true,
+  startsAt: true,
+  endsAt: true,
+  preferredTime: true,
+  professionalName: true,
+  externalId: true,
+  canceledAt: true,
+  createdAt: true,
+  conversationId: true,
+  leadId: true,
+  procedure: { select: { name: true } },
+  notes: true,
+  lead: { select: { name: true, phone: true } },
+} as const;
+
+interface SummaryRow {
+  id: string;
+  status: AppointmentSummary['status'];
+  source: AppointmentSummary['source'];
+  startsAt: Date | null;
+  endsAt: Date | null;
+  preferredTime: string | null;
+  professionalName: string | null;
+  externalId: string | null;
+  canceledAt: Date | null;
+  createdAt: Date;
+  conversationId: string | null;
+  leadId: string | null;
+  procedure: { name: string } | null;
+  notes: string | null;
+  lead: { name: string | null; phone: string | null } | null;
+}
+
+function toSummary(row: SummaryRow): AppointmentSummary {
+  return {
+    id: row.id,
+    status: row.status,
+    source: row.source,
+    startsAt: row.startsAt?.toISOString() ?? null,
+    endsAt: row.endsAt?.toISOString() ?? null,
+    preferredTime: row.preferredTime,
+    procedureName: row.procedure?.name ?? row.notes ?? null,
+    professionalName: row.professionalName,
+    leadId: row.leadId,
+    leadName: row.lead?.name ?? null,
+    leadPhone: row.lead?.phone ?? null,
+    conversationId: row.conversationId,
+    externalId: row.externalId,
+    canceledAt: row.canceledAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+/** A re-checagem viu o horário ocupado antes da escrita (P0.5). */
+class SlotConflictError extends Error {
+  constructor(readonly startsAt: Date) {
+    super(`Horário ${startsAt.toISOString()} já ocupado na agenda.`);
+    this.name = 'SlotConflictError';
   }
 }
 

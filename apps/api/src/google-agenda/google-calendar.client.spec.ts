@@ -179,4 +179,66 @@ describe('GoogleCalendarClient (transporte · F12)', () => {
       expect(normalizePrivateKey(encoded)).toContain('BEGIN PRIVATE KEY');
     });
   });
+
+  describe('deleteEvent / patchEvent (P0.5)', () => {
+    it('DELETE responde 204 sem corpo — e isso é sucesso', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      await expect(
+        makeClient(fetchMock).deleteEvent(CALENDAR, 'evt-1'),
+      ).resolves.toBeUndefined();
+
+      const [url, init] = fetchMock.mock.calls[1];
+      expect(init.method).toBe('DELETE');
+      expect(String(url)).toContain('/events/evt-1');
+    });
+
+    it.each([404, 410])(
+      'evento que já não existe (%i) conta como apagado — cancelar é idempotente',
+      async (status) => {
+        const fetchMock = jest
+          .fn()
+          .mockResolvedValueOnce(jsonResponse(tokenBody))
+          .mockResolvedValueOnce(new Response('gone', { status }));
+
+        await expect(
+          makeClient(fetchMock).deleteEvent(CALENDAR, 'evt-1'),
+        ).resolves.toBeUndefined();
+      },
+    );
+
+    it('outros erros no DELETE sobem como AgendaProviderError', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockResolvedValueOnce(new Response('forbidden', { status: 403 }));
+
+      await expect(
+        makeClient(fetchMock).deleteEvent(CALENDAR, 'evt-1'),
+      ).rejects.toBeInstanceOf(AgendaProviderError);
+    });
+
+    it('PATCH manda só o que muda e devolve o evento', async () => {
+      const fetchMock = jest
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(tokenBody))
+        .mockResolvedValueOnce(
+          jsonResponse({ id: 'evt-1', status: 'confirmed' }),
+        );
+
+      const event = await makeClient(fetchMock).patchEvent(CALENDAR, 'evt-1', {
+        start: { dateTime: '2026-09-04T14:00:00.000Z' },
+      });
+
+      expect(event.id).toBe('evt-1');
+      const [, init] = fetchMock.mock.calls[1];
+      expect(init.method).toBe('PATCH');
+      expect(JSON.parse(String(init.body))).toEqual({
+        start: { dateTime: '2026-09-04T14:00:00.000Z' },
+      });
+    });
+  });
 });

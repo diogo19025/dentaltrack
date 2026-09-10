@@ -67,6 +67,23 @@ export interface AgendaProvider {
   createAppointment(
     input: CreateAppointmentInput,
   ): Promise<ExternalAppointment>;
+
+  /**
+   * Cancela o agendamento na agenda real (P0.5). **Idempotente por transição:**
+   * o que já está cancelado ou já não existe lá conta como sucesso — repetir
+   * a operação (duplo clique, retry) não pode virar erro nem segunda escrita.
+   * Só lança quando a agenda recusou ou não respondeu.
+   */
+  cancelAppointment(input: CancelAppointmentInput): Promise<void>;
+
+  /**
+   * Move o agendamento para outro horário. Devolve o agendamento **como ficou**
+   * — inclusive o `externalId`, que pode mudar quando o fornecedor não oferece
+   * reagendamento e o adapter precisa cancelar e recriar (caso do Clinicorp).
+   */
+  rescheduleAppointment(
+    input: RescheduleAppointmentInput,
+  ): Promise<ExternalAppointment>;
 }
 
 /** Janela de datas (inclusiva nas duas pontas, no fuso da empresa). */
@@ -114,6 +131,21 @@ export interface CreateAppointmentInput {
   professionalId: string;
   procedureName?: string | null;
   notes?: string | null;
+}
+
+export interface CancelAppointmentInput {
+  externalId: string;
+  /** Contexto para o adapter que precisa dele (unidade no Clinicorp). */
+  unitId?: string | null;
+}
+
+/**
+ * Tudo o que `createAppointment` recebe, mais o id externo atual — porque o
+ * adapter que remarca por cancelar + recriar precisa reconstruir o
+ * agendamento inteiro, não só mover o horário.
+ */
+export interface RescheduleAppointmentInput extends CreateAppointmentInput {
+  externalId: string;
 }
 
 /** Um agendamento como ele existe no sistema de gestão, já normalizado. */
