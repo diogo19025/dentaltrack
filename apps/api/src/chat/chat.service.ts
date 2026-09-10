@@ -148,21 +148,33 @@ export class ChatService {
     const { text: userText, transcript } = await this.resolveUserText(input);
 
     // 1. Identidade pelo telefone: reusa a sessão ativa ou abre nova conversa.
-    const { id: conversationId } = await this.conversations.resolveByPhone(
-      input.clinicId,
-      input.channel,
-      input.contactPhone,
-    );
+    const { id: conversationId, handoffAt } =
+      await this.conversations.resolveByPhone(
+        input.clinicId,
+        input.channel,
+        input.contactPhone,
+      );
     // A partir daqui todo log do turno sai amarrado à conversa (P0.3).
     setContext({ conversationId });
+
+    // Handoff humano (P0.2): um atendente assumiu esta conversa. A mensagem do
+    // cliente continua sendo persistida e o lead continua sendo capturado —
+    // só a **geração** é pulada. Nada de mídia tampouco: a saudação sairia
+    // sozinha, sem texto, no meio de um atendimento humano.
+    //
+    // `Boolean` e não `!== null`: ausência de informação sobre o handoff
+    // significa "a IA responde", que é o comportamento de sempre. Errar para o
+    // outro lado deixaria o cliente sem resposta nenhuma e sem ninguém saber.
+    const paused = Boolean(handoffAt);
 
     // 1a. Primeiro contato desta conversa? (sem nenhuma mensagem ainda) → manda
     // a mídia de saudação (F6) junto da primeira resposta, se configurada.
     const isFirstTurn =
       (await this.prisma.message.count({ where: { conversationId } })) === 0;
-    const greetingMedia = isFirstTurn
-      ? await this.loadGreetingMedia(input.clinicId)
-      : null;
+    const greetingMedia =
+      isFirstTurn && !paused
+        ? await this.loadGreetingMedia(input.clinicId)
+        : null;
 
     // 1b. Captura automática do lead pelo contato do canal: o telefone está
     // sempre disponível e o nome de perfil (pushName) quando houver. Best-effort
@@ -193,6 +205,25 @@ export class ChatService {
       {},
       input.clinicId,
     );
+
+    // 2a. Com atendente no controle, o turno acaba aqui. Resposta vazia e sem
+    // anexos: o `WhatsappService` já não envia nada nesse caso, então o adapter
+    // não precisou mudar uma linha — é a mesma disciplina channel-agnostic que
+    // deixou o WhatsApp entrar sem tocar no motor.
+    if (paused) {
+      this.logger.log({
+        event: 'ai.reply',
+        outcome: 'ok',
+        reason: 'atendimento_humano',
+        desde: handoffAt?.toISOString() ?? null,
+      });
+      return {
+        conversationId,
+        reply: '',
+        transcript,
+        attachments: [],
+      };
+    }
 
     // 3. Mesmo preparo do web (prompt + histórico + tools + coletor de mídia).
     const { systemPrompt, history, tools, attachments } =

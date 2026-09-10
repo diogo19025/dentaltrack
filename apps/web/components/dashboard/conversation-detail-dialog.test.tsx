@@ -18,6 +18,9 @@ const makeDetail = (overrides: Partial<ConversationDetail> = {}): ConversationDe
   createdAt: "2026-06-11T09:00:00.000Z",
   messageCount: 2,
   contactPhone: "558387504242",
+  // Estado normal: a IA responde (P0.2).
+  handoffAt: null,
+  handoffReason: null,
   tags: [
     { id: "00000000-0000-0000-0000-00000000e001", name: "implante", color: "teal", confidence: 0.9 },
   ],

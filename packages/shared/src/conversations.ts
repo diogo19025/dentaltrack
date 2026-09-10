@@ -18,6 +18,17 @@ export const detectedTagSchema = z.object({
 });
 export type DetectedTag = z.infer<typeof detectedTagSchema>;
 
+/**
+ * **Handoff humano** (P0.2) — desde quando um atendente assumiu a conversa.
+ * `null` significa que a IA responde, que é o estado normal.
+ *
+ * É deliberadamente **ortogonal ao `status`**, e não um `ConversationStatus`
+ * novo: uma conversa `agendada` (terminal na máquina de estados) também pode
+ * precisar de gente, e acrescentar um estado quebraria as métricas, o funil e
+ * o dashboard, que contam por status.
+ */
+const handoffAtSchema = z.string().nullable();
+
 /** Item da tabela "Conversas recentes". */
 export const conversationSummarySchema = z.object({
   id: z.string().uuid(),
@@ -27,6 +38,8 @@ export const conversationSummarySchema = z.object({
   status: conversationStatusSchema,
   /** ISO 8601 (ou null se a conversa não tem mensagens). */
   lastMessageAt: z.string().nullable(),
+  /** ISO 8601 desde quando um atendente assumiu; `null` = a IA responde. */
+  handoffAt: handoffAtSchema.default(null),
 });
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
 
@@ -42,6 +55,10 @@ export const conversationDetailSchema = z.object({
   messageCount: z.number(),
   /** Telefone do contato (WhatsApp = número do cliente; web = telefone do lead, se houver). */
   contactPhone: z.string().nullable(),
+  /** ISO 8601 desde quando um atendente assumiu; `null` = a IA responde. */
+  handoffAt: handoffAtSchema.default(null),
+  /** Por que a conversa foi assumida (opcional, escrito por quem assumiu). */
+  handoffReason: z.string().nullable().default(null),
   tags: z.array(detectedTagSchema),
   /**
    * Últimas idas e voltas (ordem cronológica) — cliente × bot, limitadas no
@@ -50,3 +67,22 @@ export const conversationDetailSchema = z.object({
   messages: z.array(chatMessageSchema),
 });
 export type ConversationDetail = z.infer<typeof conversationDetailSchema>;
+
+/**
+ * Corpo de `POST /conversations/:id/handoff` — assumir o atendimento.
+ *
+ * O motivo é opcional de propósito: exigir justificativa para tirar o robô da
+ * frente de um cliente irritado é atrito no pior momento possível.
+ */
+export const startHandoffSchema = z.object({
+  reason: z.string().trim().max(280).optional(),
+});
+export type StartHandoffInput = z.infer<typeof startHandoffSchema>;
+
+/** Resposta dos dois endpoints de handoff — o estado como ficou. */
+export const handoffStateSchema = z.object({
+  conversationId: z.string().uuid(),
+  handoffAt: handoffAtSchema,
+  handoffReason: z.string().nullable(),
+});
+export type HandoffState = z.infer<typeof handoffStateSchema>;

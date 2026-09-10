@@ -56,7 +56,7 @@ describe('OutboundService (fila de saída · F9)', () => {
     clinicSettings: { findUnique: jest.fn() },
     appointment: { findFirst: jest.fn() },
     message: { findFirst: jest.fn() },
-    conversation: { updateMany: jest.fn() },
+    conversation: { updateMany: jest.fn(), findFirst: jest.fn() },
   };
   const settingsMock = { get: jest.fn() };
   const holidaysMock = { isHoliday: jest.fn() };
@@ -88,6 +88,8 @@ describe('OutboundService (fila de saída · F9)', () => {
     evolutionMock.sendText.mockResolvedValue(undefined);
     prismaMock.outboundMessage.findUnique.mockResolvedValue(null);
     prismaMock.outboundMessage.count.mockResolvedValue(0);
+    // Handoff humano (P0.2): por padrão a IA responde, então nada é suprimido.
+    prismaMock.conversation.findFirst.mockResolvedValue({ handoffAt: null });
     // Claim otimista (P0.5): por padrão este despachante vence a disputa.
     prismaMock.outboundMessage.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.clinicSettings.findUnique.mockResolvedValue({
@@ -571,6 +573,57 @@ describe('OutboundService (fila de saída · F9)', () => {
 
       await outbound.dispatchDue(NOW);
       expectSuppressed('opt_out');
+    });
+
+    /**
+     * Handoff humano (P0.2): vale para **todos** os tipos, não só para as
+     * cadências que insistem. Um atendente conversando e um lembrete robô
+     * saindo no meio queima a confiança em toda mensagem automática.
+     */
+    it('conversa assumida por um atendente suprime o envio', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([reminder]);
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({
+        handoffAt: new Date('2026-09-09T12:00:00.000Z'),
+      });
+
+      await outbound.dispatchDue(NOW);
+      expectSuppressed('atendimento_humano');
+      expect(evolutionMock.sendText).not.toHaveBeenCalled();
+    });
+
+    it('devolvida para a IA, o lembrete volta a sair', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([reminder]);
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({
+        handoffAt: null,
+      });
+      prismaMock.appointment.findFirst.mockResolvedValueOnce({
+        status: 'agendado',
+        startsAt,
+      });
+
+      const summary = await outbound.dispatchDue(NOW);
+      expect(summary.enviados).toBe(1);
+    });
+
+    // Mensagem sem conversa (ex.: enfileirada a partir de um agendamento
+    // importado) não tem handoff que possa pausá-la — e não pode quebrar.
+    it('mensagem sem conversa não consulta handoff', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        { ...reminder, conversationId: null },
+      ]);
+      prismaMock.appointment.findFirst.mockResolvedValueOnce({
+        status: 'agendado',
+        startsAt,
+      });
+      // Sem conversa, o envio abre uma pelo telefone (caminho pré-existente).
+      conversationsMock.resolveByPhone.mockResolvedValueOnce({
+        id: CONVERSATION,
+        handoffAt: null,
+      });
+
+      const summary = await outbound.dispatchDue(NOW);
+      expect(summary.enviados).toBe(1);
+      expect(prismaMock.conversation.findFirst).not.toHaveBeenCalled();
     });
 
     it('sem nada de errado, o lembrete sai', async () => {

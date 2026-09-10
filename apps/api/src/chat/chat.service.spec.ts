@@ -527,5 +527,147 @@ describe('ChatService.streamMessage', () => {
       // user já persistido; assistant não.
       expect(conversationsMock.appendMessage).toHaveBeenCalledTimes(1);
     });
+
+    /**
+     * Handoff humano (P0.2). O gate mora aqui e não no adapter de propósito: a
+     * mensagem do cliente precisa continuar sendo persistida e o lead capturado
+     * — o atendente vai ler a conversa, e o CRM não pode parar de funcionar
+     * porque uma pessoa assumiu o atendimento. Só a geração é pulada.
+     */
+    describe('handoff humano (P0.2)', () => {
+      const ASSUMIDA_EM = new Date('2026-09-10T14:32:00.000Z');
+
+      const emHandoff = () =>
+        conversationsMock.resolveByPhone.mockResolvedValueOnce({
+          id: CONVERSATION_ID,
+          handoffAt: ASSUMIDA_EM,
+        });
+
+      it('com atendente no controle, a IA não é chamada', async () => {
+        emHandoff();
+
+        const result = await service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          message: 'Ainda estou esperando',
+        });
+
+        expect(generateMock).not.toHaveBeenCalled();
+        expect(streamMock).not.toHaveBeenCalled();
+        // Resposta vazia e sem anexos: é o que faz o `WhatsappService` não
+        // enviar nada, sem precisar conhecer o handoff.
+        expect(result).toEqual({
+          conversationId: CONVERSATION_ID,
+          reply: '',
+          transcript: undefined,
+          attachments: [],
+        });
+      });
+
+      it('a mensagem do cliente continua sendo persistida', async () => {
+        emHandoff();
+
+        await service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          message: 'Ainda estou esperando',
+        });
+
+        expect(conversationsMock.appendMessage).toHaveBeenCalledTimes(1);
+        expect(conversationsMock.appendMessage).toHaveBeenCalledWith(
+          CONVERSATION_ID,
+          'user',
+          'Ainda estou esperando',
+          {},
+          CLINIC_ID,
+        );
+      });
+
+      it('o lead continua sendo capturado — o CRM não para', async () => {
+        emHandoff();
+
+        await service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          contactName: 'João',
+          message: 'Oi',
+        });
+
+        expect(conversationsMock.ensureContactLead).toHaveBeenCalledWith(
+          CONVERSATION_ID,
+          CLINIC_ID,
+          { phone: PHONE, name: 'João', source: 'whatsapp' },
+        );
+      });
+
+      it('áudio é transcrito e persistido — o atendente precisa ler o que foi dito', async () => {
+        const TRANSCRIPT = 'Estou com dor';
+        transcribeMock.mockResolvedValueOnce(TRANSCRIPT);
+        emHandoff();
+
+        const result = await service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          audio: Buffer.from('ptt').toString('base64'),
+          audioType: 'audio/ogg',
+        });
+
+        expect(conversationsMock.appendMessage).toHaveBeenCalledWith(
+          CONVERSATION_ID,
+          'user',
+          TRANSCRIPT,
+          {},
+          CLINIC_ID,
+        );
+        expect(result.transcript).toBe(TRANSCRIPT);
+        expect(generateMock).not.toHaveBeenCalled();
+      });
+
+      it('nem a mídia de saudação sai: ela chegaria sozinha, sem texto', async () => {
+        emHandoff();
+        prismaMock.message.count.mockResolvedValueOnce(0);
+        prismaMock.clinicSettings.findUnique.mockResolvedValue({
+          greetingMediaUrl: 'https://cdn/welcome.jpg',
+          greetingMediaType: 'image',
+        });
+
+        const result = await service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          message: 'Oi',
+        });
+
+        expect(result.attachments).toEqual([]);
+      });
+
+      // Fail-open: sem informação sobre o handoff, a IA responde — que é o
+      // comportamento de sempre. Errar para o outro lado deixaria o cliente sem
+      // resposta nenhuma e sem ninguém saber.
+      it('sem handoff, nada muda', async () => {
+        conversationsMock.resolveByPhone.mockResolvedValueOnce({
+          id: CONVERSATION_ID,
+          handoffAt: null,
+        });
+        conversationsMock.getConversation.mockResolvedValueOnce({
+          messages: [{ role: 'user', content: 'Oi' }],
+        });
+        generateMock.mockResolvedValueOnce({ text: 'Olá!', tokens: 3 });
+
+        const result = await service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          message: 'Oi',
+        });
+
+        expect(generateMock).toHaveBeenCalled();
+        expect(result.reply).toBe('Olá!');
+      });
+    });
   });
 });

@@ -378,6 +378,22 @@ export class OutboundService {
       return 'opt_out';
     }
 
+    // Handoff humano (P0.2): vale para **todos** os tipos, não só para as
+    // cadências que insistem. Um atendente conversando e um lembrete robô
+    // saindo no meio é o erro que queima a confiança em toda mensagem
+    // automática, inclusive nas que funcionam.
+    //
+    // Lido direto da coluna, sem passar pelo `HandoffService`: a fila roda em
+    // cron, precisa de uma consulta por mensagem, e importar o módulo de
+    // conversas aqui só para ler um campo acoplaria os dois sem ganho.
+    if (message.conversationId) {
+      const convo = await this.prisma.conversation.findFirst({
+        where: { id: message.conversationId, clinicId: message.clinicId },
+        select: { handoffAt: true },
+      });
+      if (convo?.handoffAt) return 'atendimento_humano';
+    }
+
     if (message.appointmentId) {
       const appointment = await this.prisma.appointment.findFirst({
         where: { id: message.appointmentId, clinicId: message.clinicId },

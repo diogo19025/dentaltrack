@@ -89,7 +89,7 @@ export class ConversationsService {
     channel: Channel,
     contactPhone: string,
     sessionWindowHours = SESSION_WINDOW_HOURS,
-  ): Promise<{ id: string }> {
+  ): Promise<{ id: string; handoffAt: Date | null }> {
     const since = new Date(Date.now() - sessionWindowHours * 3_600_000);
     const existing = await this.prisma.conversation.findFirst({
       where: {
@@ -100,7 +100,9 @@ export class ConversationsService {
         lastMessageAt: { gte: since },
       },
       orderBy: { lastMessageAt: 'desc' },
-      select: { id: true },
+      // `handoffAt` vem junto (P0.2) para o motor saber, sem uma segunda ida ao
+      // banco por turno, se um atendente assumiu esta conversa.
+      select: { id: true, handoffAt: true },
     });
     if (existing) return existing;
 
@@ -108,7 +110,8 @@ export class ConversationsService {
       channel,
       contactPhone,
     });
-    return { id: created.id };
+    // Conversa recém-aberta nunca nasce em handoff: alguém precisa assumi-la.
+    return { id: created.id, handoffAt: null };
   }
 
   /**
@@ -269,6 +272,7 @@ export class ConversationsService {
         id: true,
         status: true,
         lastMessageAt: true,
+        handoffAt: true,
         lead: { select: { name: true } },
         conversationTags: {
           orderBy: { confidence: 'desc' },
@@ -292,6 +296,7 @@ export class ConversationsService {
       })),
       status: c.status,
       lastMessageAt: c.lastMessageAt?.toISOString() ?? null,
+      handoffAt: c.handoffAt?.toISOString() ?? null,
     }));
   }
 
@@ -311,6 +316,8 @@ export class ConversationsService {
         channel: true,
         createdAt: true,
         contactPhone: true,
+        handoffAt: true,
+        handoffReason: true,
         lead: { select: { phone: true } },
         _count: { select: { messages: true } },
         conversationTags: {
@@ -340,6 +347,8 @@ export class ConversationsService {
       createdAt: convo.createdAt.toISOString(),
       messageCount: convo._count.messages,
       contactPhone: convo.contactPhone ?? convo.lead?.phone ?? null,
+      handoffAt: convo.handoffAt?.toISOString() ?? null,
+      handoffReason: convo.handoffReason,
       tags: convo.conversationTags.map((ct) => ({
         id: ct.tag.id,
         name: ct.tag.name,

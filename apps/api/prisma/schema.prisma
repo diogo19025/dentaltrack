@@ -164,6 +164,16 @@ model Conversation {
   /// web (identidade = sessão). Base do lookup `(clinica, canal, telefone)`.
   contactPhone  String?            @map("contact_phone")
   status        ConversationStatus @default(em_andamento)
+  /// Handoff humano (P0.2): quando um atendente assumiu a conversa. **NULL = a
+  /// IA responde**, que é o estado normal. É ortogonal ao `status`, e não um
+  /// `ConversationStatus` novo, de propósito: uma conversa `agendada` (terminal)
+  /// também pode precisar de gente, e um estado a mais quebraria as métricas, o
+  /// funil e o dashboard, que contam por status.
+  handoffAt     DateTime?          @map("handoff_at")
+  /// Quem assumiu (id do usuário no Supabase Auth). Sem FK — o usuário não é
+  /// tabela nossa; o campo serve para o log e para a tela dizer "você assumiu".
+  handoffBy     String?            @map("handoff_by") @db.Uuid
+  handoffReason String?            @map("handoff_reason")
   lastMessageAt DateTime?          @map("last_message_at")
   createdAt     DateTime           @default(now()) @map("created_at")
   updatedAt     DateTime           @updatedAt @map("updated_at")
@@ -179,6 +189,7 @@ model Conversation {
   @@index([clinicId, status])
   @@index([leadId])
   @@index([clinicId, channel, contactPhone])
+  @@index([clinicId, handoffAt])
   @@map("conversation")
 }
 

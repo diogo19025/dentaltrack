@@ -249,6 +249,12 @@ export const OUTBOUND_SUPPRESSION_REASONS = [
   "ja_enviado",
   "cliente_respondeu",
   "agendamento_mudou",
+  /**
+   * Um atendente assumiu a conversa (P0.2). Um lembrete robô saindo no meio de
+   * um atendimento humano é o erro que queima a confiança em **toda** mensagem
+   * automática — inclusive nas que funcionam.
+   */
+  "atendimento_humano",
 ] as const;
 export const outboundSuppressionReasonSchema = z.enum(
   OUTBOUND_SUPPRESSION_REASONS,

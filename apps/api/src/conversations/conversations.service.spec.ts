@@ -82,11 +82,12 @@ describe('ConversationsService', () => {
     it('reusa a conversa em_andamento mais recente do contato (dentro da janela)', async () => {
       prismaMock.conversation.findFirst.mockResolvedValueOnce({
         id: CONVERSATION_ID,
+        handoffAt: null,
       });
 
       const res = await service.resolveByPhone(CLINIC_ID, 'whatsapp', PHONE);
 
-      expect(res).toEqual({ id: CONVERSATION_ID });
+      expect(res).toEqual({ id: CONVERSATION_ID, handoffAt: null });
       const where = prismaMock.conversation.findFirst.mock.calls[0][0].where;
       expect(where).toMatchObject({
         clinicId: CLINIC_ID,
@@ -104,7 +105,8 @@ describe('ConversationsService', () => {
 
       const res = await service.resolveByPhone(CLINIC_ID, 'whatsapp', PHONE);
 
-      expect(res).toEqual({ id: 'new-convo' });
+      // Conversa recém-aberta nunca nasce em handoff — alguém precisa assumi-la.
+      expect(res).toEqual({ id: 'new-convo', handoffAt: null });
       expect(prismaMock.conversation.create).toHaveBeenCalledWith({
         data: {
           clinicId: CLINIC_ID,

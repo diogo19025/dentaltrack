@@ -15,7 +15,7 @@
 | 2 | **Idempotência do agendamento** (P0.5, parte 1) | `book()` reordenado + `bookingKey` no índice único | ✅ **2026-09-09** | `f13_booking_idempotency` ✅ aplicada 2026-09-09 |
 | 3 | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar (3 adapters + endpoints + tela); re-checagem de horário no `book()`; `dispatchDue` com claim; `enqueue` e sync sem check-then-create | ✅ **2026-09-09** | `f14_outbound_claim` ✅ aplicada 2026-09-09 |
 | 4 | **Agenda real endurecida** (P0.1) | Retry só em leitura, erros tipados, `google:smoke` com escrita, UI de erro na aba Integração | ✅ **2026-09-10** | — |
-| 5 | **Handoff humano** (P0.2) | IA pausável por conversa, endpoints, UI no dialog | ⬜ a fazer | `f15_handoff` |
+| 5 | **Handoff humano** (P0.2) | IA pausável por conversa, endpoints, UI no dialog | 🚧 **backend pronto 2026-09-10** · falta a UI | `f15_handoff` ⚠️ criada, **não aplicada** |
 | 6 | **WhatsApp robusto** (P0.4) | `InboundMessage`, fila da resposta reativa, estado persistido | ⬜ a fazer | `f16_whatsapp_robustez` |
 | 7 | **Estados de erro e carregamento** (P1.3) | `ErrorState`, error boundaries, `api-client` | ⬜ a fazer | — |
 | 8 | **Permissões owner/staff** (P1.4) | `RolesGuard` + UI | ⬜ a fazer | — |
@@ -182,9 +182,20 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.2 · Handoff humano ⬜ *PR 5*
+## P0.2 · Handoff humano 🚧 *PR 5 — backend entregue em 2026-09-10, UI pendente*
 
-**Estado atual.** Não existe. O `RemindersModule` já envia texto pelo WhatsApp e o persiste na conversa — é o transporte pronto.
+> **O que já está de pé** (verde nos três pacotes, 17 testes novos):
+> - migration `f15_handoff` criada — **ainda não aplicada ao vivo**;
+> - `HandoffService` (assumir/devolver, idempotentes nos dois sentidos) e `POST`/`DELETE /conversations/:id/handoff`;
+> - o gate no `ChatService.processInboundMessage`: com atendente no controle a IA não é chamada, mas a mensagem do cliente continua sendo persistida e o lead capturado;
+> - `OutboundService.revalidate()` suprimindo com o motivo `atendimento_humano`;
+> - `handoffAt` no `GET /conversations` e no `GET /conversations/:id`, prontos para a tela consumir.
+>
+> **O que falta:** só a UI — o badge no `ConversationDetailDialog` e na lista de conversas recentes, o botão que alterna "Assumir atendimento"/"Devolver para IA" e a caixa de resposta. **Hoje o handoff só é acionável por chamada direta à API.**
+>
+> **O que mudou em relação ao planejado:** o endpoint `POST /conversations/:id/messages` **não foi criado**. O `POST /conversations/:id/reminder` já faz exatamente o que a resposta do atendente precisa — envia pelo WhatsApp, persiste como `assistant` na conversa e reabre a conversa `abandonada` —, e duas rotas idênticas com nomes diferentes seriam dívida, não clareza. Isso também evita o ciclo de módulos que apareceria se o `ConversationsModule` passasse a depender do `RemindersModule`, que já depende dele.
+
+**Estado anterior.** Não existia. O `RemindersModule` já envia texto pelo WhatsApp e o persiste na conversa — é o transporte pronto.
 
 **Mudança necessária.** O handoff é **ortogonal ao status, não um estado novo**: uma conversa `agendada` (terminal na máquina de estados) também pode precisar de gente, e mexer em `ConversationStatus` quebraria métricas, funil e dashboard. `canTransition` fica intacto.
 
