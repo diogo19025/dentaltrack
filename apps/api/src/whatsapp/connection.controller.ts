@@ -14,6 +14,8 @@ import {
 } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { WhatsappConnectionService } from './connection.service';
 
 /** Corpo de POST /whatsapp/connection/onboarding. */
@@ -31,7 +33,8 @@ export class AnswerOnboardingDto extends createZodDto(
  * as mensagens de outra.
  */
 @Controller('whatsapp/connection')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, RolesGuard)
+@Roles('owner')
 export class WhatsappConnectionController {
   constructor(private readonly connection: WhatsappConnectionService) {}
 

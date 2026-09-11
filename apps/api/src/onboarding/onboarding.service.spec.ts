@@ -13,7 +13,7 @@ function makeTx(over: {
     $executeRaw: jest.fn().mockResolvedValue(1),
     membership: {
       findFirst: jest.fn().mockResolvedValueOnce(over.innerFindFirst ?? null),
-      create: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({ role: 'owner' }),
     },
     clinic: {
       create: jest
@@ -46,11 +46,16 @@ describe('OnboardingService.ensureClinic', () => {
   it('idempotente: já tem membership → devolve a empresa existente, sem abrir transação', async () => {
     prismaMock.membership.findFirst.mockResolvedValueOnce({
       clinicId: 'clinic-existente',
+      role: 'staff',
     });
 
     const res = await service.ensureClinic({ userId: USER_ID });
 
-    expect(res).toEqual({ clinicId: 'clinic-existente', created: false });
+    expect(res).toEqual({
+      clinicId: 'clinic-existente',
+      created: false,
+      role: 'staff',
+    });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
@@ -71,21 +76,31 @@ describe('OnboardingService.ensureClinic', () => {
       data: { name: 'Empresa Teste' },
     });
     expect(tx.membership.create).toHaveBeenCalledWith({
-      data: { userId: USER_ID, clinicId: 'clinic-novo' },
+      data: { userId: USER_ID, clinicId: 'clinic-novo', role: 'owner' },
     });
-    expect(res).toEqual({ clinicId: 'clinic-novo', created: true });
+    expect(res).toEqual({
+      clinicId: 'clinic-novo',
+      created: true,
+      role: 'owner',
+    });
   });
 
   it('concorrência: outra chamada provisionou durante o lock → devolve sem duplicar', async () => {
     prismaMock.membership.findFirst.mockResolvedValueOnce(null); // caminho rápido: nada
-    const tx = makeTx({ innerFindFirst: { clinicId: 'clinic-concorrente' } });
+    const tx = makeTx({
+      innerFindFirst: { clinicId: 'clinic-concorrente', role: 'owner' },
+    });
     prismaMock.$transaction.mockImplementationOnce(
       (cb: (t: typeof tx) => unknown) => cb(tx),
     );
 
     const res = await service.ensureClinic({ userId: USER_ID });
 
-    expect(res).toEqual({ clinicId: 'clinic-concorrente', created: false });
+    expect(res).toEqual({
+      clinicId: 'clinic-concorrente',
+      created: false,
+      role: 'owner',
+    });
     expect(tx.clinic.create).not.toHaveBeenCalled();
   });
 

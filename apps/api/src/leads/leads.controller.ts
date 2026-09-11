@@ -22,6 +22,8 @@ import {
 } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { LeadsService } from './leads.service';
 import { LeadsExportService } from './leads-export.service';
 import { LeadsImportService } from './leads-import.service';
@@ -35,7 +37,7 @@ import { LeadsImportService } from './leads-import.service';
  * Protegido pelo SupabaseJwtGuard (global) + TenantGuard (resolve o `clinicId`).
  */
 @Controller('leads')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, RolesGuard)
 export class LeadsController {
   constructor(
     private readonly leads: LeadsService,
@@ -74,6 +76,7 @@ export class LeadsController {
   }
 
   @Post('import')
+  @Roles('owner')
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
   )

@@ -19,6 +19,8 @@ import {
 } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { UpdateIntegrationDto } from './dto';
 import { IntegrationService } from './integration.service';
 
@@ -49,7 +51,8 @@ export class IntegrationProviderPipe implements PipeTransform<
  * TenantGuard — o `clinicId` vem do token, nunca do corpo.
  */
 @Controller('integrations')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, RolesGuard)
+@Roles('owner')
 export class IntegrationController {
   constructor(private readonly integrations: IntegrationService) {}
 

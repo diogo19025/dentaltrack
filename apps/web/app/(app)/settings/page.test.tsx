@@ -46,6 +46,10 @@ vi.mock("@/components/settings/whatsapp-tab", () => ({
   WhatsappTab: () => <div>Configuração da conexão WhatsApp</div>,
 }));
 
+vi.mock("@/components/auth/role-context", () => ({
+  OwnerOnly: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 // A sidebar/topbar não entram aqui; os hooks de leads/pipeline usados por elas
 // não são exercitados nesta página, mas os filhos de outras abas importam hooks
 // — a aba padrão ("identidade") não os renderiza, então não precisam de mock.

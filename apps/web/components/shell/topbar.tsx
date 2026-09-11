@@ -14,6 +14,7 @@ import {
 import { brand } from "@/lib/brand";
 import { useWhatsappConnection } from "@/hooks/use-whatsapp-connection";
 import { WHATSAPP_STATE_LABELS } from "@dentaltrack/shared";
+import { useRole } from "@/components/auth/role-context";
 
 const TITLES: Record<string, string> = {
   "/": "Dashboard",
@@ -80,7 +81,9 @@ export function Topbar() {
 
 /** Aviso global quando existe uma instância que não está conectada. */
 export function WhatsappStatusBanner() {
-  const { data } = useWhatsappConnection();
+  const { isOwner } = useRole();
+  const { data } = useWhatsappConnection(isOwner);
+  if (!isOwner) return null;
   if (!data?.instanceName || data.state === "conectado") return null;
 
   return (

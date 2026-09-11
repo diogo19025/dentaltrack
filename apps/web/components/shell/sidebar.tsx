@@ -16,12 +16,17 @@ import { Logo } from "@/components/brand/logo";
 import { AssistantCard } from "@/components/shell/assistant-card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useLeads } from "@/hooks/use-leads";
 import { useSettings } from "@/hooks/use-settings";
 import { brand } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { OwnerOnly, useRole } from "@/components/auth/role-context";
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -50,11 +55,13 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { isOwner } = useRole();
   const { data: leadsData } = useLeads();
   const { data: settings } = useSettings();
   const leadsBadge = leadsData?.summary.total || 0;
   // Marca do shell = nome da empresa (multi-tenant); fallback: marca da plataforma.
-  const brandName = clinicName?.trim() || settings?.clinicName?.trim() || brand.name;
+  const brandName =
+    clinicName?.trim() || settings?.clinicName?.trim() || brand.name;
 
   async function logout() {
     const supabase = createClient();
@@ -85,46 +92,59 @@ export function Sidebar({
           Menu
         </div>
         <nav className="flex flex-col gap-[3px]">
-          {NAV.map((item) => {
-            const active = isActive(pathname, item.href);
-            const Icon = item.icon;
-            const badge = item.href === "/leads" && leadsBadge > 0 ? String(leadsBadge) : undefined;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-[11px] rounded-md px-[11px] py-[10px] text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                  active
-                    ? "bg-primary-tint font-semibold text-primary"
-                    : "font-medium text-secondary-foreground hover:bg-accent",
-                )}
-              >
-                <Icon
-                  className="size-[18px] flex-none"
-                  style={{ color: active ? "var(--primary)" : "var(--muted-foreground)" }}
-                />
-                <span className="flex-1">{item.label}</span>
-                {badge && (
-                  <span
-                    className={cn(
-                      "tabular rounded-full px-[7px] py-[2px] text-[11px] font-medium",
-                      active ? "bg-primary text-white" : "bg-secondary text-muted-foreground",
-                    )}
-                  >
-                    {badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
+          {NAV.filter((item) => item.href !== "/settings" || isOwner).map(
+            (item) => {
+              const active = isActive(pathname, item.href);
+              const Icon = item.icon;
+              const badge =
+                item.href === "/leads" && leadsBadge > 0
+                  ? String(leadsBadge)
+                  : undefined;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-[11px] rounded-md px-[11px] py-[10px] text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                    active
+                      ? "bg-primary-tint font-semibold text-primary"
+                      : "font-medium text-secondary-foreground hover:bg-accent",
+                  )}
+                >
+                  <Icon
+                    className="size-[18px] flex-none"
+                    style={{
+                      color: active
+                        ? "var(--primary)"
+                        : "var(--muted-foreground)",
+                    }}
+                  />
+                  <span className="flex-1">{item.label}</span>
+                  {badge && (
+                    <span
+                      className={cn(
+                        "tabular rounded-full px-[7px] py-[2px] text-[11px] font-medium",
+                        active
+                          ? "bg-primary text-white"
+                          : "bg-secondary text-muted-foreground",
+                      )}
+                    >
+                      {badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            },
+          )}
         </nav>
       </div>
 
       <div className="flex-1" />
 
-      <AssistantCard sessionId={sessionId} />
+      <OwnerOnly>
+        <AssistantCard sessionId={sessionId} />
+      </OwnerOnly>
 
       <div className="border-t border-border p-3">
         <div className="flex items-center gap-[10px] rounded-md px-2 py-[6px]">
@@ -134,14 +154,21 @@ export function Sidebar({
             </AvatarFallback>
           </Avatar>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13.5px] font-semibold">{userEmail}</div>
+            <div className="truncate text-[13.5px] font-semibold">
+              {userEmail}
+            </div>
             <div className="truncate text-xs text-muted-foreground">
               {settings?.clinicName?.trim() || clinicName || "Painel"}
             </div>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={logout} aria-label="Sair">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={logout}
+                aria-label="Sair"
+              >
                 <LogOut />
               </Button>
             </TooltipTrigger>

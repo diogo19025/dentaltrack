@@ -12,6 +12,8 @@ import {
 import type { TagDto } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { CreateTagDto, UpdateTagDto } from './dto';
 import { TagsService } from './tags.service';
 
@@ -20,7 +22,8 @@ import { TagsService } from './tags.service';
  * TenantGuard resolve o `clinicId`. Toda operação é escopada por empresa.
  */
 @Controller('tags')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, RolesGuard)
+@Roles('owner')
 export class TagsController {
   constructor(private readonly tags: TagsService) {}
 

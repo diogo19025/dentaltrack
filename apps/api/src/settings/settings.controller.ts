@@ -2,6 +2,8 @@ import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
 import type { ClinicSettingsDto } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { UpdateSettingsDto } from './dto';
 import { SettingsService } from './settings.service';
 
@@ -11,7 +13,7 @@ import { SettingsService } from './settings.service';
  * (BE-1.3) e a tela `/settings` (FE-2.*).
  */
 @Controller('settings')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, RolesGuard)
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
@@ -21,6 +23,7 @@ export class SettingsController {
   }
 
   @Patch()
+  @Roles('owner')
   update(
     @ClinicId() clinicId: string,
     @Body() body: UpdateSettingsDto,

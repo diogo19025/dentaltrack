@@ -43,6 +43,7 @@ import { Tag } from "@/components/ui/tag";
 import { useImportLeads, useLeads } from "@/hooks/use-leads";
 import { apiDownload, ApiError } from "@/lib/api-client";
 import { formatCaptured, initials, sourceLabel } from "@/lib/format";
+import { OwnerOnly } from "@/components/auth/role-context";
 
 /**
  * Leads (FE-3.6) — réplica 1:1 de `screen_leads.jsx`: 4 cards-resumo + tabela
@@ -70,13 +71,20 @@ export default function LeadsPage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<unknown>(null);
   const [failedExport, setFailedExport] = useState<"xlsx" | "pdf">("xlsx");
-  const [importResult, setImportResult] = useState<LeadImportResult | null>(null);
+  const [importResult, setImportResult] = useState<LeadImportResult | null>(
+    null,
+  );
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importLeads = useImportLeads();
 
   const leads = useMemo(() => data?.leads ?? [], [data]);
-  const summary = data?.summary ?? { total: 0, agendada: 0, andamento: 0, abandonada: 0 };
+  const summary = data?.summary ?? {
+    total: 0,
+    agendada: 0,
+    andamento: 0,
+    abandonada: 0,
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -93,7 +101,10 @@ export default function LeadsPage() {
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
-  const pageItems = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
+  const pageItems = filtered.slice(
+    safePage * PAGE_SIZE,
+    safePage * PAGE_SIZE + PAGE_SIZE,
+  );
 
   function onFilter(value: StatusFilter) {
     setFilter(value);
@@ -132,32 +143,37 @@ export default function LeadsPage() {
         title="Leads"
         subtitle="Clientes em potencial capturados pelo agente nas conversas."
       >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv,.xlsx"
-          className="sr-only"
-          aria-label="Planilha de leads (.xlsx ou .csv)"
-          onChange={(e) => {
-            onImportFile(e.target.files?.[0]);
-            e.target.value = "";
-          }}
-        />
-        <Button
-          variant="secondary"
-          disabled={importLeads.isPending}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {importLeads.isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Upload className="size-4" />
-          )}{" "}
-          Importar
-        </Button>
+        <OwnerOnly>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,.xlsx"
+            className="sr-only"
+            aria-label="Planilha de leads (.xlsx ou .csv)"
+            onChange={(e) => {
+              onImportFile(e.target.files?.[0]);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            variant="secondary"
+            disabled={importLeads.isPending}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {importLeads.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Upload className="size-4" />
+            )}{" "}
+            Importar
+          </Button>
+        </OwnerOnly>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="secondary" disabled={exporting || filtered.length === 0}>
+            <Button
+              variant="secondary"
+              disabled={exporting || filtered.length === 0}
+            >
               {exporting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
@@ -173,7 +189,9 @@ export default function LeadsPage() {
             <DropdownMenuItem onSelect={() => void onExport("xlsx")}>
               Excel (.xlsx)
             </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => void onExport("pdf")}>PDF</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void onExport("pdf")}>
+              PDF
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </PageHeader>
@@ -190,10 +208,34 @@ export default function LeadsPage() {
 
       {/* Cards-resumo */}
       <div className="stagger mb-5 grid grid-cols-4 gap-[18px] max-[900px]:grid-cols-2 max-[520px]:grid-cols-1">
-        <SummaryCard icon={Users} label="Total de leads" value={summary.total} color="var(--primary)" loading={isLoading} />
-        <SummaryCard icon={Calendar} label="Agendados" value={summary.agendada} color="var(--status-agendada)" loading={isLoading} />
-        <SummaryCard icon={Clock} label="Em andamento" value={summary.andamento} color="var(--status-andamento)" loading={isLoading} />
-        <SummaryCard icon={Inbox} label="Não completados" value={summary.abandonada} color="var(--status-abandonada)" loading={isLoading} />
+        <SummaryCard
+          icon={Users}
+          label="Total de leads"
+          value={summary.total}
+          color="var(--primary)"
+          loading={isLoading}
+        />
+        <SummaryCard
+          icon={Calendar}
+          label="Agendados"
+          value={summary.agendada}
+          color="var(--status-agendada)"
+          loading={isLoading}
+        />
+        <SummaryCard
+          icon={Clock}
+          label="Em andamento"
+          value={summary.andamento}
+          color="var(--status-andamento)"
+          loading={isLoading}
+        />
+        <SummaryCard
+          icon={Inbox}
+          label="Não completados"
+          value={summary.abandonada}
+          color="var(--status-abandonada)"
+          loading={isLoading}
+        />
       </div>
 
       <Card className="gap-0 overflow-hidden p-0">
@@ -209,7 +251,12 @@ export default function LeadsPage() {
             />
           </div>
           <div className="flex-1" />
-          <Segmented aria-label="Filtrar por status" options={STATUS_FILTERS} value={filter} onChange={onFilter} />
+          <Segmented
+            aria-label="Filtrar por status"
+            options={STATUS_FILTERS}
+            value={filter}
+            onChange={onFilter}
+          />
           <Button variant="secondary" size="icon-sm" aria-label="Filtros">
             <Filter className="size-4" />
           </Button>
@@ -276,7 +323,9 @@ export default function LeadsPage() {
                       </span>
                     </td>
                     <td>
-                      <span className="text-muted-foreground">{l.interest ?? "—"}</span>
+                      <span className="text-muted-foreground">
+                        {l.interest ?? "—"}
+                      </span>
                     </td>
                     <td>
                       <div className="flex flex-wrap gap-1.5">
@@ -323,7 +372,8 @@ export default function LeadsPage() {
         {!isLoading && filtered.length > 0 && (
           <div className="flex items-center justify-between border-t border-border px-[18px] py-3.5">
             <span className="text-[13px] text-muted-foreground">
-              Mostrando <strong className="text-foreground">{filtered.length}</strong> de{" "}
+              Mostrando{" "}
+              <strong className="text-foreground">{filtered.length}</strong> de{" "}
               {leads.length} leads
             </span>
             <div className="flex gap-2">
@@ -382,14 +432,22 @@ export default function LeadsPage() {
             <div className="space-y-3 text-sm">
               <ul className="space-y-1 text-muted-foreground">
                 <li>
-                  <strong className="text-foreground">{importResult.imported}</strong> importado(s)
+                  <strong className="text-foreground">
+                    {importResult.imported}
+                  </strong>{" "}
+                  importado(s)
                 </li>
                 <li>
-                  <strong className="text-foreground">{importResult.duplicates}</strong> pulado(s)
-                  por já existirem (mesmo telefone ou e-mail)
+                  <strong className="text-foreground">
+                    {importResult.duplicates}
+                  </strong>{" "}
+                  pulado(s) por já existirem (mesmo telefone ou e-mail)
                 </li>
                 <li>
-                  <strong className="text-foreground">{importResult.invalid}</strong> inválido(s)
+                  <strong className="text-foreground">
+                    {importResult.invalid}
+                  </strong>{" "}
+                  inválido(s)
                 </li>
               </ul>
               {importResult.errors.length > 0 && (
@@ -408,7 +466,8 @@ export default function LeadsPage() {
           {importError && (
             <p className="text-sm text-muted-foreground">
               A planilha precisa de um cabeçalho na 1ª linha com colunas
-              &quot;Nome&quot;, &quot;Telefone&quot; e/ou &quot;E-mail&quot; (.xlsx ou .csv).
+              &quot;Nome&quot;, &quot;Telefone&quot; e/ou &quot;E-mail&quot;
+              (.xlsx ou .csv).
             </p>
           )}
           <DialogFooter>
@@ -433,7 +492,9 @@ function importErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     try {
       const body = JSON.parse(error.message) as { message?: string | string[] };
-      const message = Array.isArray(body.message) ? body.message[0] : body.message;
+      const message = Array.isArray(body.message)
+        ? body.message[0]
+        : body.message;
       if (message) return message;
     } catch {
       // corpo não-JSON → usa o texto cru abaixo
@@ -469,7 +530,9 @@ function SummaryCard({
         {loading ? (
           <Skeleton className="h-6 w-10" />
         ) : (
-          <div className="tabular text-[24px] font-semibold leading-none">{value}</div>
+          <div className="tabular text-[24px] font-semibold leading-none">
+            {value}
+          </div>
         )}
         <div className="mt-1 text-[12.5px] text-muted-foreground">{label}</div>
       </div>
@@ -479,7 +542,16 @@ function SummaryCard({
 
 /** Gera e baixa um CSV dos leads filtrados (client-side). */
 function exportCsv(leads: LeadDto[]): void {
-  const header = ["Nome", "Telefone", "E-mail", "Interesse", "Tags", "Status", "Origem", "Capturado"];
+  const header = [
+    "Nome",
+    "Telefone",
+    "E-mail",
+    "Interesse",
+    "Tags",
+    "Status",
+    "Origem",
+    "Capturado",
+  ];
   const rows = leads.map((l) => [
     l.name ?? "",
     l.phone ?? "",
@@ -490,8 +562,11 @@ function exportCsv(leads: LeadDto[]): void {
     l.source,
     l.createdAt,
   ]);
-  const escape = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-  const csv = [header, ...rows].map((r) => r.map((c) => escape(String(c))).join(",")).join("\n");
+  const escape = (v: string) =>
+    /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const csv = [header, ...rows]
+    .map((r) => r.map((c) => escape(String(c))).join(","))
+    .join("\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

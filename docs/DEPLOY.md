@@ -69,6 +69,18 @@ pnpm --filter @dentaltrack/api db:seed:demo   # (opcional) ~90 conversas p/ dash
 - `NEXT_PUBLIC_API_URL` (web) = URL da API.
 - Supabase → Authentication → URL Configuration → **Site URL** + **Redirect URLs** = domínio da Vercel (necessário para o login Google).
 
+### Vincular um membro da equipe (`staff`)
+
+Enquanto a tela de convite não existe, crie primeiro o usuário em **Supabase → Authentication → Users** e copie o UUID. Depois, no SQL Editor, vincule-o à clínica correta:
+
+```sql
+insert into public.membership (user_id, clinic_id, role)
+values ('<UUID_DO_USUARIO>', '<UUID_DA_CLINICA>', 'staff')
+on conflict (user_id, clinic_id) do update set role = excluded.role;
+```
+
+Confirme os dois UUIDs antes de executar. Um `staff` pode operar atendimento, leads, funil e agenda, mas recebe 403 nas configurações administrativas mesmo que tente chamar a API diretamente.
+
 ## 5. Smoke pós-deploy (validar em ~3 min)
 
 1. `GET https://<api>/health` → 200 (healthcheck do Railway verde).

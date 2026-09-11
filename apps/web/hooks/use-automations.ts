@@ -40,12 +40,13 @@ export function useUpdateAutomations() {
  * Histórico dos disparos (GET /automations/history). Inclui o que foi
  * suprimido e o motivo — é o que responde "o lembrete saiu?" sem adivinhação.
  */
-export function useAutomationHistory(limit = 50) {
+export function useAutomationHistory(limit = 50, enabled = true) {
   return useQuery({
     queryKey: [...HISTORY_KEY, limit],
     queryFn: () =>
       apiFetch<OutboundMessageSummary[]>(`/automations/history?limit=${limit}`),
     refetchInterval: 30_000,
+    enabled,
   });
 }
 
@@ -61,8 +62,7 @@ export function useUpdateOutboundMessage() {
         method: "PATCH",
         body: JSON.stringify(input),
       }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: HISTORY_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HISTORY_KEY }),
   });
 }
 
@@ -74,8 +74,7 @@ export function useCancelOutboundMessage() {
       apiFetch<OutboundMessageSummary>(`/automations/messages/${id}/cancel`, {
         method: "POST",
       }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: HISTORY_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HISTORY_KEY }),
   });
 }
 
@@ -95,8 +94,7 @@ export function useCreateHoliday() {
         method: "POST",
         body: JSON.stringify(input),
       }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: HOLIDAYS_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HOLIDAYS_KEY }),
   });
 }
 
@@ -106,8 +104,7 @@ export function useDeleteHoliday() {
     mutationFn: async (id: string) => {
       await apiFetch<void>(`/holidays/${id}`, { method: "DELETE" });
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: HOLIDAYS_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HOLIDAYS_KEY }),
   });
 }
 
@@ -120,7 +117,6 @@ export function useSyncHolidays() {
         `/holidays/sync${year ? `?year=${year}` : ""}`,
         { method: "POST" },
       ),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: HOLIDAYS_KEY }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: HOLIDAYS_KEY }),
   });
 }

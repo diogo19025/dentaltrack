@@ -12,6 +12,8 @@ import {
 import type { ProcedureDto } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { CreateProcedureDto, UpdateProcedureDto } from './dto';
 import { ProceduresService } from './procedures.service';
 
@@ -21,7 +23,8 @@ import { ProceduresService } from './procedures.service';
  * empresa — o `clinicId` nunca vem do cliente.
  */
 @Controller('procedures')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, RolesGuard)
+@Roles('owner')
 export class ProceduresController {
   constructor(private readonly procedures: ProceduresService) {}
 

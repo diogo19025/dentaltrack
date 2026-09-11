@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import type { JWTPayload } from 'jose';
+import type { Role } from '@dentaltrack/shared';
 
 /** Usuário autenticado (extraído do JWT do Supabase pelo SupabaseJwtGuard). */
 export interface AuthUser {
@@ -13,4 +14,5 @@ export interface AuthUser {
 export interface AuthenticatedRequest extends Request {
   user?: AuthUser;
   clinicId?: string;
+  role?: Role;
 }

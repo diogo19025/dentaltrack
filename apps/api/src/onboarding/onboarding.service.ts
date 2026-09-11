@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { OnboardingBootstrap } from '@dentaltrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface EnsureClinicInput {
@@ -7,10 +8,7 @@ export interface EnsureClinicInput {
   clinicName?: string;
 }
 
-export interface EnsureClinicResult {
-  clinicId: string;
-  created: boolean;
-}
+export type EnsureClinicResult = OnboardingBootstrap;
 
 /**
  * Onboarding multi-tenant: garante que o usuário autenticado tenha uma empresa
@@ -30,9 +28,9 @@ export class OnboardingService {
     const existing = await this.prisma.membership.findFirst({
       where: { userId: input.userId },
       orderBy: { createdAt: 'asc' },
-      select: { clinicId: true },
+      select: { clinicId: true, role: true },
     });
-    if (existing) return { clinicId: existing.clinicId, created: false };
+    if (existing) return { ...existing, created: false };
 
     const name = input.clinicName?.trim() || 'Minha empresa';
 
@@ -46,18 +44,18 @@ export class OnboardingService {
       const concurrent = await tx.membership.findFirst({
         where: { userId: input.userId },
         orderBy: { createdAt: 'asc' },
-        select: { clinicId: true },
+        select: { clinicId: true, role: true },
       });
-      if (concurrent) return { clinicId: concurrent.clinicId, created: false };
+      if (concurrent) return { ...concurrent, created: false };
 
       const clinic = await tx.clinic.create({ data: { name } });
       await tx.membership.create({
-        data: { userId: input.userId, clinicId: clinic.id },
+        data: { userId: input.userId, clinicId: clinic.id, role: 'owner' },
       });
       this.logger.log(
         `Empresa provisionada para o usuário ${input.userId}: ${clinic.id}`,
       );
-      return { clinicId: clinic.id, created: true };
+      return { clinicId: clinic.id, created: true, role: 'owner' };
     });
   }
 }

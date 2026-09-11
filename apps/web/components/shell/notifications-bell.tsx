@@ -25,6 +25,7 @@ import {
   useNotifications,
 } from "@/hooks/use-notifications";
 import { timeAgo } from "@/lib/format";
+import { useRole } from "@/components/auth/role-context";
 
 /**
  * Sino de notificações do topbar (F11) — padrão dos CRMs de referência
@@ -54,6 +55,7 @@ const ROUTES: Record<NotificationType, string> = {
 };
 
 export function NotificationsBell() {
+  const { isOwner } = useRole();
   const [open, setOpen] = useState(false);
   const router = useRouter();
   const { data, isLoading } = useNotifications();
@@ -68,7 +70,11 @@ export function NotificationsBell() {
 
   function onItemClick(item: NotificationItem) {
     setOpen(false);
-    router.push(ROUTES[item.type]);
+    router.push(
+      item.type === "whatsapp_desconectado" && !isOwner
+        ? "/"
+        : ROUTES[item.type],
+    );
   }
 
   return (

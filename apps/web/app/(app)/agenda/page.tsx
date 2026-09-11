@@ -34,6 +34,7 @@ import { useAgenda, useSyncAgenda } from "@/hooks/use-agenda";
 import { useAutomationHistory } from "@/hooks/use-automations";
 import { useIntegration } from "@/hooks/use-integration";
 import { cn } from "@/lib/utils";
+import { OwnerOnly, useRole } from "@/components/auth/role-context";
 
 /** Altura de uma hora na grade, em px. */
 const HOUR_PX = 48;
@@ -52,6 +53,7 @@ const UPCOMING_LIMIT = 4;
  * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
 export default function AgendaPage() {
+  const { isOwner } = useRole();
   // Início da semana exibida (meia-noite local). 0 = semana que começa hoje.
   const [weekOffset, setWeekOffset] = useState(0);
   const weekStart = useMemo(() => {
@@ -68,18 +70,21 @@ export default function AgendaPage() {
     dateKey(weekEnd),
   );
   // Janela larga só para a lista de próximos — independe da semana exibida.
-  const { data: upcomingData } = useAgenda(dateKey(new Date()), dateKeyPlus(30));
+  const { data: upcomingData } = useAgenda(
+    dateKey(new Date()),
+    dateKeyPlus(30),
+  );
 
-  const { data: clinicorpIntegration } = useIntegration("clinicorp");
+  const { data: clinicorpIntegration } = useIntegration("clinicorp", isOwner);
   const { data: googleIntegration } = useIntegration(
     "google",
-    clinicorpIntegration?.activeProvider === "google",
+    isOwner && clinicorpIntegration?.activeProvider === "google",
   );
   const integration =
     clinicorpIntegration?.activeProvider === "google"
       ? googleIntegration
       : clinicorpIntegration;
-  const { data: history = [] } = useAutomationHistory(50);
+  const { data: history = [] } = useAutomationHistory(50, isOwner);
   const sync = useSyncAgenda();
 
   // Busca + filtros (situação, procedimento, cliente) — valem para a grade
@@ -142,23 +147,27 @@ export default function AgendaPage() {
         title="Agenda"
         subtitle="Os horários marcados e as mensagens que o assistente enviou sozinho."
       >
-        {integration && integration.mode !== "desligado" && (
+        {isOwner && integration && integration.mode !== "desligado" && (
           <Button
             type="button"
             variant="outline"
             onClick={() => sync.mutate()}
             disabled={sync.isPending}
           >
-            <RefreshCw className={cn("size-4", sync.isPending && "animate-spin")} />
+            <RefreshCw
+              className={cn("size-4", sync.isPending && "animate-spin")}
+            />
             {sync.isPending ? "Sincronizando…" : "Sincronizar agora"}
           </Button>
         )}
       </PageHeader>
 
-      <IntegrationStrip
-        mode={integration?.mode ?? "desligado"}
-        lastSyncedAt={weekData?.lastSyncedAt ?? null}
-      />
+      <OwnerOnly>
+        <IntegrationStrip
+          mode={integration?.mode ?? "desligado"}
+          lastSyncedAt={weekData?.lastSyncedAt ?? null}
+        />
+      </OwnerOnly>
 
       <UpcomingSection appointments={upcoming} loading={weekLoading} />
 
@@ -179,7 +188,10 @@ export default function AgendaPage() {
             setStatusFilter(value as AppointmentStatus | "todos")
           }
         >
-          <SelectTrigger className="h-9 w-[170px]" aria-label="Filtrar por situação">
+          <SelectTrigger
+            className="h-9 w-[170px]"
+            aria-label="Filtrar por situação"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -260,7 +272,9 @@ export default function AgendaPage() {
         isCurrentWeek={weekOffset === 0}
       />
 
-      <ScheduledMessagesCard history={history} />
+      <OwnerOnly>
+        <ScheduledMessagesCard history={history} />
+      </OwnerOnly>
     </>
   );
 }
@@ -376,13 +390,17 @@ function WeekGrid({
   );
 
   // Janela de horas da grade: 8–18 por padrão, esticada pelo que existir fora.
-  const timed = appointments.filter((a) => a.startsAt && a.status !== "cancelado");
+  const timed = appointments.filter(
+    (a) => a.startsAt && a.status !== "cancelado",
+  );
   const { hourStart, hourEnd } = useMemo(() => {
     let start = 8;
     let end = 18;
     for (const a of timed) {
       const s = new Date(a.startsAt as string);
-      const e = a.endsAt ? new Date(a.endsAt) : new Date(s.getTime() + 30 * 60_000);
+      const e = a.endsAt
+        ? new Date(a.endsAt)
+        : new Date(s.getTime() + 30 * 60_000);
       start = Math.min(start, s.getHours());
       end = Math.max(end, e.getMinutes() > 0 ? e.getHours() + 1 : e.getHours());
     }
@@ -390,12 +408,14 @@ function WeekGrid({
   }, [timed]);
 
   const bodyHeight = (hourEnd - hourStart) * HOUR_PX;
-  const hours = Array.from({ length: hourEnd - hourStart }, (_, i) => hourStart + i);
+  const hours = Array.from(
+    { length: hourEnd - hourStart },
+    (_, i) => hourStart + i,
+  );
 
   const today = startOfDay(new Date()).getTime();
   const now = new Date();
-  const nowTop =
-    (now.getHours() - hourStart + now.getMinutes() / 60) * HOUR_PX;
+  const nowTop = (now.getHours() - hourStart + now.getMinutes() / 60) * HOUR_PX;
 
   return (
     <Card className="mb-5 gap-0 overflow-hidden p-0">
@@ -638,7 +658,8 @@ function appointmentBlocksFor(
         endsAt,
         top: minutesFrom(startsAt, hourStart) * (HOUR_PX / 60),
         height: Math.max(
-          ((endsAt.getTime() - startsAt.getTime()) / 60_000) * (HOUR_PX / 60) - 2,
+          ((endsAt.getTime() - startsAt.getTime()) / 60_000) * (HOUR_PX / 60) -
+            2,
           22,
         ),
       };
@@ -663,11 +684,16 @@ function IntegrationStrip({
       )}
     >
       {connected ? (
-        <Link2 className="size-4 flex-none" style={{ color: "var(--primary)" }} />
+        <Link2
+          className="size-4 flex-none"
+          style={{ color: "var(--primary)" }}
+        />
       ) : (
         <PlugZap className="size-4 flex-none text-muted-foreground" />
       )}
-      <span className={connected ? "text-primary" : "text-secondary-foreground"}>
+      <span
+        className={connected ? "text-primary" : "text-secondary-foreground"}
+      >
         {mode === "live"
           ? "Conectado ao sistema de gestão — o assistente oferece só horários livres de verdade."
           : mode === "mock"
@@ -728,7 +754,9 @@ function Empty({
 const DAY_MS = 24 * 3_600_000;
 
 /** Os próximos que ainda vão acontecer (ou pedidos sem horário), mais cedo primeiro. */
-function pickUpcoming(appointments: AppointmentSummary[]): AppointmentSummary[] {
+function pickUpcoming(
+  appointments: AppointmentSummary[],
+): AppointmentSummary[] {
   const now = Date.now();
   return appointments
     .filter(

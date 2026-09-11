@@ -3,6 +3,10 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WhatsappStatusBanner } from "./topbar";
 
+vi.mock("@/components/auth/role-context", () => ({
+  useRole: () => ({ role: "owner", isOwner: true }),
+}));
+
 const state = vi.hoisted(() => ({
   connection: null as WhatsappConnection | null,
 }));

@@ -20,6 +20,8 @@ import {
 } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { AutomationSettingsService } from './automation-settings.service';
 import {
   CreateHolidayDto,
@@ -35,7 +37,8 @@ import { OutboundService } from './outbound.service';
  * Protegido por SupabaseJwtGuard (global) + TenantGuard.
  */
 @Controller()
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard, RolesGuard)
+@Roles('owner')
 export class AutomationsController {
   constructor(
     private readonly settings: AutomationSettingsService,

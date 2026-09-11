@@ -26,6 +26,10 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: state.push }),
 }));
 
+vi.mock("@/components/auth/role-context", () => ({
+  useRole: () => ({ role: "owner", isOwner: true }),
+}));
+
 function dto(overrides: Partial<NotificationsDto> = {}): NotificationsDto {
   return { items: [], unreadCount: 0, seenAt: null, ...overrides };
 }

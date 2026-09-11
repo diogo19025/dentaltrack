@@ -18,7 +18,7 @@
 | 5   | **Handoff humano** (P0.2)                             | IA pausável por conversa, endpoints, UI no dialog                                                                                                                  | 🚧 **código completo 2026-09-10** · aguarda merge                            | `f15_handoff` ⚠️ criada, **não aplicada**           |
 | 6   | **WhatsApp robusto** (P0.4)                           | `InboundMessage`, fila da resposta reativa, estado persistido                                                                                                      | 🚧 **código completo 2026-09-10** · aguarda merge                            | `f16_whatsapp_robustez` ⚠️ criada, **não aplicada** |
 | 7   | **Estados de erro e carregamento** (P1.3)             | `ErrorState`, error boundaries, `api-client`                                                                                                                       | 🚧 **código completo 2026-09-10** · aguarda merge                            | —                                                   |
-| 8   | **Permissões owner/staff** (P1.4)                     | `RolesGuard` + UI                                                                                                                                                  | ⬜ a fazer                                                                   | —                                                   |
+| 8   | **Permissões owner/staff** (P1.4)                     | `RolesGuard` + UI                                                                                                                                                  | 🚧 **código completo 2026-09-10** · aguarda merge                            | —                                                   |
 | 9   | **LGPD operacional** (P1.5)                           | Anonimização, opt-out na UI, retenção                                                                                                                              | ⬜ a fazer                                                                   | `f17_lgpd`                                          |
 | 10  | **Onboarding + demo** (P1.1, P1.2)                    | Checklist derivado, seed completo                                                                                                                                  | ⬜ a fazer                                                                   | —                                                   |
 | 11  | **CI dos fluxos críticos** (P1.6)                     | 5 e2e de API + workflow + `chat.spec.ts` corrigido                                                                                                                 | ⬜ a fazer                                                                   | —                                                   |
@@ -259,7 +259,13 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 # P1 — maturidade operacional
 
-## P1.4 · Permissões (owner / staff) ⬜ _PR 8_
+## P1.4 · Permissões (owner / staff) 🚧 _PR 8_
+
+**Código completo em 2026-09-10; aguarda merge.** O bootstrap devolve o papel da membership e o layout o distribui por um `RoleProvider` fail-closed. O `TenantGuard` resolve `clinicId` e `role` na mesma consulta; o `RolesGuard` lê `@Roles('owner')` depois dele e devolve 403 para staff nas rotas administrativas. No web, `<OwnerOnly>` esconde Configurações, onboarding/status do WhatsApp, integração e histórico de automações da Agenda e importação de leads; staff preserva leitura/exportação de leads, agenda e suas ações, dashboard, funil, conversas, handoff e lembretes.
+
+> **Diferença em relação ao planejado:** `GET /settings` permanece acessível a staff porque o shell e o chat usam nome, persona e saudação como configuração de leitura. `PATCH /settings` e todas as abas administrativas seguem owner-only; expor a identidade que o próprio assistente apresenta não concede capacidade administrativa.
+
+**Testes entregues.** `roles.guard.spec.ts`, `tenant.guard.spec.ts`, oito casos reais de `staff → 403` cobrindo os grupos protegidos e testes do `RoleProvider`/`OwnerOnly`. Total: 620 testes na API e 182 no web.
 
 **Estado atual.** `Membership.role` e `enum Role { owner, staff }` existem no schema e **nunca são lidos**.
 

@@ -47,6 +47,7 @@ import { IntegrationTab } from "@/components/settings/integration-tab";
 import { WhatsappTab } from "@/components/settings/whatsapp-tab";
 import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
 import { cn } from "@/lib/utils";
+import { OwnerOnly } from "@/components/auth/role-context";
 
 /**
  * /settings — réplica 1:1 de `screen_settings.jsx` (FE-2.1..2.5). Duas abas
@@ -106,6 +107,23 @@ const BLANK: ClinicSettingsDto = {
 };
 
 export default function SettingsPage() {
+  return (
+    <OwnerOnly
+      fallback={
+        <div role="alert" className="mx-auto max-w-lg py-20 text-center">
+          <h1 className="text-xl font-semibold">Acesso restrito</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Somente o proprietário pode alterar as configurações da empresa.
+          </p>
+        </div>
+      }
+    >
+      <SettingsContent />
+    </OwnerOnly>
+  );
+}
+
+function SettingsContent() {
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
   const { data, isLoading, isError, error, refetch } = useSettings();
