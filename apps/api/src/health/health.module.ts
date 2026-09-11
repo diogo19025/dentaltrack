@@ -1,11 +1,16 @@
 import { Module } from '@nestjs/common';
-import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { WhatsappTransportModule } from '../whatsapp/whatsapp-transport.module';
 import { HealthController } from './health.controller';
 
-/** WhatsappModule entra só pelo `EvolutionService.isConfigured()` — evita duplicar
- * aqui a regra de "o transporte está configurado?", que já mora nele. */
+/**
+ * O transporte entra só pelo `EvolutionService.isConfigured()` — evita duplicar
+ * aqui a regra de "o transporte está configurado?", que já mora nele. É o
+ * `WhatsappTransportModule` (e não o `WhatsappModule`) porque é ele quem
+ * exporta o `EvolutionService`; importar o adapter inteiro não o traria e a
+ * API não subia (`health.module.spec.ts` guarda isso).
+ */
 @Module({
-  imports: [WhatsappModule],
+  imports: [WhatsappTransportModule],
   controllers: [HealthController],
 })
 export class HealthModule {}

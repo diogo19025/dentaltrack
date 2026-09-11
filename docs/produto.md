@@ -3,8 +3,8 @@
 > **Documento único de referência.** Substitui `context.md` (especificação do MVP),
 > `plan.md` (roadmap F0–F4) e `update.md` (diário de execução), que descreviam um
 > produto que não existe mais: os três foram escritos entre junho e setembro de 2026
-> e afirmavam, entre outras coisas, que o WhatsApp e a agenda real estavam *fora de
-> escopo*. Ambos estão em produção. O histórico completo dos três continua no git.
+> e afirmavam, entre outras coisas, que o WhatsApp e a agenda real estavam _fora de
+> escopo_. Ambos estão em produção. O histórico completo dos três continua no git.
 >
 > O **que fazer a seguir** está em [`maturity-plan.md`](maturity-plan.md); o
 > **estado auditado** que o originou, em [`maturity-audit.md`](maturity-audit.md).
@@ -22,11 +22,11 @@
 
 ### Personas
 
-| Persona | Quem é | O que espera |
-|---|---|---|
-| **Dono** (administrador) | Proprietário ou gestor. Pouco tempo, sem time de marketing. | Configurar o agente em minutos e ver no painel o que está acontecendo. |
-| **Recepção** (atendente) | Faz o atendimento hoje. | Que o agente filtre e qualifique; ela cuida só do que precisa de gente. |
-| **Cliente final** | Pessoa interessada num serviço. | Conversa natural que resolve e agenda sem ligar. |
+| Persona                  | Quem é                                                      | O que espera                                                            |
+| ------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| **Dono** (administrador) | Proprietário ou gestor. Pouco tempo, sem time de marketing. | Configurar o agente em minutos e ver no painel o que está acontecendo.  |
+| **Recepção** (atendente) | Faz o atendimento hoje.                                     | Que o agente filtre e qualifique; ela cuida só do que precisa de gente. |
+| **Cliente final**        | Pessoa interessada num serviço.                             | Conversa natural que resolve e agenda sem ligar.                        |
 
 ### Whitelabel
 
@@ -42,7 +42,7 @@ Tudo abaixo está **implementado, testado e em produção**.
 
 - **Agente de IA** com streaming, ferramentas (function calling) e prompt montado dinamicamente a partir da identidade, ofertas, instruções e catálogo da empresa.
 - **Dois canais, um motor:** chat web e **WhatsApp** (Evolution/Baileys). As conversas dos dois caem no mesmo painel, funil e base de leads.
-- **Entrada por voz:** o áudio *é* a mensagem do turno — transcrito no servidor (Gemini multimodal · Whisper no Groq · transcrição fixa no mock) e tratado como texto dali em diante.
+- **Entrada por voz:** o áudio _é_ a mensagem do turno — transcrito no servidor (Gemini multimodal · Whisper no Groq · transcrição fixa no mock) e tratado como texto dali em diante.
 - **Memória do contato:** o agente reconhece quem já conversou, cumprimenta pelo nome e não re-pergunta o que já sabe.
 - **Ofertas com mídia:** imagem, vídeo, áudio ou catálogo enviados pelo WhatsApp no momento certo da conversa.
 
@@ -110,7 +110,7 @@ flowchart LR
 
 **Dois princípios sustentam o desenho, e os dois já se provaram:**
 
-1. ***Channel-agnostic*** — o motor não sabe se o canal é web ou WhatsApp. Web e WhatsApp são adapters de borda. Prova: o WhatsApp entrou **sem tocar no motor**.
+1. **_Channel-agnostic_** — o motor não sabe se o canal é web ou WhatsApp. Web e WhatsApp são adapters de borda. Prova: o WhatsApp entrou **sem tocar no motor**.
 2. **Ports & adapters na agenda** — nada acima da porta `AgendaProvider` sabe se a agenda é Clinicorp, Google ou simulada. Prova: o Google Agenda entrou sem tocar em nada acima da porta, e o modo `mock` permitiu construir e testar as automações **antes de a credencial do cliente existir**.
 
 **Multi-tenant:** `SupabaseJwtGuard` (global) autentica; `TenantGuard` resolve o `clinicId` da membership e o injeta no request e no contexto de log.
@@ -121,18 +121,18 @@ flowchart LR
 
 Decidida. Não trocar sem motivo concreto.
 
-| Camada | Escolha |
-|---|---|
-| **Monorepo** | pnpm + Turborepo · `apps/api` · `apps/web` · `packages/shared` |
-| **Backend** | NestJS 11 · Prisma 7 · `@nestjs/schedule` · Jest |
-| **Frontend** | Next.js 16 (App Router) · React 19 · Tailwind v4 · shadcn/ui · Recharts · lucide-react · TanStack Query · RHF + Zod · Vitest + Playwright |
-| **IA** | Vercel AI SDK v6. **OpenAI** (`gpt-4o-mini`) como primário; **Gemini** e **Groq** como fallback; **`mock`** determinístico para testes — trocáveis por `LLM_PROVIDER` |
-| **Dados & auth** | Supabase (Postgres gerenciado + Supabase Auth) |
-| **Canal** | Evolution API (Baileys, **não-oficial, sem a API da Meta**) |
-| **Observabilidade** | Logs JSON próprios + Sentry (opcional por `SENTRY_DSN`) |
-| **Deploy** | web → Vercel · api + Evolution → Railway · Supabase gerenciado |
+| Camada              | Escolha                                                                                                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Monorepo**        | pnpm + Turborepo · `apps/api` · `apps/web` · `packages/shared`                                                                                                        |
+| **Backend**         | NestJS 11 · Prisma 7 · `@nestjs/schedule` · Jest                                                                                                                      |
+| **Frontend**        | Next.js 16 (App Router) · React 19 · Tailwind v4 · shadcn/ui · Recharts · lucide-react · TanStack Query · RHF + Zod · Vitest + Playwright                             |
+| **IA**              | Vercel AI SDK v6. **OpenAI** (`gpt-4o-mini`) como primário; **Gemini** e **Groq** como fallback; **`mock`** determinístico para testes — trocáveis por `LLM_PROVIDER` |
+| **Dados & auth**    | Supabase (Postgres gerenciado + Supabase Auth)                                                                                                                        |
+| **Canal**           | Evolution API (Baileys, **não-oficial, sem a API da Meta**)                                                                                                           |
+| **Observabilidade** | Logs JSON próprios + Sentry (opcional por `SENTRY_DSN`)                                                                                                               |
+| **Deploy**          | web → Vercel · api + Evolution → Railway · Supabase gerenciado                                                                                                        |
 
-**Por que OpenAI como primário:** exigência de LGPD antes de PII real de pacientes — a API paga não treina com os dados por padrão, enquanto os *free tiers* usam. Gemini/Groq ficam como contingência.
+**Por que OpenAI como primário:** exigência de LGPD antes de PII real de pacientes — a API paga não treina com os dados por padrão, enquanto os _free tiers_ usam. Gemini/Groq ficam como contingência.
 
 **O que não voltar a usar:** Next.js monolito, Neon, Clerk, Drizzle, AI Gateway, Claude pago, API oficial da Meta.
 
@@ -161,7 +161,7 @@ dentaltrack/
 └─ docs/
 ```
 
-**Convenções.** Toda query carrega `clinicId`. Validação Zod compartilhada em toda mutação. Segredos só no backend. O motor do agente vive no NestJS. *Conventional commits*. Documentação e código em **PT-BR**.
+**Convenções.** Toda query carrega `clinicId`. Validação Zod compartilhada em toda mutação. Segredos só no backend. O motor do agente vive no NestJS. _Conventional commits_. Documentação e código em **PT-BR**.
 
 ---
 
@@ -188,19 +188,19 @@ erDiagram
   APPOINTMENT ||--o{ OUTBOUND_MESSAGE : triggers
 ```
 
-| Entidade | Papel |
-|---|---|
-| `clinic` / `clinic_settings` | Tenant e sua configuração: persona, ofertas, mídia, disponibilidade, instância do WhatsApp. |
-| `membership` | Vínculo usuário↔empresa, com `role` (`owner` \| `staff`). |
-| `procedure` / `tag` | Catálogo (N:N) — alimenta o prompt e o auto-tagging. |
-| `conversation` / `message` | Sessão de atendimento (canal, status, telefone) e cada turno. |
-| `lead` | Pessoa capturada. Dedupe por telefone normalizado e por `externalId`. |
-| `appointment` | Agendamento, com horário real, status, origem e id externo. |
-| `conversation_tag` | Tag aplicada à conversa, com confiança. |
-| `pipeline_stage` / `pipeline_card` | Colunas do funil e a posição de cada conversa. |
-| `clinic_integration` | Provedor de agenda ativo, credenciais **cifradas** (AES-256-GCM) e último erro. |
-| `automation_settings` / `outbound_message` / `contact_opt_out` / `holiday` | Regras de envio, fila idempotente, descadastro e calendário. |
-| `daily_metric` | Pré-agregação diária que mantém o dashboard rápido. |
+| Entidade                                                                   | Papel                                                                                       |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `clinic` / `clinic_settings`                                               | Tenant e sua configuração: persona, ofertas, mídia, disponibilidade, instância do WhatsApp. |
+| `membership`                                                               | Vínculo usuário↔empresa, com `role` (`owner` \| `staff`).                                   |
+| `procedure` / `tag`                                                        | Catálogo (N:N) — alimenta o prompt e o auto-tagging.                                        |
+| `conversation` / `message`                                                 | Sessão de atendimento (canal, status, telefone) e cada turno.                               |
+| `lead`                                                                     | Pessoa capturada. Dedupe por telefone normalizado e por `externalId`.                       |
+| `appointment`                                                              | Agendamento, com horário real, status, origem e id externo.                                 |
+| `conversation_tag`                                                         | Tag aplicada à conversa, com confiança.                                                     |
+| `pipeline_stage` / `pipeline_card`                                         | Colunas do funil e a posição de cada conversa.                                              |
+| `clinic_integration`                                                       | Provedor de agenda ativo, credenciais **cifradas** (AES-256-GCM) e último erro.             |
+| `automation_settings` / `outbound_message` / `contact_opt_out` / `holiday` | Regras de envio, fila idempotente, descadastro e calendário.                                |
+| `daily_metric`                                                             | Pré-agregação diária que mantém o dashboard rápido.                                         |
 
 Schema completo em [`apps/api/prisma/schema.prisma`](../apps/api/prisma/schema.prisma).
 
@@ -210,16 +210,16 @@ Schema completo em [`apps/api/prisma/schema.prisma`](../apps/api/prisma/schema.p
 
 > Definições explícitas — o código as cita por esta seção.
 
-| KPI | Definição | Cálculo |
-|---|---|---|
-| **Leads totais** | Pessoas capturadas no período. | `count(lead)` no recorte. |
-| **Mensagens do agente (50 dias)** | Volume de respostas nos últimos 50 dias. | `count(message where role='assistant')` na janela. |
-| **Taxa de resposta** | Quanto o agente é respondido. | conversas em que o cliente respondeu após a 1ª mensagem ÷ conversas iniciadas. |
-| **Taxa de conversão** | Da 1ª mensagem até o agendamento. | conversas que chegaram a agendamento ÷ conversas iniciadas. |
-| **Conversas em andamento** | Em aberto, sem conversão e não abandonadas. | `count(conversation where status='em_andamento')`. |
-| **Não completadas** | Começaram e não agendaram nem seguem ativas. | `count(conversation where status='abandonada')`. |
-| **Retenção** | Abandonados × recorrentes por dia. | Recorrente = lead que agendou e voltou a agendar **em outra conversa**. |
-| **Temperatura** | Quente / médio / fraco por lead. | Score 0–100 de agendamento, engajamento, tags, recência e abandono. |
+| KPI                               | Definição                                    | Cálculo                                                                        |
+| --------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Leads totais**                  | Pessoas capturadas no período.               | `count(lead)` no recorte.                                                      |
+| **Mensagens do agente (50 dias)** | Volume de respostas nos últimos 50 dias.     | `count(message where role='assistant')` na janela.                             |
+| **Taxa de resposta**              | Quanto o agente é respondido.                | conversas em que o cliente respondeu após a 1ª mensagem ÷ conversas iniciadas. |
+| **Taxa de conversão**             | Da 1ª mensagem até o agendamento.            | conversas que chegaram a agendamento ÷ conversas iniciadas.                    |
+| **Conversas em andamento**        | Em aberto, sem conversão e não abandonadas.  | `count(conversation where status='em_andamento')`.                             |
+| **Não completadas**               | Começaram e não agendaram nem seguem ativas. | `count(conversation where status='abandonada')`.                               |
+| **Retenção**                      | Abandonados × recorrentes por dia.           | Recorrente = lead que agendou e voltou a agendar **em outra conversa**.        |
+| **Temperatura**                   | Quente / médio / fraco por lead.             | Score 0–100 de agendamento, engajamento, tags, recência e abandono.            |
 
 **Estados da conversa.** `em_andamento`: tem mensagem recente e não agendou. `agendada`: `bookAppointment` concluída (conversão). `abandonada`: sem atividade por N horas (cron) e sem agendamento. Transições permitidas em [`conversation-status.ts`](../apps/api/src/conversations/conversation-status.ts).
 
@@ -246,7 +246,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm --filter @dentaltrack/web e2e   # Playwright — roda offline com LLM_PROVIDER=mock
 ```
 
-Estado em 2026-09-11: **640 testes na API** (Jest, ao lado do código) e **194 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
+Estado no PR 10: **654 testes na API** (Jest, ao lado do código) e **192 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
 
 > **Cuidado com teste que expira.** Dois specs já fixaram um `NOW` no fixture enquanto o serviço lia `Date.now()` real: passaram no dia em que foram escritos e ficaram vermelhos no dia seguinte, sem ninguém mexer em nada. Quando o cenário depende de uma data, congele o relógio (`jest.spyOn(Date, 'now')`) — é o que `outbound.service.spec.ts` e `agenda.service.spec.ts` fazem, com o porquê escrito no topo.
 
@@ -275,38 +275,40 @@ Crie uma conta em `/login` — o onboarding cria a empresa no primeiro acesso, d
 
 Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de cada decisão e o que **não** deu para fazer em cada leva — permanece no git (`git log -- docs/update.md`).
 
-| Data | Entrega |
-|---|---|
-| 2026-06-05 | **F0** Fundação: monorepo, tokens do design, shell, Supabase Auth, Prisma. |
-| 2026-06-06 | **F1** Chatbot web ponta a ponta: streaming SSE, tools, auth multi-tenant, onboarding automático. |
-| 2026-06-07 | **F2** Configurações, catálogo de procedimentos e tags (N:N) alimentando o prompt. |
-| 2026-06-08 | **F3** Auto-tagging, métricas, cron, Dashboard e Leads. |
-| 2026-06-09 | **F4** QA: Vitest, Playwright, conferência de fidelidade 1:1, acessibilidade AA. |
-| 2026-06-10 | Entrada por voz (STT) — channel-agnostic desde o início. |
-| 2026-06-11 | Temperatura de leads, detalhe do lead, OpenAI como provider primário. |
-| 2026-06-14 | **F5** Canal WhatsApp (Evolution/Baileys) **validado ao vivo**. Entrou sem tocar no motor. |
-| 2026-06-28 | Lembrete manual por WhatsApp disparado pelo CRM. |
-| 2026-07-01 | Abandono × recorrência no dashboard; memória do contato no agente. |
-| 2026-07-02 | **F6** Ofertas personalizadas com mídia (imagem/vídeo/áudio/catálogo). |
-| 2026-07-14 | **F7** Funil kanban com detector automático de estágio. |
-| 2026-08-26 | **Deploy em produção** (Vercel + Railway + Supabase) e **F8** exportação/importação de leads. |
-| 2026-08-31 | **F9** Agenda com horário real, integração Clinicorp e quatro automações com fila idempotente. |
-| 2026-09-01 | **F10** pareamento do WhatsApp por QR na tela · **F11** central de notificações · **F12** Google Agenda como provedor. |
-| 2026-09-08 | **Auditoria de maturidade** — [`maturity-audit.md`](maturity-audit.md) e [`maturity-plan.md`](maturity-plan.md). |
-| 2026-09-09 | **Observabilidade** (P0.3, PR 1 do plano de maturidade): correlação por `requestId`, logs JSON com redação de PII, filtro global de exceções, Sentry. |
-| 2026-09-09 | Cartão "Assistente ativo" da sidebar virou dispensável, com a dispensa amarrada ao **login** (claim `session_id` do JWT) e não ao navegador — F5 e navegação não o trazem de volta; o próximo login traz. |
-| 2026-09-09 | **Idempotência do agendamento** (P0.5, PR 2): o pedido passa a ser gravado **antes** da chamada à agenda externa, com uma `bookingKey` sob índice único. Duplo clique, retry após timeout, webhook reentregue e o modelo chamando a tool duas vezes deixam de virar dois agendamentos. Migration `f13_booking_idempotency`. |
-| 2026-09-09 | **Cancelar/remarcar + claim da fila** (P0.5, PR 3): a porta `AgendaProvider` ganhou `cancelAppointment` e `rescheduleAppointment` nos três adapters, com `POST /agenda/:id/cancelar` e `/remarcar` e o menu por agendamento na `/agenda` (não são tools do agente). `book()` re-checa o horário antes de gravar (fail-open; conflito → `pedido` e o agente oferece outro). A fila de saída reivindica cada linha antes de enviar (`pendente → enviando`), `enqueue` e a sincronização deixaram de ser check-then-create. Migration `f14_outbound_claim` (`enviando` + `Appointment.canceledAt`). |
+| Data       | Entrega                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-06-05 | **F0** Fundação: monorepo, tokens do design, shell, Supabase Auth, Prisma.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 2026-06-06 | **F1** Chatbot web ponta a ponta: streaming SSE, tools, auth multi-tenant, onboarding automático.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 2026-06-07 | **F2** Configurações, catálogo de procedimentos e tags (N:N) alimentando o prompt.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-06-08 | **F3** Auto-tagging, métricas, cron, Dashboard e Leads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 2026-06-09 | **F4** QA: Vitest, Playwright, conferência de fidelidade 1:1, acessibilidade AA.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-06-10 | Entrada por voz (STT) — channel-agnostic desde o início.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| 2026-06-11 | Temperatura de leads, detalhe do lead, OpenAI como provider primário.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 2026-06-14 | **F5** Canal WhatsApp (Evolution/Baileys) **validado ao vivo**. Entrou sem tocar no motor.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 2026-06-28 | Lembrete manual por WhatsApp disparado pelo CRM.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-07-01 | Abandono × recorrência no dashboard; memória do contato no agente.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 2026-07-02 | **F6** Ofertas personalizadas com mídia (imagem/vídeo/áudio/catálogo).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-07-14 | **F7** Funil kanban com detector automático de estágio.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 2026-08-26 | **Deploy em produção** (Vercel + Railway + Supabase) e **F8** exportação/importação de leads.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| 2026-08-31 | **F9** Agenda com horário real, integração Clinicorp e quatro automações com fila idempotente.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| 2026-09-01 | **F10** pareamento do WhatsApp por QR na tela · **F11** central de notificações · **F12** Google Agenda como provedor.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-09-08 | **Auditoria de maturidade** — [`maturity-audit.md`](maturity-audit.md) e [`maturity-plan.md`](maturity-plan.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 2026-09-09 | **Observabilidade** (P0.3, PR 1 do plano de maturidade): correlação por `requestId`, logs JSON com redação de PII, filtro global de exceções, Sentry.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| 2026-09-09 | Cartão "Assistente ativo" da sidebar virou dispensável, com a dispensa amarrada ao **login** (claim `session_id` do JWT) e não ao navegador — F5 e navegação não o trazem de volta; o próximo login traz.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 2026-09-09 | **Idempotência do agendamento** (P0.5, PR 2): o pedido passa a ser gravado **antes** da chamada à agenda externa, com uma `bookingKey` sob índice único. Duplo clique, retry após timeout, webhook reentregue e o modelo chamando a tool duas vezes deixam de virar dois agendamentos. Migration `f13_booking_idempotency`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2026-09-09 | **Cancelar/remarcar + claim da fila** (P0.5, PR 3): a porta `AgendaProvider` ganhou `cancelAppointment` e `rescheduleAppointment` nos três adapters, com `POST /agenda/:id/cancelar` e `/remarcar` e o menu por agendamento na `/agenda` (não são tools do agente). `book()` re-checa o horário antes de gravar (fail-open; conflito → `pedido` e o agente oferece outro). A fila de saída reivindica cada linha antes de enviar (`pendente → enviando`), `enqueue` e a sincronização deixaram de ser check-then-create. Migration `f14_outbound_claim` (`enviando` + `Appointment.canceledAt`).                                                                                                                                                                                                  |
 | 2026-09-10 | **Agenda real endurecida** (P0.1, PR 4): toda falha de agenda ganhou **categoria** (`auth`, `config`, `indisponivel`, `timeout`, `resposta_invalida`, `conflito`) — a tela passou a dizer o que fazer a respeito em vez de repetir a mensagem do fornecedor, e o transporte passou a repetir **só leitura** (`createEvent` nunca repete: é assim que se duplica agendamento). `google:smoke` fecha o ciclo real criando, confirmando e apagando um evento; `clinicorp:smoke --write` faz o equivalente com opt-in duplo. A aba Integração ganhou tratamento de erro — não tinha nenhum — com o `requestId` para o suporte. Corrigida a divergência do remarcar do Clinicorp (cancela e recria; falhar no meio deixava a linha local prometendo uma consulta que não existia mais). Sem migration. |
 
 | 2026-09-11 | **LGPD operacional** (P1.5, PR 9): `DELETE /leads/:id/dados-pessoais` (owner-only) **anonimiza, não apaga** — a linha do lead sustenta histórico, agendamentos e métricas que não são do titular. Numa transação, saem nome/telefone/e-mail/`externalId`, o `contactPhone` das conversas, o conteúdo das mensagens e o corpo das mensagens de saída; `Appointment` fica, e o `ContactOptOut` **também fica**, porque é ele que impede reenviar para quem pediu parar. O descadastro saiu da invisibilidade: aparece e se alterna no painel do lead. Retenção diária da fila finalizada, **desligada por padrão**. Migration `f17_lgpd`. |
+| 2026-09-11 | **Onboarding + demo** (P1.1/P1.2, PR 10): checklist de primeiros passos no dashboard, **derivado das tabelas existentes** (seis passos, cada um apontando para a aba que o resolve; some quando tudo está feito). A agenda mock conta imediatamente; a live exige provider utilizável e a última verificação verde. A revisão das automações tem marcador explícito. Seeds deixam a empresa demo operacional com baseline determinístico dos seis status, quatro estados da fila, dois descadastros e dois handoffs. `MockAgendaProvider` memoizado por empresa e substituído ao mudar o fuso. No mesmo PR, corrigida a regressão que impedia a API de subir desde o PR 6 (`HealthModule` importando o módulo errado). Migration aditiva `f18_automation_reviewed`. |
+
 ---
 
 ## § Onde estamos
 
 O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial.
 
-**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **5 de 12 concluídos** e mais 5 (PRs 5–9) com código completo aguardando merge. Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
+**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha; a linha 0 de auditoria/plano é preparatória e fica fora dessa contagem. Hoje, **9 de 12 concluídos**, com o PR 10 em revisão; depois dele restam o CI dos fluxos críticos (PR 11) e o runbook de produção (PR 12).
 
 **Riscos abertos, registrados honestamente:**
 

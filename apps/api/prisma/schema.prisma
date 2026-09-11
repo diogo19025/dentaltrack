@@ -473,6 +473,10 @@ model AutomationSettings {
   recallKeywords  String[] @default([]) @map("recall_keywords")
   recallTemplate  String   @map("recall_template")
 
+  /// Marca a primeira revisão humana da configuração. A linha nasce sozinha
+  /// pelo planejador, portanto existência/updatedAt não provam que o dono
+  /// abriu a aba e salvou as escolhas.
+  reviewedAt DateTime? @map("reviewed_at")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

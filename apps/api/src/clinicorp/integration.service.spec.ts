@@ -79,6 +79,64 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       expect(provider?.live).toBe(false);
     });
 
+    it('modo simulado: a mesma agenda entre chamadas — o que o agente marca, a tela vê', async () => {
+      const row = { provider: 'clinicorp', mode: 'mock', credentials: null };
+      prismaMock.clinicIntegration.findFirst.mockResolvedValue(row);
+
+      const first = await integrations.getProvider(CLINIC);
+      const second = await integrations.getProvider(CLINIC);
+      expect(second).toBe(first);
+
+      const startsAt = new Date(Date.now() + 400 * 24 * 3_600_000);
+      await first!.createAppointment({
+        patientId: '501',
+        patientName: 'Marina Alves',
+        patientPhone: null,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 30 * 60_000),
+        professionalId: '10',
+        unitId: '1',
+        procedureName: 'Avaliação',
+      });
+      const seen = await second!.listAppointments({
+        from: new Date(startsAt.getTime() - 3_600_000),
+        to: new Date(startsAt.getTime() + 3_600_000),
+      });
+      expect(seen.map((a) => a.patientName)).toContain('Marina Alves');
+    });
+
+    it('modo simulado: empresas diferentes não compartilham a agenda', async () => {
+      prismaMock.clinicIntegration.findFirst.mockResolvedValue({
+        provider: 'clinicorp',
+        mode: 'mock',
+        credentials: null,
+      });
+      const a = await integrations.getProvider(CLINIC);
+      const b = await integrations.getProvider(
+        '00000000-0000-0000-0000-00000000c1b2',
+      );
+      expect(b).not.toBe(a);
+    });
+
+    it('modo simulado: trocar o fuso substitui o cache da empresa', async () => {
+      prismaMock.clinicIntegration.findFirst.mockResolvedValue({
+        provider: 'clinicorp',
+        mode: 'mock',
+        credentials: null,
+      });
+      prismaMock.automationSettings.findUnique
+        .mockResolvedValueOnce({ timezone: 'America/Fortaleza' })
+        .mockResolvedValueOnce({ timezone: 'America/Manaus' })
+        .mockResolvedValueOnce({ timezone: 'America/Manaus' });
+
+      const oldTimezone = await integrations.getProvider(CLINIC);
+      const newTimezone = await integrations.getProvider(CLINIC);
+      const reused = await integrations.getProvider(CLINIC);
+
+      expect(newTimezone).not.toBe(oldTimezone);
+      expect(reused).toBe(newTimezone);
+    });
+
     it('Clinicorp real com credenciais: adapter do fornecedor', async () => {
       prismaMock.clinicIntegration.findFirst.mockResolvedValueOnce({
         provider: 'clinicorp',
@@ -101,6 +159,53 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
         credentials: null,
       });
       expect(await integrations.getProvider(CLINIC)).toBeNull();
+    });
+
+    it('readiness não confunde linha live incompleta com agenda utilizável', async () => {
+      prismaMock.clinicIntegration.findFirst.mockResolvedValueOnce({
+        provider: 'clinicorp',
+        mode: 'live',
+        credentials: null,
+      });
+      expect(await integrations.hasUsableProvider(CLINIC)).toBe(false);
+    });
+
+    it('readiness live exige a última verificação verde', async () => {
+      prismaMock.clinicIntegration.findFirst
+        .mockResolvedValueOnce({
+          provider: 'clinicorp',
+          mode: 'live',
+          credentials: encryptSecret(JSON.stringify(credentials), KEY),
+          lastCheckedAt: null,
+          lastError: null,
+        })
+        .mockResolvedValueOnce({
+          provider: 'clinicorp',
+          mode: 'live',
+          credentials: encryptSecret(JSON.stringify(credentials), KEY),
+          lastCheckedAt: new Date('2026-09-11T12:00:00Z'),
+          lastError: 'clinicorp:auth · credencial recusada',
+        })
+        .mockResolvedValueOnce({
+          provider: 'clinicorp',
+          mode: 'live',
+          credentials: encryptSecret(JSON.stringify(credentials), KEY),
+          lastCheckedAt: new Date('2026-09-11T12:00:00Z'),
+          lastError: null,
+        });
+
+      expect(await integrations.hasUsableProvider(CLINIC)).toBe(false);
+      expect(await integrations.hasUsableProvider(CLINIC)).toBe(false);
+      expect(await integrations.hasUsableProvider(CLINIC)).toBe(true);
+    });
+
+    it('readiness aceita a agenda simulada sem credenciais', async () => {
+      prismaMock.clinicIntegration.findFirst.mockResolvedValueOnce({
+        provider: 'clinicorp',
+        mode: 'mock',
+        credentials: null,
+      });
+      expect(await integrations.hasUsableProvider(CLINIC)).toBe(true);
     });
 
     it('credencial ilegível não derruba: cai para nenhum provedor', async () => {
@@ -255,6 +360,16 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       const data = prismaMock.clinicIntegration.upsert.mock.calls[0][0].update;
       expect(data).toEqual({ unitId: '2' });
       expect(data.credentials).toBeUndefined();
+    });
+
+    it('trocar credencial invalida a verificação anterior', async () => {
+      await integrations.update(CLINIC, 'clinicorp', { credentials });
+
+      expect(
+        prismaMock.clinicIntegration.upsert.mock.calls[0][0].update,
+      ).toEqual(
+        expect.objectContaining({ lastCheckedAt: null, lastError: null }),
+      );
     });
 
     it('ligar um provedor desliga o outro — só uma fonte de verdade de agenda', async () => {

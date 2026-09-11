@@ -21,7 +21,9 @@ import { ConversationDetailDialog } from "@/components/dashboard/conversation-de
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
 import { LeadTemperatureSection } from "@/components/dashboard/lead-temperature";
+import { OnboardingChecklist } from "@/components/dashboard/onboarding-checklist";
 import { RetentionSection } from "@/components/dashboard/retention-section";
+import { OwnerOnly } from "@/components/auth/role-context";
 import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -87,6 +89,13 @@ export default function DashboardPage() {
           <Download className="size-4" /> Exportar
         </Button>
       </PageHeader>
+
+      {/* Primeiros passos (P1.1): o que falta configurar. Só o dono resolve
+        (Configurações é owner-only) e o card some sozinho quando tudo está
+        feito. Fica fora do gate das métricas: erro nelas não esconde a ajuda. */}
+      <OwnerOnly>
+        <OnboardingChecklist />
+      </OwnerOnly>
 
       {isError && !data ? (
         <ErrorState error={error} onRetry={() => void refetch()} />
