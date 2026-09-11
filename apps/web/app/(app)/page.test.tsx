@@ -25,6 +25,14 @@ vi.mock("@/hooks/use-leads", () => ({
   useLeads: () => ({ data: { leads: [] }, isLoading: false }),
 }));
 
+vi.mock("@/hooks/use-onboarding-checklist", () => ({
+  useOnboardingChecklist: () => ({
+    data: undefined,
+    isLoading: false,
+    isError: true,
+  }),
+}));
+
 afterEach(() => {
   vi.clearAllMocks();
   state.error = null;
