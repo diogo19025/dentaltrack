@@ -29,13 +29,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (session?.access_token) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
     try {
-      await fetch(`${apiUrl}/onboarding/bootstrap`, {
+      const response = await fetch(`${apiUrl}/onboarding/bootstrap`, {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` },
         cache: "no-store",
       });
-    } catch {
-      // API offline: segue renderizando (o chat tratará a falha).
+      if (!response.ok) {
+        console.error("[web.bootstrap.error]", { status: response.status });
+      }
+    } catch (error) {
+      // API offline: segue renderizando, mas a falha não fica invisível.
+      console.error("[web.bootstrap.error]", {
+        name: error instanceof Error ? error.name : "UnknownError",
+      });
     }
   }
 

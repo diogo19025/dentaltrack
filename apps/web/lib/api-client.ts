@@ -2,6 +2,9 @@ import { createClient } from "@/lib/supabase/client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+/** Limite único para leitura, escrita, upload e download da API. */
+export const API_TIMEOUT_MS = 15_000;
+
 /** Cabeçalho de correlação — o mesmo id aparece no log da API (P0.3). */
 const REQUEST_ID_HEADER = "x-request-id";
 
@@ -33,7 +36,59 @@ function newRequestId(): string {
 /** Erro HTTP com o id de correlação preservado. */
 async function errorFrom(res: Response, requestId: string): Promise<ApiError> {
   const body = await res.text().catch(() => res.statusText);
-  return new ApiError(res.status, body || res.statusText, requestId);
+  return new ApiError(
+    res.status,
+    body || res.statusText,
+    res.headers?.get(REQUEST_ID_HEADER) || requestId,
+  );
+}
+
+/**
+ * `fetch` não tem timeout próprio. O controller também respeita um `signal`
+ * recebido do chamador, sem confundir cancelamento explícito com estouro do
+ * relógio da API.
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  requestId: string,
+): Promise<Response> {
+  const controller = new AbortController();
+  const callerSignal = init.signal;
+  let timedOut = false;
+
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) abortFromCaller();
+  else callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, API_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) {
+      throw new ApiError(
+        0,
+        "A API demorou mais de 15 segundos para responder.",
+        requestId,
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+/** JSON opcional: DELETE/POST podem responder 204 ou 200 sem corpo. */
+async function jsonFrom<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
+  const body = await res.text();
+  if (!body.trim()) return undefined as T;
+  return JSON.parse(body) as T;
 }
 
 /**
@@ -77,10 +132,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   const requestId = newRequestId();
   headers.set(REQUEST_ID_HEADER, requestId);
 
-  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  const res = await fetchWithTimeout(
+    `${API_URL}${path}`,
+    { ...init, headers },
+    requestId,
+  );
 
   if (!res.ok) throw await errorFrom(res, requestId);
-  return (await res.json()) as T;
+  return jsonFrom<T>(res);
 }
 
 /** Header Authorization com o JWT do Supabase (quando logado), mais correlação. */
@@ -101,7 +160,11 @@ async function authHeaders(requestId: string): Promise<Headers> {
  */
 export async function apiDownload(path: string): Promise<void> {
   const requestId = newRequestId();
-  const res = await fetch(`${API_URL}${path}`, { headers: await authHeaders(requestId) });
+  const res = await fetchWithTimeout(
+    `${API_URL}${path}`,
+    { headers: await authHeaders(requestId) },
+    requestId,
+  );
   if (!res.ok) throw await errorFrom(res, requestId);
   const disposition = res.headers.get("Content-Disposition") ?? "";
   const filename = /filename="?([^";]+)"?/.exec(disposition)?.[1] ?? "download";
@@ -120,11 +183,15 @@ export async function apiDownload(path: string): Promise<void> {
  */
 export async function apiUpload<T>(path: string, formData: FormData): Promise<T> {
   const requestId = newRequestId();
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "POST",
-    headers: await authHeaders(requestId),
-    body: formData,
-  });
+  const res = await fetchWithTimeout(
+    `${API_URL}${path}`,
+    {
+      method: "POST",
+      headers: await authHeaders(requestId),
+      body: formData,
+    },
+    requestId,
+  );
   if (!res.ok) throw await errorFrom(res, requestId);
-  return (await res.json()) as T;
+  return jsonFrom<T>(res);
 }

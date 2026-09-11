@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -62,7 +63,7 @@ const pctFmt = (n: number) => `${Math.round(n * 100)}%`;
 
 export default function DashboardPage() {
   const [range, setRange] = useState<MetricsRange>("50d");
-  const { data, isLoading } = useMetrics(range);
+  const { data, isLoading, isError, error, refetch } = useMetrics(range);
   const { data: recent } = useRecentConversations(6);
   const { data: leadsData, isLoading: leadsLoading } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -87,7 +88,9 @@ export default function DashboardPage() {
         </Button>
       </PageHeader>
 
-      {isLoading || !data ? (
+      {isError && !data ? (
+        <ErrorState error={error} onRetry={() => void refetch()} />
+      ) : isLoading || !data ? (
         <DashboardSkeleton />
       ) : (
         <>

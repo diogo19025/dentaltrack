@@ -24,8 +24,19 @@ const state = vi.hoisted(() => ({
     /** Instante em que o QR atual foi pedido — âncora da contagem regressiva. */
     submittedAt: 0,
   },
-  disconnect: { mutate: vi.fn(), isPending: false },
-  reset: { mutate: vi.fn(), isPending: false },
+  disconnect: {
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null as Error | null,
+  },
+  reset: {
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null as Error | null,
+  },
 }));
 
 vi.mock("@/hooks/use-whatsapp-connection", () => ({
@@ -59,6 +70,10 @@ afterEach(() => {
   state.connect.data = undefined;
   state.connect.isError = false;
   state.connect.submittedAt = 0;
+  state.disconnect.isError = false;
+  state.disconnect.error = null;
+  state.reset.isError = false;
+  state.reset.error = null;
   vi.useRealTimers();
 });
 
@@ -163,6 +178,26 @@ describe("WhatsappConnectPanel", () => {
     expect(screen.getByRole("button", { name: /desconectar/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /trocar de número/i })).toBeInTheDocument();
     expect(screen.queryByAltText(/QR code/i)).toBeNull();
+  });
+
+  it("trocar de número exige confirmação antes de remover a conexão", () => {
+    render(
+      <WhatsappConnectPanel
+        connection={connection({ state: "conectado", phone: "5511999998888" })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /trocar de número/i }));
+    expect(state.reset.mutate).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveAccessibleName(
+      /trocar o número do WhatsApp/i,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /remover conexão/i }));
+    expect(state.reset.mutate).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
   });
 
   it("sessão caída: explica o motivo e oferece reconectar", () => {

@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,13 +47,16 @@ import { cn } from "@/lib/utils";
  * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
 export function AutomationsTab() {
-  const { data, isLoading } = useAutomations();
+  const { data, isLoading, isError, error, refetch } = useAutomations();
   const update = useUpdateAutomations();
   // Só as edições pendentes ficam em estado; o resto vem do servidor. Derivar
   // em vez de sincronizar num efeito evita o refetch apagar o que está sendo
   // digitado — e dispensa o efeito por completo.
   const [edits, setEdits] = useState<AutomationSettings | null>(null);
 
+  if (isError && !data) {
+    return <ErrorState error={error} onRetry={() => void refetch()} />;
+  }
   if (isLoading || !data) return <AutomationsSkeleton />;
 
   const current = edits ?? data;
@@ -281,6 +285,15 @@ export function AutomationsTab() {
       />
 
       <HolidaysCard />
+
+      {update.isError && (
+        <ErrorState
+          compact
+          error={update.error}
+          title="Não foi possível salvar as automações"
+          onRetry={save}
+        />
+      )}
 
       <div className="sticky bottom-4 flex justify-end">
         <Button onClick={save} disabled={!dirty || update.isPending}>

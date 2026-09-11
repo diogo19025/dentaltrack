@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -107,7 +108,7 @@ const BLANK: ClinicSettingsDto = {
 export default function SettingsPage() {
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
-  const { data, isLoading } = useSettings();
+  const { data, isLoading, isError, error, refetch } = useSettings();
   const update = useUpdateSettings();
   const [tab, setTab] = useState<Tab>(() => requestedTab(tabFromUrl));
   const [lastTabFromUrl, setLastTabFromUrl] = useState(tabFromUrl);
@@ -149,6 +150,9 @@ export default function SettingsPage() {
     update.mutate(values, { onSuccess: (saved) => reset(saved) }),
   );
 
+  if (isError && !data) {
+    return <ErrorState error={error} onRetry={() => void refetch()} />;
+  }
   if (isLoading) return <SettingsSkeleton />;
 
   const isSettingsTab = tab === "identidade" || tab === "ofertas";

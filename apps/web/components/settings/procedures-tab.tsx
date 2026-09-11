@@ -14,6 +14,7 @@ import {
 import { ClipboardList, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -83,11 +84,13 @@ export function ProceduresTab() {
   const { data: tags = [] } = useTags();
   const del = useDeleteProcedure();
   const [editing, setEditing] = useState<ProcedureDto | null | undefined>(undefined);
+  const [deleting, setDeleting] = useState<ProcedureDto | null>(null);
 
   const tagById = new Map(tags.map((t) => [t.id, t]));
 
   function remove(p: ProcedureDto) {
-    if (confirm(`Remover o procedimento "${p.name}"?`)) del.mutate(p.id);
+    del.reset?.();
+    setDeleting(p);
   }
 
   return (
@@ -189,6 +192,27 @@ export function ProceduresTab() {
           onClose={() => setEditing(undefined)}
         />
       )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        title="Remover procedimento?"
+        description={
+          deleting
+            ? `O procedimento “${deleting.name}” deixará de aparecer no catálogo do agente.`
+            : ""
+        }
+        confirmLabel="Remover"
+        destructive
+        isPending={del.isPending}
+        error={del.isError ? del.error : undefined}
+        onConfirm={() => {
+          if (!deleting) return;
+          del.mutate(deleting.id, { onSuccess: () => setDeleting(null) });
+        }}
+      />
     </Card>
   );
 }

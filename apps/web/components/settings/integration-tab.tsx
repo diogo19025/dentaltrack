@@ -29,6 +29,7 @@ import {
 import { ApiError, errorMessage } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -117,6 +118,14 @@ export function IntegrationTab() {
   const google = useIntegration("google", provider === "google");
   const current = provider === "google" ? google : clinicorp;
 
+  if (clinicorp.isError && !clinicorp.data) {
+    return (
+      <ErrorState
+        error={clinicorp.error}
+        onRetry={() => void clinicorp.refetch()}
+      />
+    );
+  }
   if (clinicorp.isLoading && !clinicorp.data) return <IntegrationSkeleton />;
 
   return (
@@ -150,7 +159,12 @@ export function IntegrationTab() {
         </div>
       </Card>
 
-      {current.isLoading || !current.data ? (
+      {current.isError && !current.data ? (
+        <ErrorState
+          error={current.error}
+          onRetry={() => void current.refetch()}
+        />
+      ) : current.isLoading || !current.data ? (
         <Skeleton className="h-64 w-full rounded-[var(--radius)]" />
       ) : (
         <ProviderPanel

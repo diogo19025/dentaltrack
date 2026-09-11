@@ -3,6 +3,7 @@
 import { WHATSAPP_STATE_LABELS } from "@dentaltrack/shared";
 import { MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { WhatsappConnectPanel } from "@/components/whatsapp/connect-panel";
 import { useWhatsappConnection } from "@/hooks/use-whatsapp-connection";
@@ -19,8 +20,17 @@ import { cn } from "@/lib/utils";
  * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
 export function WhatsappTab() {
-  const { data: connection, isLoading } = useWhatsappConnection();
+  const {
+    data: connection,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useWhatsappConnection();
 
+  if (isError && !connection) {
+    return <ErrorState error={error} onRetry={() => void refetch()} />;
+  }
   if (isLoading || !connection) {
     return <Skeleton className="h-72 w-full rounded-[var(--radius)]" />;
   }

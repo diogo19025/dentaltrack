@@ -26,6 +26,14 @@ const state = vi.hoisted(() => ({
     clinicorp: null as IntegrationStatus | null,
     google: null as IntegrationStatus | null,
   },
+  queryError: {
+    clinicorp: null as Error | null,
+    google: null as Error | null,
+  },
+  refetch: {
+    clinicorp: vi.fn(),
+    google: vi.fn(),
+  },
   check: {
     mutate: vi.fn(),
     isPending: false,
@@ -49,7 +57,11 @@ vi.mock("@/hooks/use-agenda", () => ({
 vi.mock("@/hooks/use-integration", () => ({
   useIntegration: (provider: IntegrationProvider) => ({
     data: state.data[provider],
-    isLoading: state.data[provider] === null,
+    isLoading:
+      state.data[provider] === null && state.queryError[provider] === null,
+    isError: state.queryError[provider] !== null,
+    error: state.queryError[provider],
+    refetch: state.refetch[provider],
   }),
   useUpdateIntegration: () => state.update,
   useCheckIntegration: () => state.check,
@@ -125,6 +137,8 @@ afterEach(() => {
   vi.clearAllMocks();
   state.data.clinicorp = null;
   state.data.google = null;
+  state.queryError.clinicorp = null;
+  state.queryError.google = null;
   state.check.data = undefined;
   state.check.isError = false;
   state.check.error = null;
@@ -133,6 +147,17 @@ afterEach(() => {
 });
 
 describe("IntegrationTab", () => {
+  it("mostra a falha da consulta em vez de um skeleton eterno", () => {
+    state.queryError.clinicorp = new Error("Agenda indisponível");
+    render(<IntegrationTab />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Agenda indisponível",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /tentar de novo/i }));
+    expect(state.refetch.clinicorp).toHaveBeenCalledOnce();
+  });
+
   it("nunca preenche o token, mesmo com credencial salva", () => {
     state.data.clinicorp = status();
     render(<IntegrationTab />);

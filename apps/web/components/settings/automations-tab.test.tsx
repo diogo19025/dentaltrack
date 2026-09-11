@@ -15,13 +15,23 @@ import { AutomationsTab } from "./automations-tab";
 
 const state = vi.hoisted(() => ({
   data: null as AutomationSettings | null,
-  update: { mutate: vi.fn(), isPending: false },
+  queryError: null as Error | null,
+  refetch: vi.fn(),
+  update: {
+    mutate: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null as Error | null,
+  },
 }));
 
 vi.mock("@/hooks/use-automations", () => ({
   useAutomations: () => ({
     data: state.data,
-    isLoading: state.data === null,
+    isLoading: state.data === null && state.queryError === null,
+    isError: state.queryError !== null,
+    error: state.queryError,
+    refetch: state.refetch,
   }),
   useUpdateAutomations: () => state.update,
   useHolidays: () => ({ data: [], isLoading: false }),
@@ -33,9 +43,23 @@ vi.mock("@/hooks/use-automations", () => ({
 afterEach(() => {
   vi.clearAllMocks();
   state.data = null;
+  state.queryError = null;
+  state.update.isError = false;
+  state.update.error = null;
 });
 
 describe("AutomationsTab", () => {
+  it("mostra a falha da consulta em vez de um skeleton eterno", () => {
+    state.queryError = new Error("Automações indisponíveis");
+    render(<AutomationsTab />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Automações indisponíveis",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /tentar de novo/i }));
+    expect(state.refetch).toHaveBeenCalledOnce();
+  });
+
   it("mostra o texto já preenchido, como o cliente vai receber", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);

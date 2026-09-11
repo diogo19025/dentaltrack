@@ -20,6 +20,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ErrorState } from "@/components/ui/error-state";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,8 @@ export default function LeadsPage() {
   const [page, setPage] = useState(0);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<unknown>(null);
+  const [failedExport, setFailedExport] = useState<"xlsx" | "pdf">("xlsx");
   const [importResult, setImportResult] = useState<LeadImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -102,9 +105,13 @@ export default function LeadsPage() {
   }
 
   async function onExport(format: "xlsx" | "pdf") {
+    setExportError(null);
+    setFailedExport(format);
     setExporting(true);
     try {
       await apiDownload(`/leads/export?format=${format}`);
+    } catch (error) {
+      setExportError(error);
     } finally {
       setExporting(false);
     }
@@ -170,6 +177,16 @@ export default function LeadsPage() {
           </DropdownMenuContent>
         </DropdownMenu>
       </PageHeader>
+
+      {exportError !== null && (
+        <ErrorState
+          compact
+          className="mb-5"
+          error={exportError}
+          title="Não foi possível exportar os leads"
+          onRetry={() => void onExport(failedExport)}
+        />
+      )}
 
       {/* Cards-resumo */}
       <div className="stagger mb-5 grid grid-cols-4 gap-[18px] max-[900px]:grid-cols-2 max-[520px]:grid-cols-1">

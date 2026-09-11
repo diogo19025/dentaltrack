@@ -12,11 +12,13 @@ import {
   Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   useConnectWhatsapp,
   useDisconnectWhatsapp,
   useResetWhatsapp,
 } from "@/hooks/use-whatsapp-connection";
+import { errorMessage } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,6 +48,7 @@ export function WhatsappConnectPanel({
   const connect = useConnectWhatsapp();
   const disconnect = useDisconnectWhatsapp();
   const reset = useResetWhatsapp();
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const qrCode = connect.data?.qrCode ?? connection.qrCode;
 
@@ -99,51 +102,67 @@ export function WhatsappConnectPanel({
 
   if (connection.state === "conectado") {
     return (
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border bg-primary-tint px-4 py-3">
-          <CheckCircle2 className="size-5 flex-none" style={{ color: "var(--primary)" }} />
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-primary">
-              Número conectado
-            </div>
-            {connection.phone && (
-              <div className="tabular text-[13px] text-primary">
-                {formatPhone(connection.phone)}
+      <>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-3 rounded-[var(--radius-sm)] border border-border bg-primary-tint px-4 py-3">
+            <CheckCircle2 className="size-5 flex-none" style={{ color: "var(--primary)" }} />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-primary">
+                Número conectado
               </div>
-            )}
+              {connection.phone && (
+                <div className="tabular text-[13px] text-primary">
+                  {formatPhone(connection.phone)}
+                </div>
+              )}
+            </div>
           </div>
+          <p className="text-[13px] text-muted-foreground">
+            O assistente já responde a quem escrever para este número. As conversas
+            aparecem no painel com o canal <strong>WhatsApp</strong>.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => disconnect.mutate()}
+              disabled={disconnect.isPending}
+            >
+              {disconnect.isPending ? "Desconectando…" : "Desconectar"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                reset.reset?.();
+                setResetConfirmOpen(true);
+              }}
+              disabled={reset.isPending}
+            >
+              Trocar de número
+            </Button>
+          </div>
+          {disconnect.isError && (
+            <Notice tone="warning">{errorMessage(disconnect.error)}</Notice>
+          )}
         </div>
-        <p className="text-[13px] text-muted-foreground">
-          O assistente já responde a quem escrever para este número. As conversas
-          aparecem no painel com o canal <strong>WhatsApp</strong>.
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => disconnect.mutate()}
-            disabled={disconnect.isPending}
-          >
-            {disconnect.isPending ? "Desconectando…" : "Desconectar"}
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              if (
-                confirm(
-                  "Isso remove a conexão atual para você parear outro número. Continuar?",
-                )
-              ) {
-                reset.mutate();
-              }
-            }}
-            disabled={reset.isPending}
-          >
-            Trocar de número
-          </Button>
-        </div>
-      </div>
+
+        <ConfirmDialog
+          open={resetConfirmOpen}
+          onOpenChange={setResetConfirmOpen}
+          title="Trocar o número do WhatsApp?"
+          description="A conexão atual será removida. O assistente só voltará a responder no WhatsApp depois que um novo número for pareado."
+          confirmLabel="Remover conexão"
+          destructive
+          isPending={reset.isPending}
+          error={reset.isError ? reset.error : undefined}
+          onConfirm={() =>
+            reset.mutate(undefined, {
+              onSuccess: () => setResetConfirmOpen(false),
+            })
+          }
+        />
+      </>
     );
   }
 

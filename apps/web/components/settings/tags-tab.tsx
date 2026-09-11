@@ -6,6 +6,7 @@ import { type CreateTagInput, TAG_COLORS, type TagColor, type TagDto } from "@de
 import { Pencil, Plus, Tag as TagIcon, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -40,9 +41,11 @@ export function TagsTab() {
   const { data: tags = [], isLoading } = useTags();
   const del = useDeleteTag();
   const [editing, setEditing] = useState<TagDto | null | undefined>(undefined);
+  const [deleting, setDeleting] = useState<TagDto | null>(null);
 
   function remove(t: TagDto) {
-    if (confirm(`Remover a tag "${t.name}"?`)) del.mutate(t.id);
+    del.reset?.();
+    setDeleting(t);
   }
 
   return (
@@ -126,6 +129,27 @@ export function TagsTab() {
       {editing !== undefined && (
         <TagDialog key={editing?.id ?? "new"} tag={editing} onClose={() => setEditing(undefined)} />
       )}
+
+      <ConfirmDialog
+        open={deleting !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleting(null);
+        }}
+        title="Remover tag?"
+        description={
+          deleting
+            ? `A tag “${deleting.name}” deixará de classificar as conversas e os procedimentos associados.`
+            : ""
+        }
+        confirmLabel="Remover"
+        destructive
+        isPending={del.isPending}
+        error={del.isError ? del.error : undefined}
+        onConfirm={() => {
+          if (!deleting) return;
+          del.mutate(deleting.id, { onSuccess: () => setDeleting(null) });
+        }}
+      />
     </Card>
   );
 }

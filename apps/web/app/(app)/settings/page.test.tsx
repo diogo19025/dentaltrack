@@ -15,6 +15,8 @@ import SettingsPage from "./page";
 
 const state = vi.hoisted(() => ({
   data: null as ClinicSettingsDto | null,
+  queryError: null as Error | null,
+  refetch: vi.fn(),
   tab: null as string | null,
   update: {
     mutate: vi.fn(),
@@ -25,7 +27,13 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("@/hooks/use-settings", () => ({
-  useSettings: () => ({ data: state.data, isLoading: state.data === null }),
+  useSettings: () => ({
+    data: state.data,
+    isLoading: state.data === null && state.queryError === null,
+    isError: state.queryError !== null,
+    error: state.queryError,
+    refetch: state.refetch,
+  }),
   useUpdateSettings: () => state.update,
 }));
 
@@ -70,10 +78,22 @@ function makeSettings(
 afterEach(() => {
   vi.clearAllMocks();
   state.data = null;
+  state.queryError = null;
   state.tab = null;
 });
 
 describe("SettingsPage — aba pela URL", () => {
+  it("mostra a falha da consulta em vez de uma configuração vazia", () => {
+    state.queryError = new Error("Configurações indisponíveis");
+    render(<SettingsPage />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Configurações indisponíveis",
+    );
+    fireEvent.click(screen.getByRole("button", { name: /tentar de novo/i }));
+    expect(state.refetch).toHaveBeenCalledOnce();
+  });
+
   it("abre e acompanha ?tab=whatsapp sem remontar a página", () => {
     state.data = makeSettings();
     const { rerender } = render(<SettingsPage />);
