@@ -1,6 +1,10 @@
-import { Controller, Post } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
+import type { OnboardingChecklistDto } from '@dentaltrack/shared';
+import { ClinicId } from '../auth/clinic-id.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { TenantGuard } from '../auth/tenant.guard';
 import type { AuthUser } from '../auth/types';
+import { OnboardingChecklistService } from './onboarding-checklist.service';
 import {
   type EnsureClinicResult,
   OnboardingService,
@@ -8,7 +12,10 @@ import {
 
 @Controller('onboarding')
 export class OnboardingController {
-  constructor(private readonly onboarding: OnboardingService) {}
+  constructor(
+    private readonly onboarding: OnboardingService,
+    private readonly checklist: OnboardingChecklistService,
+  ) {}
 
   /**
    * POST /onboarding/bootstrap — idempotente. Garante empresa + membership do
@@ -28,5 +35,15 @@ export class OnboardingController {
       email: user.email,
       clinicName,
     });
+  }
+
+  /**
+   * GET /onboarding/checklist — o que falta configurar, derivado do estado
+   * real das tabelas (P1.1). Sob TenantGuard: aqui o tenant já existe.
+   */
+  @Get('checklist')
+  @UseGuards(TenantGuard)
+  getChecklist(@ClinicId() clinicId: string): Promise<OnboardingChecklistDto> {
+    return this.checklist.getChecklist(clinicId);
   }
 }
