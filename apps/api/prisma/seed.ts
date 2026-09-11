@@ -1,11 +1,18 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { DEFAULT_AUTOMATION_SETTINGS } from "@dentaltrack/shared";
 import { PrismaClient } from "../generated/prisma/client";
+import { toRow as automationSettingsToRow } from "../src/automations/automation-settings.service";
+import { MockAgendaProvider } from "../src/clinicorp/mock.provider";
+import { suggestStatusMappings } from "../src/clinicorp/status-heuristics";
 
 /**
  * Seed da base (BE-2.4): uma clínica demo + configurações (persona + oferta) +
  * catálogo de procedimentos odontológicos + tags de interesse, com as tags
  * associadas aos procedimentos (relação N:N — alimenta o suggestProcedures).
+ * Desde a P1.2 também deixa a empresa **operacional**: automações com os
+ * padrões de fábrica, agenda simulada ligada (com o mapeamento de status já
+ * preenchido — é o que faz a /agenda demo ter conteúdo) e feriados.
  * Idempotente — usa IDs fixos e `upsert`, pode rodar várias vezes.
  *
  * Rodar: pnpm --filter @dentaltrack/api db:seed  (requer DATABASE_URL).
@@ -120,6 +127,21 @@ const PROCEDURES: SeedProcedure[] = [
   },
 ];
 
+/** Feriados nacionais de data fixa + o recesso da própria empresa (local). */
+const HOLIDAYS: { md: string; name: string; scope: "nacional" | "local" }[] = [
+  { md: "01-01", name: "Confraternização Universal", scope: "nacional" },
+  { md: "04-21", name: "Tiradentes", scope: "nacional" },
+  { md: "05-01", name: "Dia do Trabalho", scope: "nacional" },
+  { md: "09-07", name: "Independência do Brasil", scope: "nacional" },
+  { md: "10-12", name: "Nossa Senhora Aparecida", scope: "nacional" },
+  { md: "11-02", name: "Finados", scope: "nacional" },
+  { md: "11-15", name: "Proclamação da República", scope: "nacional" },
+  { md: "11-20", name: "Dia da Consciência Negra", scope: "nacional" },
+  { md: "12-25", name: "Natal", scope: "nacional" },
+  { md: "12-24", name: "Recesso de fim de ano (véspera)", scope: "local" },
+  { md: "12-31", name: "Recesso de fim de ano", scope: "local" },
+];
+
 async function main(): Promise<void> {
   const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" });
   const prisma = new PrismaClient({ adapter });
@@ -189,8 +211,64 @@ async function main(): Promise<void> {
       console.log(`  ↳ procedimento: ${proc.name}`);
     }
 
+    // ── Operação (P1.2): automações, agenda simulada e feriados ──────────────
+
+    // Automações com os padrões de fábrica. `update: {}` de propósito: o que
+    // o operador da demo ajustou na aba não pode voltar ao padrão a cada seed.
+    const automationRow = automationSettingsToRow(DEFAULT_AUTOMATION_SETTINGS);
+    await prisma.automationSettings.upsert({
+      where: { clinicId: clinic.id },
+      update: {},
+      create: { clinicId: clinic.id, ...automationRow },
+    });
+    console.log("  ↳ automações (padrões de fábrica)");
+
+    // Agenda simulada ligada, com o mapeamento de status já preenchido pela
+    // mesma heurística que a tela sugere ao operador. Sem o mapeamento a
+    // sincronização ignora todo status e a /agenda fica vazia.
+    const statuses = await new MockAgendaProvider(automationRow.timezone).listStatuses();
+    const statusMappings = suggestStatusMappings(statuses);
+    await prisma.clinicIntegration.upsert({
+      where: { clinicId_provider: { clinicId: clinic.id, provider: "clinicorp" } },
+      update: { mode: "mock", unitId: "1", professionalId: "10", statusMappings },
+      create: {
+        clinicId: clinic.id,
+        provider: "clinicorp",
+        mode: "mock",
+        unitId: "1",
+        professionalId: "10",
+        statusMappings,
+      },
+    });
+    // Só um provedor ativo por empresa: o Google fica explicitamente desligado.
+    await prisma.clinicIntegration.updateMany({
+      where: { clinicId: clinic.id, provider: "google" },
+      data: { mode: "desligado" },
+    });
     console.log(
-      `✔ Seed concluído: ${TAGS.length} tags + ${PROCEDURES.length} procedimentos (com tags) + settings.`,
+      `  ↳ integração de agenda em modo simulado (${statusMappings.filter((m) => m.status).length}/${statusMappings.length} status mapeados)`,
+    );
+
+    // Feriados do ano corrente e do próximo: os nacionais fixos (os móveis
+    // vêm da sincronização na aba) e um recesso local — é o local que a
+    // fonte pública nunca conhece e que a demo precisa mostrar.
+    let holidays = 0;
+    const year = new Date().getFullYear();
+    for (const y of [year, year + 1]) {
+      for (const { md, name, scope } of HOLIDAYS) {
+        const date = new Date(`${y}-${md}T00:00:00.000Z`);
+        await prisma.holiday.upsert({
+          where: { clinicId_date: { clinicId: clinic.id, date } },
+          update: {},
+          create: { clinicId: clinic.id, date, name, scope },
+        });
+        holidays += 1;
+      }
+    }
+    console.log(`  ↳ ${holidays} feriados (${year}–${year + 1})`);
+
+    console.log(
+      `✔ Seed concluído: ${TAGS.length} tags + ${PROCEDURES.length} procedimentos (com tags) + settings + automações + agenda simulada + feriados.`,
     );
   } finally {
     await prisma.$disconnect();
