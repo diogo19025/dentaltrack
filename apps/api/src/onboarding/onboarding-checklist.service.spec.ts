@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { IntegrationService } from '../clinicorp/integration.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OnboardingChecklistService } from './onboarding-checklist.service';
 
@@ -11,16 +12,16 @@ describe('OnboardingChecklistService (checklist derivado · P1.1)', () => {
     clinicSettings: { findUnique: jest.fn() },
     procedure: { count: jest.fn() },
     tag: { count: jest.fn() },
-    clinicIntegration: { findFirst: jest.fn() },
     automationSettings: { findUnique: jest.fn() },
   };
+  const integrationsMock = { hasUsableProvider: jest.fn() };
 
   /** Empresa recém-criada: nada feito. */
   function blankClinic() {
     prismaMock.clinicSettings.findUnique.mockResolvedValue(null);
     prismaMock.procedure.count.mockResolvedValue(0);
     prismaMock.tag.count.mockResolvedValue(0);
-    prismaMock.clinicIntegration.findFirst.mockResolvedValue(null);
+    integrationsMock.hasUsableProvider.mockResolvedValue(false);
     prismaMock.automationSettings.findUnique.mockResolvedValue(null);
   }
 
@@ -36,6 +37,7 @@ describe('OnboardingChecklistService (checklist derivado · P1.1)', () => {
       providers: [
         OnboardingChecklistService,
         { provide: PrismaService, useValue: prismaMock },
+        { provide: IntegrationService, useValue: integrationsMock },
       ],
     }).compile();
     service = moduleRef.get(OnboardingChecklistService);
@@ -103,35 +105,28 @@ describe('OnboardingChecklistService (checklist derivado · P1.1)', () => {
   });
 
   it('a linha de automações criada sozinha não conta como revisada; salvar conta', async () => {
-    const createdAt = new Date('2026-09-10T12:00:00.000Z');
     prismaMock.automationSettings.findUnique.mockResolvedValue({
-      createdAt,
-      updatedAt: new Date(createdAt.getTime() + 40),
+      reviewedAt: null,
     });
     expect(item(await service.getChecklist(CLINIC), 'automacoes')).toBe(false);
 
     prismaMock.automationSettings.findUnique.mockResolvedValue({
-      createdAt,
-      updatedAt: new Date(createdAt.getTime() + 5 * 60_000),
+      reviewedAt: new Date('2026-09-10T12:00:00.000Z'),
     });
     expect(item(await service.getChecklist(CLINIC), 'automacoes')).toBe(true);
   });
 
-  it('só procedimentos ativos contam; a agenda conta com qualquer provedor ligado', async () => {
+  it('só procedimentos ativos contam; a agenda exige um provedor utilizável', async () => {
     prismaMock.procedure.count.mockResolvedValue(3);
     prismaMock.tag.count.mockResolvedValue(1);
-    prismaMock.clinicIntegration.findFirst.mockResolvedValue({ id: 'i1' });
+    integrationsMock.hasUsableProvider.mockResolvedValue(true);
 
     const dto = await service.getChecklist(CLINIC);
 
     expect(prismaMock.procedure.count).toHaveBeenCalledWith({
       where: { clinicId: CLINIC, active: true },
     });
-    expect(prismaMock.clinicIntegration.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { clinicId: CLINIC, mode: { not: 'desligado' } },
-      }),
-    );
+    expect(integrationsMock.hasUsableProvider).toHaveBeenCalledWith(CLINIC);
     expect(item(dto, 'procedimentos')).toBe(true);
     expect(item(dto, 'tags')).toBe(true);
     expect(item(dto, 'agenda')).toBe(true);
@@ -147,10 +142,9 @@ describe('OnboardingChecklistService (checklist derivado · P1.1)', () => {
     });
     prismaMock.procedure.count.mockResolvedValue(1);
     prismaMock.tag.count.mockResolvedValue(1);
-    prismaMock.clinicIntegration.findFirst.mockResolvedValue({ id: 'i1' });
+    integrationsMock.hasUsableProvider.mockResolvedValue(true);
     prismaMock.automationSettings.findUnique.mockResolvedValue({
-      createdAt: new Date('2026-09-10T12:00:00.000Z'),
-      updatedAt: new Date('2026-09-10T13:00:00.000Z'),
+      reviewedAt: new Date('2026-09-10T13:00:00.000Z'),
     });
 
     const dto = await service.getChecklist(CLINIC);

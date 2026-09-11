@@ -42,6 +42,8 @@ interface IntegrationRow {
   credentials: string | null;
   unitId: string | null;
   professionalId: string | null;
+  lastCheckedAt?: Date | null;
+  lastError?: string | null;
 }
 
 /**
@@ -66,7 +68,10 @@ export class IntegrationService {
    * o agente marcava um horário e a tela seguinte não o via. A chave inclui o
    * fuso porque ele é parâmetro do construtor: trocá-lo recria a agenda.
    */
-  private readonly mockProviders = new Map<string, MockAgendaProvider>();
+  private readonly mockProviders = new Map<
+    string,
+    { timeZone: string; provider: MockAgendaProvider }
+  >();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -86,6 +91,20 @@ export class IntegrationService {
       this.logger.warn(`Empresa ${clinicId}: ${reason}`);
     }
     return provider;
+  }
+
+  /**
+   * Verdade operacional usada pelo onboarding: uma linha ativa não basta.
+   * `live` só conta depois de uma verificação bem-sucedida; credencial
+   * ausente, configuração incompleta ou o último check com erro continuam
+   * retornando `false`. `mock` é utilizável imediatamente.
+   */
+  async hasUsableProvider(clinicId: string): Promise<boolean> {
+    const row = await this.activeRow(clinicId);
+    if (!row) return false;
+    if (row.mode === 'mock') return true;
+    if (!row.lastCheckedAt || row.lastError) return false;
+    return (await this.resolveProvider(clinicId, row)).provider !== null;
   }
 
   /** Provedor ativo (modo ≠ desligado) da empresa, se houver. */
@@ -148,6 +167,9 @@ export class IntegrationService {
     provider: IntegrationProvider,
     input: UpdateIntegrationInput,
   ): Promise<IntegrationStatus> {
+    const current = await this.prisma.clinicIntegration.findUnique({
+      where: { clinicId_provider: { clinicId, provider } },
+    });
     // Cada provedor guarda a sua configuração no mesmo campo cifrado; o corpo
     // do outro provedor é ignorado em vez de misturado.
     const secret =
@@ -167,6 +189,21 @@ export class IntegrationService {
           ? null
           : encryptSecret(secret, this.encryptionKey());
 
+    const googleConfigChanged =
+      provider === 'google' && input.google !== undefined
+        ? JSON.stringify(
+            input.google === null
+              ? null
+              : googleAgendaConfigSchema.parse(input.google),
+          ) !==
+          JSON.stringify(this.readGoogleConfig(current?.credentials ?? null))
+        : false;
+    const connectionChanged =
+      (input.mode !== undefined &&
+        input.mode !== (current?.mode ?? 'desligado')) ||
+      (provider === 'clinicorp' && input.credentials != null) ||
+      googleConfigChanged;
+
     const data = {
       ...(input.mode !== undefined ? { mode: input.mode } : {}),
       ...(encrypted !== undefined ? { credentials: encrypted } : {}),
@@ -177,6 +214,7 @@ export class IntegrationService {
       ...(input.statusMappings !== undefined
         ? { statusMappings: input.statusMappings }
         : {}),
+      ...(connectionChanged ? { lastCheckedAt: null, lastError: null } : {}),
     };
 
     await this.prisma.clinicIntegration.upsert({
@@ -424,18 +462,21 @@ export class IntegrationService {
     return row?.timezone ?? DEFAULT_TIMEZONE;
   }
 
-  /** Uma agenda simulada por empresa (e fuso), viva enquanto o processo viver. */
+  /**
+   * Uma agenda simulada por empresa, viva enquanto o processo viver. Mudar o
+   * fuso substitui a instância anterior em vez de deixar caches mortos no Map.
+   */
   private mockProviderFor(
     clinicId: string,
     timeZone: string,
   ): MockAgendaProvider {
-    const key = `${clinicId}:${timeZone}`;
-    let provider = this.mockProviders.get(key);
-    if (!provider) {
-      provider = new MockAgendaProvider(timeZone);
-      this.mockProviders.set(key, provider);
+    const cached = this.mockProviders.get(clinicId);
+    if (!cached || cached.timeZone !== timeZone) {
+      const provider = new MockAgendaProvider(timeZone);
+      this.mockProviders.set(clinicId, { timeZone, provider });
+      return provider;
     }
-    return provider;
+    return cached.provider;
   }
 
   /** Linha ativa (modo ≠ desligado). A exclusividade é garantida no `update`. */

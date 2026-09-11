@@ -147,6 +147,7 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient({ adapter });
 
   try {
+    await assertDemoCatalogOwnership(prisma);
     const clinic = await prisma.clinic.upsert({
       where: { id: DEMO_CLINIC_ID },
       update: { name: "Clínica DentalTrack (Demo)" },
@@ -272,6 +273,35 @@ async function main(): Promise<void> {
     );
   } finally {
     await prisma.$disconnect();
+  }
+}
+
+/**
+ * Os IDs do catálogo são fixos para o seed ser idempotente. Falha fechado se
+ * algum deles tiver sido usado por outro tenant: o `upsert({ where: { id } })`
+ * não pode transformar uma colisão em escrita cross-tenant.
+ */
+async function assertDemoCatalogOwnership(prisma: PrismaClient): Promise<void> {
+  const [foreignTag, foreignProcedure] = await Promise.all([
+    prisma.tag.findFirst({
+      where: {
+        id: { in: TAGS.map((tag) => tag.id) },
+        clinicId: { not: DEMO_CLINIC_ID },
+      },
+      select: { id: true, clinicId: true },
+    }),
+    prisma.procedure.findFirst({
+      where: {
+        id: { in: PROCEDURES.map((procedure) => procedure.id) },
+        clinicId: { not: DEMO_CLINIC_ID },
+      },
+      select: { id: true, clinicId: true },
+    }),
+  ]);
+  if (foreignTag || foreignProcedure) {
+    throw new Error(
+      "Seed abortado: um ID reservado da demo pertence a outra empresa.",
+    );
   }
 }
 

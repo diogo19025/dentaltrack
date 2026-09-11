@@ -80,7 +80,9 @@ export class AutomationSettingsService {
 
     const updated = await this.prisma.automationSettings.update({
       where: { clinicId },
-      data: toRow(merged),
+      // Só o caminho explícito de edição marca a revisão. `get()` e o
+      // planejador podem criar a linha padrão sem interação humana.
+      data: { ...toRow(merged), reviewedAt: new Date() },
     });
     return toSettings(updated);
   }

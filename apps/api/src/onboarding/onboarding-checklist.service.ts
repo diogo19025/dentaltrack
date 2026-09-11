@@ -4,16 +4,8 @@ import type {
   OnboardingChecklistItem,
   OnboardingStep,
 } from '@dentaltrack/shared';
+import { IntegrationService } from '../clinicorp/integration.service';
 import { PrismaService } from '../prisma/prisma.service';
-
-/**
- * Uma revisão "de verdade" das automações é um salvamento na aba. A linha de
- * `automation_settings` nasce sozinha (o planejador a cria para toda empresa
- * com WhatsApp), então existir não prova nada; `updatedAt` andar em relação a
- * `createdAt` prova que alguém clicou em salvar. A folga absorve a diferença
- * de milissegundos entre o `now()` do banco e o `@updatedAt` do Prisma.
- */
-const REVIEWED_TOLERANCE_MS = 1_000;
 
 /**
  * Checklist de onboarding (P1.1) — derivado das tabelas existentes, no mesmo
@@ -23,10 +15,13 @@ const REVIEWED_TOLERANCE_MS = 1_000;
  */
 @Injectable()
 export class OnboardingChecklistService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly integrations: IntegrationService,
+  ) {}
 
   async getChecklist(clinicId: string): Promise<OnboardingChecklistDto> {
-    const [settings, procedures, tags, integration, automations] =
+    const [settings, procedures, tags, agendaReady, automations] =
       await Promise.all([
         this.prisma.clinicSettings.findUnique({
           where: { clinicId },
@@ -39,13 +34,10 @@ export class OnboardingChecklistService {
         }),
         this.prisma.procedure.count({ where: { clinicId, active: true } }),
         this.prisma.tag.count({ where: { clinicId } }),
-        this.prisma.clinicIntegration.findFirst({
-          where: { clinicId, mode: { not: 'desligado' } },
-          select: { id: true },
-        }),
+        this.integrations.hasUsableProvider(clinicId),
         this.prisma.automationSettings.findUnique({
           where: { clinicId },
-          select: { createdAt: true, updatedAt: true },
+          select: { reviewedAt: true },
         }),
       ]);
 
@@ -57,11 +49,8 @@ export class OnboardingChecklistService {
       procedimentos: procedures > 0,
       tags: tags > 0,
       whatsapp: settings?.whatsappState === 'conectado',
-      agenda: integration !== null,
-      automacoes:
-        automations !== null &&
-        automations.updatedAt.getTime() - automations.createdAt.getTime() >
-          REVIEWED_TOLERANCE_MS,
+      agenda: agendaReady,
+      automacoes: Boolean(automations?.reviewedAt),
     };
 
     const items: OnboardingChecklistItem[] = [

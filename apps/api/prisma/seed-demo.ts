@@ -1,10 +1,6 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
-import {
-  FUNNEL_STAGES,
-  FUNNEL_STAGE_DEFAULT_NAMES,
-  type FunnelStage,
-} from "@dentaltrack/shared";
+import { FUNNEL_STAGES, FUNNEL_STAGE_DEFAULT_NAMES, type FunnelStage } from "@dentaltrack/shared";
 import { PrismaClient } from "../generated/prisma/client";
 
 /**
@@ -42,21 +38,24 @@ const SCENARIOS: Scenario[] = [
     tagId: "00000000-0000-0000-0000-00000000e001",
     procedure: "Implante dentário",
     userText: "Olá! Perdi um dente e gostaria de saber sobre implante.",
-    reply: "Claro! O implante repõe o dente perdido com um pino de titânio e coroa. Posso te explicar e já agendar uma avaliação. Como é seu nome?",
+    reply:
+      "Claro! O implante repõe o dente perdido com um pino de titânio e coroa. Posso te explicar e já agendar uma avaliação. Como é seu nome?",
   },
   {
     procedureId: "00000000-0000-0000-0000-00000000d002",
     tagId: "00000000-0000-0000-0000-00000000e002",
     procedure: "Clareamento dental",
     userText: "Meus dentes estão amarelados, queria fazer um clareamento.",
-    reply: "Temos clareamento estético que deixa o sorriso bem mais branco. Posso te passar os detalhes e agendar uma avaliação. Qual seu nome?",
+    reply:
+      "Temos clareamento estético que deixa o sorriso bem mais branco. Posso te passar os detalhes e agendar uma avaliação. Qual seu nome?",
   },
   {
     procedureId: "00000000-0000-0000-0000-00000000d003",
     tagId: "00000000-0000-0000-0000-00000000e003",
     procedure: "Ortodontia (aparelho)",
     userText: "Quero alinhar meus dentes com aparelho.",
-    reply: "Ótimo! Trabalhamos com aparelho fixo e alinhadores. Uma avaliação define a melhor opção pra você. Como você se chama?",
+    reply:
+      "Ótimo! Trabalhamos com aparelho fixo e alinhadores. Uma avaliação define a melhor opção pra você. Como você se chama?",
   },
   {
     procedureId: "00000000-0000-0000-0000-00000000d004",
@@ -70,15 +69,32 @@ const SCENARIOS: Scenario[] = [
     tagId: "00000000-0000-0000-0000-00000000e004",
     procedure: "Urgência / dor",
     userText: "Estou com muita dor de dente, é urgente.",
-    reply: "Sinto muito! Atendemos urgências. Vou priorizar seu atendimento — me diga seu nome e telefone para encaixar o quanto antes.",
+    reply:
+      "Sinto muito! Atendemos urgências. Vou priorizar seu atendimento — me diga seu nome e telefone para encaixar o quanto antes.",
   },
 ];
 
 const NAMES = [
-  "Ana Souza", "Bruno Lima", "Carla Mendes", "Diego Alves", "Eduarda Rocha",
-  "Felipe Castro", "Gabriela Dias", "Henrique Pinto", "Isabela Nunes", "João Ribeiro",
-  "Karina Melo", "Lucas Faria", "Mariana Costa", "Nathan Gomes", "Olívia Barros",
-  "Paulo Tavares", "Renata Lopes", "Sérgio Moraes", "Tatiane Cruz", "Vinícius Araújo",
+  "Ana Souza",
+  "Bruno Lima",
+  "Carla Mendes",
+  "Diego Alves",
+  "Eduarda Rocha",
+  "Felipe Castro",
+  "Gabriela Dias",
+  "Henrique Pinto",
+  "Isabela Nunes",
+  "João Ribeiro",
+  "Karina Melo",
+  "Lucas Faria",
+  "Mariana Costa",
+  "Nathan Gomes",
+  "Olívia Barros",
+  "Paulo Tavares",
+  "Renata Lopes",
+  "Sérgio Moraes",
+  "Tatiane Cruz",
+  "Vinícius Araújo",
 ];
 /**
  * DDD 00 de propósito, como no `MockAgendaProvider`: a demo agora enfileira
@@ -86,16 +102,72 @@ const NAMES = [
  * mandar lembrete de mentira para o número de alguém. Com DDD inválido a
  * mensagem falha no transporte, que é o pior resultado aceitável.
  */
-const DDDS = ["00"];
+const DEMO_DDD = "00";
 
 const rint = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-const pick = <T,>(arr: T[]): T => arr[rint(0, arr.length - 1)];
-const phone = () => `(${pick(DDDS)}) 9${rint(1000, 9999)}-${rint(1000, 9999)}`;
+const pick = <T>(arr: T[]): T => arr[rint(0, arr.length - 1)];
+/** Número inválido e estável quando recebe uma sequência — evita colisão nas fixtures obrigatórias. */
+const phone = (sequence = rint(0, 8_999_999)) => {
+  const subscriber = String(10_000_000 + sequence).slice(-8);
+  return `(${DEMO_DDD}) 9${subscriber.slice(0, 4)}-${subscriber.slice(4)}`;
+};
 /** Mesma normalização do `OptOutService`/fila: só dígitos, com DDI. */
 const normalizePhone = (value: string) => `55${value.replace(/\D/g, "")}`;
 
 const HOUR_MS = 3_600_000;
 const MIN_MS = 60_000;
+
+type SeedAppointmentStatus = "pedido" | "agendado" | "confirmado" | "compareceu" | "faltou" | "cancelado";
+
+interface DemoFixture {
+  conversationStatus: "agendada" | "em_andamento";
+  channel: "web" | "whatsapp";
+  startsHoursAgo?: number;
+  appointment?: { status: SeedAppointmentStatus; daysFromNow: number };
+}
+
+const appointmentFixture = (
+  status: SeedAppointmentStatus,
+  daysFromNow: number,
+  channel: DemoFixture["channel"],
+): DemoFixture => ({
+  conversationStatus: "agendada",
+  channel,
+  appointment: { status, daysFromNow },
+});
+
+/**
+ * Baseline obrigatório da P1.2. O restante do volume continua aleatório, mas
+ * nenhuma execução pode perder um estado da agenda/fila nem os dois handoffs.
+ */
+const DEMO_BASELINE: DemoFixture[] = [
+  {
+    conversationStatus: "em_andamento",
+    channel: "whatsapp",
+    startsHoursAgo: 2,
+  },
+  {
+    conversationStatus: "em_andamento",
+    channel: "whatsapp",
+    startsHoursAgo: 4,
+  },
+  appointmentFixture("compareceu", -16, "web"),
+  appointmentFixture("compareceu", -15, "whatsapp"),
+  appointmentFixture("compareceu", -14, "web"),
+  appointmentFixture("compareceu", -13, "whatsapp"),
+  appointmentFixture("compareceu", -12, "web"),
+  appointmentFixture("compareceu", -11, "whatsapp"),
+  appointmentFixture("compareceu", -10, "web"),
+  appointmentFixture("compareceu", -9, "whatsapp"),
+  appointmentFixture("faltou", -8, "whatsapp"),
+  appointmentFixture("faltou", -7, "whatsapp"),
+  appointmentFixture("cancelado", -6, "web"),
+  appointmentFixture("agendado", 1, "whatsapp"),
+  appointmentFixture("agendado", 2, "web"),
+  appointmentFixture("confirmado", 3, "whatsapp"),
+  appointmentFixture("confirmado", 4, "web"),
+  appointmentFixture("pedido", 5, "web"),
+];
 
 interface Msg {
   role: "user" | "assistant";
@@ -104,11 +176,15 @@ interface Msg {
 }
 
 async function main(): Promise<void> {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL ?? "" });
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL ?? "",
+  });
   const prisma = new PrismaClient({ adapter });
 
   try {
-    const clinic = await prisma.clinic.findUnique({ where: { id: DEMO_CLINIC_ID } });
+    const clinic = await prisma.clinic.findUnique({
+      where: { id: DEMO_CLINIC_ID },
+    });
     if (!clinic) {
       throw new Error("Clínica demo não encontrada — rode `db:seed` (catálogo) antes do demo.");
     }
@@ -116,16 +192,28 @@ async function main(): Promise<void> {
     // Limpa dados de conversa anteriores (mantém catálogo/tags/settings).
     // Cards do funil primeiro (FK RESTRICT p/ coluna); colunas personalizadas
     // depois. As 5 do sistema são reaproveitadas (upsert por systemStage).
-    await prisma.outboundMessage.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
-    await prisma.contactOptOut.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
-    await prisma.pipelineCard.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
+    await prisma.outboundMessage.deleteMany({
+      where: { clinicId: DEMO_CLINIC_ID },
+    });
+    await prisma.contactOptOut.deleteMany({
+      where: { clinicId: DEMO_CLINIC_ID },
+    });
+    await prisma.pipelineCard.deleteMany({
+      where: { clinicId: DEMO_CLINIC_ID },
+    });
     await prisma.pipelineStage.deleteMany({
       where: { clinicId: DEMO_CLINIC_ID, systemStage: null },
     });
-    await prisma.conversationTag.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
-    await prisma.appointment.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
+    await prisma.conversationTag.deleteMany({
+      where: { clinicId: DEMO_CLINIC_ID },
+    });
+    await prisma.appointment.deleteMany({
+      where: { clinicId: DEMO_CLINIC_ID },
+    });
     await prisma.message.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
-    await prisma.conversation.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
+    await prisma.conversation.deleteMany({
+      where: { clinicId: DEMO_CLINIC_ID },
+    });
     await prisma.lead.deleteMany({ where: { clinicId: DEMO_CLINIC_ID } });
 
     const TOTAL = 90;
@@ -149,12 +237,26 @@ async function main(): Promise<void> {
     }[] = [];
 
     for (let i = 0; i < TOTAL; i++) {
+      const fixture: DemoFixture | undefined = DEMO_BASELINE[i];
       const r = Math.random();
-      const status = r < 0.32 ? "agendada" : r < 0.7 ? "em_andamento" : "abandonada";
+      // O baseline já traz 16 agendamentos; ~21% das 72 restantes mantém o
+      // volume total perto dos 31 registros validados na primeira rodada.
+      const status: "agendada" | "em_andamento" | "abandonada" = fixture
+        ? fixture.conversationStatus
+        : r < 0.21
+          ? "agendada"
+          : r < 0.69
+            ? "em_andamento"
+            : "abandonada";
       // "em andamento" ficam nas últimas ~18h (sobrevivem ao cron de abandono de
       // 24h); agendadas/abandonadas (terminais) se espalham por ~50 dias.
       let start: Date;
-      if (status === "em_andamento") {
+      if (fixture?.startsHoursAgo !== undefined) {
+        start = new Date(Date.now() - fixture.startsHoursAgo * HOUR_MS);
+      } else if (fixture?.appointment) {
+        const daysAgo = fixture.appointment.daysFromNow < 0 ? -fixture.appointment.daysFromNow + 5 : 3;
+        start = dateAtDayOffset(-daysAgo, 10);
+      } else if (status === "em_andamento") {
         start = new Date(Date.now() - rint(1, 18) * HOUR_MS - rint(0, 59) * MIN_MS);
       } else {
         const day = new Date();
@@ -167,17 +269,23 @@ async function main(): Promise<void> {
       // ~1/3 dos agendamentos vem de um paciente que já agendou antes
       // (recorrente): reusa o lead em vez de criar um novo.
       const returning =
-        status === "agendada" && scheduledLeadIds.length > 0 && Math.random() < 0.35;
+        fixture === undefined && status === "agendada" && scheduledLeadIds.length > 0 && Math.random() < 0.35;
       // ~40% das conversas chegam pelo WhatsApp — é o canal que as telas de
       // operação (handoff, opt-out, fila) precisam mostrar.
-      const channel = Math.random() < 0.4 ? "whatsapp" : "web";
+      const channel = fixture?.channel ?? (Math.random() < 0.4 ? "whatsapp" : "web");
       const lead = returning
         ? await prisma.lead.findUniqueOrThrow({
             where: { id: pick(scheduledLeadIds) },
             select: { id: true, phone: true },
           })
         : await prisma.lead.create({
-            data: { clinicId: DEMO_CLINIC_ID, name: pick(NAMES), phone: phone(), source: channel, createdAt: start },
+            data: {
+              clinicId: DEMO_CLINIC_ID,
+              name: pick(NAMES),
+              phone: phone(i),
+              source: channel,
+              createdAt: start,
+            },
             select: { id: true, phone: true },
           });
 
@@ -186,12 +294,20 @@ async function main(): Promise<void> {
       let t = start.getTime();
       msgs.push({ role: "user", content: scenario.userText, at: new Date(t) });
       t += rint(1, 3) * MIN_MS;
-      msgs.push({ role: "assistant", content: scenario.reply, at: new Date(t) });
+      msgs.push({
+        role: "assistant",
+        content: scenario.reply,
+        at: new Date(t),
+      });
 
       const engages = status !== "abandonada";
       if (engages) {
         t += rint(2, 6) * MIN_MS;
-        msgs.push({ role: "user", content: "Perfeito! E como faço para agendar?", at: new Date(t) });
+        msgs.push({
+          role: "user",
+          content: "Perfeito! E como faço para agendar?",
+          at: new Date(t),
+        });
         t += rint(1, 3) * MIN_MS;
         msgs.push({
           role: "assistant",
@@ -200,7 +316,11 @@ async function main(): Promise<void> {
         });
         if (status === "agendada") {
           t += rint(2, 5) * MIN_MS;
-          msgs.push({ role: "user", content: "Pode ser na próxima terça de manhã.", at: new Date(t) });
+          msgs.push({
+            role: "user",
+            content: "Pode ser na próxima terça de manhã.",
+            at: new Date(t),
+          });
           t += rint(1, 2) * MIN_MS;
           msgs.push({
             role: "assistant",
@@ -213,8 +333,7 @@ async function main(): Promise<void> {
       const lastAt = msgs[msgs.length - 1].at;
       // Duas conversas do WhatsApp em andamento ficam com um atendente (P0.2):
       // é o que mostra o badge, o botão "Devolver para IA" e a caixa de resposta.
-      const handoff =
-        channel === "whatsapp" && status === "em_andamento" && handoffs < 2;
+      const handoff = channel === "whatsapp" && status === "em_andamento" && handoffs < 2;
       if (handoff) handoffs += 1;
       const convo = await prisma.conversation.create({
         data: {
@@ -274,7 +393,9 @@ async function main(): Promise<void> {
         // Horário real (F9): passado → compareceu/faltou/cancelado; futuro →
         // agendado/confirmado/pedido. É o que dá conteúdo à /agenda e às
         // automações (lembretes, remarcação após falta, retorno).
-        const startsAt = appointmentSlot(start);
+        const startsAt = fixture?.appointment
+          ? dateAtDayOffset(fixture.appointment.daysFromNow, 9 + (i % 8))
+          : appointmentSlot(start);
         const appointment = await prisma.appointment.create({
           data: {
             clinicId: DEMO_CLINIC_ID,
@@ -284,7 +405,7 @@ async function main(): Promise<void> {
             preferredTime: "Próxima terça de manhã",
             startsAt,
             endsAt: new Date(startsAt.getTime() + 30 * MIN_MS),
-            status: appointmentStatus(startsAt),
+            status: fixture?.appointment?.status ?? appointmentStatus(startsAt),
             source: "bot",
             createdAt: lastAt,
           },
@@ -317,6 +438,7 @@ async function main(): Promise<void> {
     const pipeline = await seedPipeline(prisma, convoRows);
     const optOuts = await seedOptOuts(prisma, appointments);
     const outbound = await seedOutbound(prisma, appointments, optOuts);
+    assertDemoCoverage(appointments, outbound, optOuts.length, handoffs);
     const membership = await seedMembership(prisma);
 
     const byStatus = appointments.reduce<Record<string, number>>((acc, a) => {
@@ -355,12 +477,57 @@ const HANDOFF_REASONS = [
 
 interface SeedAppointment {
   id: string;
-  status: "pedido" | "agendado" | "confirmado" | "compareceu" | "faltou" | "cancelado";
+  status: SeedAppointmentStatus;
   startsAt: Date;
   leadId: string;
   conversationId: string;
   /** Telefone normalizado do lead (o que a fila usa). */
   phone: string;
+}
+
+/** Data relativa ao dia da execução; não cria fixtures que expiram com o calendário. */
+function dateAtDayOffset(daysFromNow: number, hour: number): Date {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  date.setHours(hour, 0, 0, 0);
+  return date;
+}
+
+function assertDemoCoverage(
+  appointments: SeedAppointment[],
+  outbound: Record<"pendente" | "enviado" | "falhou" | "suprimido", number>,
+  optOuts: number,
+  handoffs: number,
+): void {
+  const requiredStatuses: SeedAppointmentStatus[] = [
+    "pedido",
+    "agendado",
+    "confirmado",
+    "compareceu",
+    "faltou",
+    "cancelado",
+  ];
+  const present = new Set(appointments.map((appointment) => appointment.status));
+  const missingAppointments = requiredStatuses.filter((status) => !present.has(status));
+  const missingOutbound = Object.entries(outbound)
+    .filter(([, count]) => count === 0)
+    .map(([status]) => status);
+  const outboundMatchesBaseline =
+    outbound.pendente === 4 &&
+    outbound.enviado === 8 &&
+    outbound.falhou === 2 &&
+    outbound.suprimido === 2;
+  if (
+    missingAppointments.length ||
+    missingOutbound.length ||
+    !outboundMatchesBaseline ||
+    optOuts !== 2 ||
+    handoffs !== 2
+  ) {
+    throw new Error(
+      `Demo incompleta: agenda=[${missingAppointments.join(", ") || "ok"}], fila=${JSON.stringify(outbound)}, opt-outs=${optOuts}, handoffs=${handoffs}.`,
+    );
+  }
 }
 
 /**
@@ -391,10 +558,7 @@ function appointmentStatus(startsAt: Date): SeedAppointment["status"] {
  * à recepção. Telefones de leads reais da demo, para o painel do lead mostrar
  * "descadastrado" e a fila mostrar a supressão correspondente.
  */
-async function seedOptOuts(
-  prisma: PrismaClient,
-  appointments: SeedAppointment[],
-): Promise<SeedAppointment[]> {
+async function seedOptOuts(prisma: PrismaClient, appointments: SeedAppointment[]): Promise<SeedAppointment[]> {
   // Um lead recorrente pode ter duas faltas: escolhe uma por telefone, senão
   // o mesmo descadastro (e a mesma supressão) seria gravado duas vezes.
   const byPhone = new Map<string, SeedAppointment>();
@@ -550,9 +714,21 @@ async function seedMembership(prisma: PrismaClient): Promise<string | null> {
 
 /** Clientes manuais de exemplo (chegaram fora do chatbot) para o board. */
 const MANUAL_CLIENTS: { name: string; stage: FunnelStage; note: string }[] = [
-  { name: "Roberta Amaral", stage: "novo_contato", note: "Indicação da Dra. Helena — quer avaliar clareamento." },
-  { name: "Marcos Vinícius", stage: "quero_agendar", note: "Ligou no balcão pedindo orçamento de implante." },
-  { name: "Sandra Yamada", stage: "escolha_data", note: "Pediu horário na parte da manhã, aguardando retorno." },
+  {
+    name: "Roberta Amaral",
+    stage: "novo_contato",
+    note: "Indicação da Dra. Helena — quer avaliar clareamento.",
+  },
+  {
+    name: "Marcos Vinícius",
+    stage: "quero_agendar",
+    note: "Ligou no balcão pedindo orçamento de implante.",
+  },
+  {
+    name: "Sandra Yamada",
+    stage: "escolha_data",
+    note: "Pediu horário na parte da manhã, aguardando retorno.",
+  },
 ];
 
 /**
@@ -563,14 +739,22 @@ const MANUAL_CLIENTS: { name: string; stage: FunnelStage; note: string }[] = [
  */
 async function seedPipeline(
   prisma: PrismaClient,
-  convos: { conversationId: string; leadId: string; status: string; engaged: boolean; lastAt: Date }[],
+  convos: {
+    conversationId: string;
+    leadId: string;
+    status: string;
+    engaged: boolean;
+    lastAt: Date;
+  }[],
 ): Promise<{ stages: number; cards: number; manual: number }> {
   // 1. Colunas do sistema (upsert por systemStage) na ordem do funil.
   const stageIdBySystem = new Map<FunnelStage, string>();
   for (let i = 0; i < FUNNEL_STAGES.length; i++) {
     const systemStage = FUNNEL_STAGES[i];
     const stage = await prisma.pipelineStage.upsert({
-      where: { clinicId_systemStage: { clinicId: DEMO_CLINIC_ID, systemStage } },
+      where: {
+        clinicId_systemStage: { clinicId: DEMO_CLINIC_ID, systemStage },
+      },
       update: {},
       create: {
         clinicId: DEMO_CLINIC_ID,
@@ -622,11 +806,15 @@ async function seedPipeline(
   for (let i = 0; i < MANUAL_CLIENTS.length; i++) {
     const m = MANUAL_CLIENTS[i];
     const lead = await prisma.lead.create({
-      data: { clinicId: DEMO_CLINIC_ID, name: m.name, phone: phone(), source: "manual" },
+      data: {
+        clinicId: DEMO_CLINIC_ID,
+        name: m.name,
+        phone: phone(),
+        source: "manual",
+      },
       select: { id: true },
     });
-    const stageId =
-      i === MANUAL_CLIENTS.length - 1 ? custom.id : stageIdBySystem.get(m.stage)!;
+    const stageId = i === MANUAL_CLIENTS.length - 1 ? custom.id : stageIdBySystem.get(m.stage)!;
     await prisma.pipelineCard.create({
       data: {
         clinicId: DEMO_CLINIC_ID,

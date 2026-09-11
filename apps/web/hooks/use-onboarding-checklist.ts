@@ -15,6 +15,9 @@ export function useOnboardingChecklist() {
   return useQuery({
     queryKey: ONBOARDING_CHECKLIST_KEY,
     queryFn: () => apiFetch<OnboardingChecklistDto>("/onboarding/checklist"),
+    // Os links levam para outra rota. Ao voltar, a verdade derivada precisa
+    // vencer o staleTime global mesmo que a configuração tenha levado < 30s.
+    refetchOnMount: "always",
     refetchOnWindowFocus: true,
   });
 }

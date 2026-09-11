@@ -98,6 +98,12 @@ describe('AutomationSettingsService (configuração das automações · F9)', ()
       DEFAULT_AUTOMATION_SETTINGS.lembrete1d.template,
     );
     expect(updated.dailyCap).toBe(DEFAULT_AUTOMATION_SETTINGS.dailyCap);
+    expect(prismaMock.automationSettings.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { clinicId: CLINIC },
+        data: expect.objectContaining({ reviewedAt: expect.any(Date) }),
+      }),
+    );
   });
 
   it('update de uma regra aceita campos soltos sem apagar os irmãos', async () => {
