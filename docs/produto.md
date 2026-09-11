@@ -306,7 +306,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 
 O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial.
 
-**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **5 de 12 concluídos** e mais 5 (PRs 5–9) com código completo aguardando merge. Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
+**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **10 de 12 concluídos** — faltam o CI dos fluxos críticos (PR 11) e o runbook de produção (PR 12). Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
 
 **Riscos abertos, registrados honestamente:**
 
