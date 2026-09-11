@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/tooltip";
 import { brand } from "@/lib/brand";
 import { useWhatsappConnection } from "@/hooks/use-whatsapp-connection";
-import { WHATSAPP_STATE_LABELS } from "@dentaltrack/shared";
 import { useRole } from "@/components/auth/role-context";
 
 const TITLES: Record<string, string> = {
@@ -79,12 +78,22 @@ export function Topbar() {
   );
 }
 
-/** Aviso global quando existe uma instância que não está conectada. */
+/**
+ * Aviso global de que a sessão do WhatsApp caiu.
+ *
+ * **Só para `desconectado`, e não para "diferente de conectado".** Enquanto o
+ * estado é `aguardando_leitura` o dono está na tela de pareamento, olhando o
+ * QR: a faixa vermelha dizia que algo deu errado no exato momento em que ele
+ * estava fazendo dar certo, e o link "Ver conexão" apontava para a página em
+ * que ele já estava. Um alerta que aparece durante a operação normal ensina a
+ * ignorá-lo — e é o mesmo alerta que precisa funcionar quando a sessão cair de
+ * verdade.
+ */
 export function WhatsappStatusBanner() {
   const { isOwner } = useRole();
   const { data } = useWhatsappConnection(isOwner);
   if (!isOwner) return null;
-  if (!data?.instanceName || data.state === "conectado") return null;
+  if (data?.state !== "desconectado") return null;
 
   return (
     <div
@@ -95,12 +104,14 @@ export function WhatsappStatusBanner() {
       }}
     >
       <WifiOff className="size-4 shrink-0" />
-      <span>WhatsApp: {WHATSAPP_STATE_LABELS[data.state].toLowerCase()}.</span>
+      <span>
+        A sessão do WhatsApp caiu — o assistente não está recebendo mensagens.
+      </span>
       <Link
         href="/settings?tab=whatsapp"
         className="font-semibold underline underline-offset-2"
       >
-        Ver conexão
+        Reconectar
       </Link>
     </div>
   );

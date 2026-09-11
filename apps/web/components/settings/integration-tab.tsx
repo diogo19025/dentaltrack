@@ -495,7 +495,7 @@ function ProviderPanel({
               <Note>
                 O Google Agenda não registra presença (compareceu/faltou), então
                 as automações de remarcação pós-falta e de retorno de manutenção
-                não disparam com este provedor. Lembretes de consulta funcionam
+                não disparam com este provedor. Lembretes de agendamento funcionam
                 normalmente.
               </Note>
             </div>
@@ -806,7 +806,7 @@ function SupportCode({ requestId }: { requestId: string }) {
 function CredentialRequest() {
   const text = [
     "Olá! Preciso das credenciais de acesso à API REST do Clinicorp para",
-    "integrar a agenda da minha clínica a um sistema de atendimento.",
+    "integrar a agenda da minha empresa a um sistema de atendimento.",
     "",
     "Poderiam me enviar:",
     "1. Usuário da API (não é o login do painel web)",
