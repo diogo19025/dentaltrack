@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { chatMessageSchema } from "./chat";
-import { channelSchema, conversationStatusSchema } from "./enums";
+import { type Channel, channelSchema, conversationStatusSchema } from "./enums";
 import { tagColorSchema } from "./tags";
 
 /**
@@ -28,6 +28,26 @@ export type DetectedTag = z.infer<typeof detectedTagSchema>;
  * o dashboard, que contam por status.
  */
 const handoffAtSchema = z.string().nullable();
+
+/**
+ * Canais em que o handoff existe de verdade.
+ *
+ * A pausa da IA é aplicada no `ChatService.processInboundMessage`, que é o
+ * caminho dos canais **sem login** — hoje, só o WhatsApp. O `/chat` do web
+ * roda por `streamMessage` e é o console de teste do dono: quem digita ali já
+ * é a pessoa da empresa, então "assumir o atendimento" não tem para quem ser
+ * assumido, e marcar a conversa produziria um estado que nada respeita.
+ *
+ * A lista é compartilhada de propósito: a tela usa para não oferecer o botão e
+ * a API usa para recusar a operação. Fossem duas listas, elas divergiriam — foi
+ * exatamente o que aconteceu no PR 5, em que só a tela conhecia a regra e ela
+ * estava escrita em lugar nenhum.
+ */
+export const HANDOFF_CHANNELS = ["whatsapp"] as const satisfies readonly Channel[];
+
+export function supportsHandoff(channel: Channel): boolean {
+  return (HANDOFF_CHANNELS as readonly Channel[]).includes(channel);
+}
 
 /** Item da tabela "Conversas recentes". */
 export const conversationSummarySchema = z.object({

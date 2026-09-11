@@ -1,6 +1,10 @@
 "use client";
 
-import type { ChatMessageDto, ConversationDetail } from "@dentaltrack/shared";
+import {
+  type ChatMessageDto,
+  type ConversationDetail,
+  supportsHandoff,
+} from "@dentaltrack/shared";
 import {
   Bell,
   Bot,
@@ -92,6 +96,9 @@ export function ConversationDetailContent({
   const [replyOpen, setReplyOpen] = useState(false);
   const assume = useAssumeConversation(detail.id);
   const release = useReleaseConversation(detail.id);
+  // O handoff só existe onde a IA de fato é pausada (hoje, WhatsApp). A regra
+  // mora no `shared` porque a API recusa a mesma operação — ver `HANDOFF_CHANNELS`.
+  const canHandoff = supportsHandoff(detail.channel);
   const handoffActive = detail.handoffAt !== null;
   const handoffPending = assume.isPending || release.isPending;
   const handoffError = assume.isError || release.isError;
@@ -123,14 +130,20 @@ export function ConversationDetailContent({
         </Field>
         <div className="col-span-full">
           <Field label="Responsável pelo atendimento">
-            <span className="flex flex-wrap items-center gap-2">
-              <HandoffBadge active={handoffActive} />
-              {handoffActive && detail.handoffAt && (
-                <span className="text-[12.5px] text-muted-foreground">
-                  desde {formatCaptured(detail.handoffAt)}
-                </span>
-              )}
-            </span>
+            {canHandoff ? (
+              <span className="flex flex-wrap items-center gap-2">
+                <HandoffBadge active={handoffActive} />
+                {handoffActive && detail.handoffAt && (
+                  <span className="text-[12.5px] text-muted-foreground">
+                    desde {formatCaptured(detail.handoffAt)}
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                Conversa de teste — não há cliente do outro lado para assumir.
+              </span>
+            )}
           </Field>
         </div>
         <div className="col-span-full">
@@ -151,23 +164,27 @@ export function ConversationDetailContent({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 justify-self-start">
-        <Button
-          type="button"
-          variant={handoffActive ? "outline" : "default"}
-          disabled={handoffPending}
-          onClick={() => (handoffActive ? release.mutate() : assume.mutate({}))}
-        >
-          {handoffActive ? (
-            <RefreshCw className="size-4" />
-          ) : (
-            <Headphones className="size-4" />
-          )}
-          {handoffPending
-            ? "Atualizando…"
-            : handoffActive
-              ? "Devolver para IA"
-              : "Assumir atendimento"}
-        </Button>
+        {canHandoff && (
+          <Button
+            type="button"
+            variant={handoffActive ? "outline" : "default"}
+            disabled={handoffPending}
+            onClick={() =>
+              handoffActive ? release.mutate() : assume.mutate({})
+            }
+          >
+            {handoffActive ? (
+              <RefreshCw className="size-4" />
+            ) : (
+              <Headphones className="size-4" />
+            )}
+            {handoffPending
+              ? "Atualizando…"
+              : handoffActive
+                ? "Devolver para IA"
+                : "Assumir atendimento"}
+          </Button>
+        )}
 
         {wa && handoffActive && (
           <Button type="button" onClick={() => setReplyOpen(true)}>

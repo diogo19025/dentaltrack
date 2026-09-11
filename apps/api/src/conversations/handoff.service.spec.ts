@@ -21,8 +21,12 @@ function setup() {
   return { service, prisma };
 }
 
-/** Estado normal: a IA responde. */
-const comIa = { handoffAt: null, handoffReason: null };
+/** Estado normal: a IA responde, num canal onde o handoff existe. */
+const comIa = {
+  handoffAt: null,
+  handoffReason: null,
+  channel: 'whatsapp' as const,
+};
 
 describe('HandoffService (P0.2)', () => {
   describe('assume', () => {
@@ -60,6 +64,7 @@ describe('HandoffService (P0.2)', () => {
     it('assumir o que já está assumido não reinicia o relógio', async () => {
       const { service, prisma } = setup();
       prisma.conversation.findFirst.mockResolvedValueOnce({
+        channel: 'whatsapp' as const,
         handoffAt: ASSUMIDA_EM,
         handoffReason: 'Cliente irritado',
       });
@@ -94,12 +99,32 @@ describe('HandoffService (P0.2)', () => {
         prisma.conversation.update.mock.calls[0][0].data.handoffBy,
       ).toBeNull();
     });
+    /**
+     * A falha que este teste guarda: a tela oferecia "Assumir atendimento" em
+     * conversa do chat web, onde o gate da IA não existe (`streamMessage` não
+     * consulta `handoffAt`). O `handoffAt` era gravado, o badge dizia
+     * "atendimento humano", o bot continuava respondendo — e a fila de saída
+     * passava a suprimir mensagens por causa de um estado que não valia nada.
+     */
+    it('recusa conversa do chat web, onde a pausa não é aplicada', async () => {
+      const { service, prisma } = setup();
+      prisma.conversation.findFirst.mockResolvedValueOnce({
+        ...comIa,
+        channel: 'web' as const,
+      });
+
+      await expect(
+        service.assume(CLINIC, CONVERSATION, USER),
+      ).rejects.toMatchObject({ status: 422 });
+      expect(prisma.conversation.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('release', () => {
     it('limpa data, autor e motivo — a IA volta a responder', async () => {
       const { service, prisma } = setup();
       prisma.conversation.findFirst.mockResolvedValueOnce({
+        channel: 'whatsapp' as const,
         handoffAt: ASSUMIDA_EM,
         handoffReason: 'Cliente irritado',
       });

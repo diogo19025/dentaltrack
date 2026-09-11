@@ -155,6 +155,29 @@ describe("ConversationDetailDialog", () => {
     expect(mutate).toHaveBeenCalledWith({});
   });
 
+  /**
+   * O `/chat` do web é o console de teste do dono: quem digita ali é a própria
+   * equipe, e a pausa da IA não é aplicada nesse caminho (`streamMessage` não
+   * consulta `handoffAt`). Oferecer o botão prometia algo que o backend não
+   * fazia — e a API agora recusa a operação com 422.
+   */
+  it("conversa do chat web não oferece assumir atendimento", () => {
+    mockUseConversationDetail.mockReturnValue(
+      hookResult({ data: makeDetail({ channel: "web", contactPhone: null }) }),
+    );
+
+    render(
+      <ConversationDetailDialog conversationId="c-1" onOpenChange={() => {}} />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /assumir atendimento/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/não há cliente do outro lado para assumir/i),
+    ).toBeInTheDocument();
+  });
+
   it("handoff ativo mostra o badge, a resposta e permite devolver para a IA", () => {
     const mutate = vi.fn();
     mockUseReleaseConversation.mockReturnValue(
