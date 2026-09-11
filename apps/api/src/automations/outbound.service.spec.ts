@@ -73,7 +73,9 @@ describe('OutboundService (fila de saída · F9)', () => {
   const configMock = {
     // Sem pausa entre envios nos testes — a higiene anti-ban é verificada pelo
     // caminho do código, não esperando 4 segundos por mensagem.
-    get: jest.fn((key: string) =>
+    // Retorno tipado como `unknown`: o mesmo mock também devolve `false` para
+    // `AUTOMATIONS_ENABLED` nos testes do kill switch.
+    get: jest.fn((key: string): unknown =>
       key === 'OUTBOUND_THROTTLE_MS' ? 0 : undefined,
     ),
   };
@@ -666,6 +668,101 @@ describe('OutboundService (fila de saída · F9)', () => {
 
       const summary = await outbound.dispatchDue(NOW);
       expect(summary.enviados).toBe(1);
+    });
+  });
+  /**
+   * O kill switch e o teto diário existem para conter **disparo ativo** — a
+   * iniciativa que arrisca o número da empresa no Baileys. Aplicá-los à
+   * `resposta_ia` invertia o propósito: proteger o número passava a significar
+   * calar o assistente com um cliente esperando resposta.
+   */
+  describe('dispatchDue — o que contém disparo ativo não cala resposta reativa', () => {
+    const base = {
+      id: 'msg-1',
+      clinicId: CLINIC,
+      dedupeKey: 'x',
+      body: 'Oi!',
+      phone: '5511999998888',
+      conversationId: CONVERSATION,
+      appointmentId: null,
+      createdAt: new Date('2026-09-08T13:00:00.000Z'),
+      retries: 0,
+    };
+
+    // `jest.clearAllMocks()` do beforeEach limpa as chamadas, **não** as
+    // implementações: sem isto o kill switch de um teste vaza para o seguinte.
+    afterEach(() => {
+      configMock.get.mockImplementation((key: string) =>
+        key === 'OUTBOUND_THROTTLE_MS' ? 0 : undefined,
+      );
+    });
+
+    /** `AUTOMATIONS_ENABLED=false`, mantendo o throttle zerado dos testes. */
+    function desligarAutomacoes() {
+      configMock.get.mockImplementation((key: string) => {
+        if (key === 'AUTOMATIONS_ENABLED') return false;
+        if (key === 'OUTBOUND_THROTTLE_MS') return 0;
+        return undefined;
+      });
+    }
+
+    it('com o kill switch ligado, a fila busca só os tipos reativos', async () => {
+      desligarAutomacoes();
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([]);
+
+      await outbound.dispatchDue(NOW);
+
+      expect(prismaMock.outboundMessage.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ kind: { in: ['resposta_ia'] } }),
+        }),
+      );
+    });
+
+    it('com o kill switch ligado, a resposta da IA ainda sai', async () => {
+      desligarAutomacoes();
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        { ...base, kind: 'resposta_ia' as const },
+      ]);
+
+      const summary = await outbound.dispatchDue(NOW);
+
+      expect(summary.enviados).toBe(1);
+      expect(evolutionMock.sendText).toHaveBeenCalledTimes(1);
+    });
+
+    it('sem o kill switch, a busca não filtra por tipo', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([]);
+
+      await outbound.dispatchDue(NOW);
+
+      const where = prismaMock.outboundMessage.findMany.mock.calls[0][0].where;
+      expect(where.kind).toBeUndefined();
+    });
+
+    it('o teto diário suprime o lembrete', async () => {
+      // `count` é o que o teto lê: acima do limite padrão da empresa.
+      prismaMock.outboundMessage.count.mockResolvedValue(9_999);
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        { ...base, kind: 'lembrete_1d' as const },
+      ]);
+
+      const summary = await outbound.dispatchDue(NOW);
+
+      expect(summary.suprimidos).toBe(1);
+      expect(evolutionMock.sendText).not.toHaveBeenCalled();
+    });
+
+    it('o teto diário não suprime a resposta da IA', async () => {
+      prismaMock.outboundMessage.count.mockResolvedValue(9_999);
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        { ...base, kind: 'resposta_ia' as const },
+      ]);
+
+      const summary = await outbound.dispatchDue(NOW);
+
+      expect(summary.enviados).toBe(1);
+      expect(evolutionMock.sendText).toHaveBeenCalledTimes(1);
     });
   });
 });

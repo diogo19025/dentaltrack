@@ -31,6 +31,17 @@ import { HolidaysService } from './holidays.service';
 import { OptOutService } from './opt-out.service';
 
 /**
+ * Tipos **reativos**: resposta a alguém que acabou de escrever, não iniciativa
+ * nossa. Toda regra que existe para conter disparo ativo — janela de horário,
+ * teto diário, kill switch — precisa perguntar por esta lista antes de se
+ * aplicar, porque nenhuma delas foi pensada para silenciar um atendimento em
+ * andamento.
+ */
+const REACTIVE_KINDS = [
+  'resposta_ia',
+] as const satisfies readonly AutomationKind[];
+
+/**
  * Quanto cada tipo tolera ser adiado para caber na janela de envio.
  *
  * A distinção importa: um lembrete de 3 dias pode muito bem sair na manhã
@@ -204,16 +215,42 @@ export class OutboundService {
    */
   async dispatchDue(now = new Date()): Promise<DispatchSummary> {
     const summary: DispatchSummary = { enviados: 0, suprimidos: 0, falhas: 0 };
-    if (!this.enabled()) return summary;
+
+    // O kill switch (`AUTOMATIONS_ENABLED=false`) para **disparo ativo**, que é
+    // o que arrisca o número da empresa. Ele parava a fila inteira, e isso
+    // incluía a `resposta_ia` — a resposta do assistente a um cliente que
+    // acabou de escrever, que só passa por aqui quando o envio direto falhou.
+    //
+    // O efeito era o oposto do pretendido: desligar as automações para
+    // proteger o número passava a **calar o bot com o cliente esperando**, sem
+    // nada na tela dizendo por quê. É a mesma distinção que a janela de envio
+    // já fazia (`respectSendWindow: false` para a resposta reativa) e que
+    // faltava aqui.
+    const proactiveEnabled = this.enabled();
 
     await this.releaseStaleClaims(now);
 
     const due = await this.prisma.outboundMessage.findMany({
-      where: { status: 'pendente', scheduledFor: { lte: now } },
+      where: {
+        status: 'pendente',
+        scheduledFor: { lte: now },
+        ...(proactiveEnabled ? {} : { kind: { in: [...REACTIVE_KINDS] } }),
+      },
       orderBy: { scheduledFor: 'asc' },
       take: this.batchSize(),
     });
     if (due.length === 0) return summary;
+
+    if (!proactiveEnabled) {
+      // Sai no log porque a combinação "kill switch ligado + mensagens saindo"
+      // parece um defeito para quem estiver investigando, e não é.
+      this.logger.log({
+        event: 'outbound.dispatch',
+        outcome: 'ok',
+        killSwitch: true,
+        reativas: due.length,
+      });
+    }
 
     for (const message of due) {
       const claimed = await this.prisma.outboundMessage.updateMany({
@@ -492,7 +529,15 @@ export class OutboundService {
       return 'suprimido';
     }
 
-    if (await this.reachedDailyCap(message.clinicId)) {
+    // O teto diário conta o que **nós** iniciamos. Aplicá-lo à resposta reativa
+    // fazia um dia cheio de lembretes calar o assistente com um cliente
+    // escrevendo — e como o teto existe justamente para proteger o número, a
+    // conta ficava invertida: quanto mais a empresa usava as automações, menos
+    // ela conseguia responder a quem procurou.
+    if (
+      !isReactiveKind(message.kind) &&
+      (await this.reachedDailyCap(message.clinicId))
+    ) {
       await this.suppress(message.id, 'teto_diario');
       return 'suprimido';
     }
@@ -752,6 +797,11 @@ function isUniqueViolation(err: unknown): boolean {
     err !== null &&
     (err as { code?: unknown }).code === 'P2002'
   );
+}
+
+/** A mensagem é resposta a alguém, e não iniciativa nossa? Ver `REACTIVE_KINDS`. */
+function isReactiveKind(kind: AutomationKind): boolean {
+  return (REACTIVE_KINDS as readonly AutomationKind[]).includes(kind);
 }
 
 function isReminderKind(
