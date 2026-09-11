@@ -232,6 +232,10 @@ model Lead {
   /// sincronização da agenda; é o que evita criar um lead duplicado a cada
   /// consulta importada e o que permite achar o paciente antes de agendar.
   externalId String?  @map("external_id")
+  /// Quando os dados pessoais foram anonimizados a pedido do titular (P1.5).
+  /// NULL = lead normal. A linha **não** é apagada: o histórico de atendimento
+  /// e as métricas diárias continuam valendo; o que sai é a identificação.
+  anonymizedAt DateTime? @map("anonymized_at")
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 

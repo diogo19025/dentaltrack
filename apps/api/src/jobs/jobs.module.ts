@@ -5,12 +5,14 @@ import { AutomationsModule } from '../automations/automations.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 import { AgendaJobs } from './agenda.jobs';
 import { MetricsJobs } from './metrics.jobs';
+import { RetentionJobs } from './retention.jobs';
 import { WhatsappJobs } from './whatsapp.jobs';
 
 /**
  * Jobs agendados. Registra o scheduler (`@nestjs/schedule`), o `MetricsJobs`
  * (abandono por inatividade + agregação diária, BE-3.4) e o `AgendaJobs`
- * (sincronização da agenda + planejamento/despacho das automações, F9).
+ * (sincronização da agenda + planejamento/despacho das automações, F9) e o
+ * `RetentionJobs` (expurgo da fila de saída antiga, P1.5 — nasce desligado).
  */
 @Module({
   imports: [
@@ -19,7 +21,7 @@ import { WhatsappJobs } from './whatsapp.jobs';
     AutomationsModule,
     WhatsappModule,
   ],
-  providers: [MetricsJobs, AgendaJobs, WhatsappJobs],
-  exports: [MetricsJobs, AgendaJobs, WhatsappJobs],
+  providers: [MetricsJobs, AgendaJobs, WhatsappJobs, RetentionJobs],
+  exports: [MetricsJobs, AgendaJobs, WhatsappJobs, RetentionJobs],
 })
 export class JobsModule {}

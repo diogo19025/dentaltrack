@@ -1,10 +1,13 @@
 import {
   BadRequestException,
+  Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Res,
   StreamableFile,
@@ -18,12 +21,15 @@ import {
   leadExportFormatSchema,
   type LeadDetail,
   type LeadImportResult,
+  type LeadPrivacy,
   type LeadsResponse,
 } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { UpdateOptOutDto } from './dto';
+import { LeadPrivacyService } from './lead-privacy.service';
 import { LeadsService } from './leads.service';
 import { LeadsExportService } from './leads-export.service';
 import { LeadsImportService } from './leads-import.service';
@@ -43,6 +49,7 @@ export class LeadsController {
     private readonly leads: LeadsService,
     private readonly exporter: LeadsExportService,
     private readonly importer: LeadsImportService,
+    private readonly privacy: LeadPrivacyService,
   ) {}
 
   @Get()
@@ -98,5 +105,38 @@ export class LeadsController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<LeadDetail> {
     return this.leads.detail(clinicId, id);
+  }
+
+  /**
+   * Direito de eliminação (P1.5) — **anonimiza**, não apaga: a linha do lead
+   * sustenta histórico e métricas que não são do titular. Owner-only por ser
+   * irreversível.
+   */
+  @Delete(':id/dados-pessoais')
+  @Roles('owner')
+  anonymize(
+    @ClinicId() clinicId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LeadPrivacy> {
+    return this.privacy.anonymize(clinicId, id);
+  }
+
+  /**
+   * Liga/desliga o descadastro das mensagens automáticas.
+   *
+   * **Owner-only**, ainda que descadastrar seja a direção protetora: a mesma
+   * rota faz o caminho de volta (`optedOut: false`), e reativar o envio para
+   * quem pediu para parar é a decisão que precisa de dono. O descadastro pelo
+   * próprio contato continua automático, pela palavra no WhatsApp, sem
+   * depender de ninguém na tela.
+   */
+  @Put(':id/opt-out')
+  @Roles('owner')
+  setOptOut(
+    @ClinicId() clinicId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: UpdateOptOutDto,
+  ): Promise<LeadPrivacy> {
+    return this.privacy.setOptOut(clinicId, id, body.optedOut);
   }
 }

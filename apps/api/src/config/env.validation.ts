@@ -109,6 +109,16 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => v !== 'false'),
+
+  // Expurgo periodico da fila de saida ja finalizada (P1.5). Nasce DESLIGADO:
+  // apagar dado de cliente sem ele pedir e pior do que guardar demais, e o
+  // default de `AUTOMATIONS_ENABLED` (ligado) seria a escolha errada aqui.
+  RETENTION_ENABLED: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((v) => v === 'true'),
+  // Janela de retencao em dias (default 365, piso de 30 no job).
+  DATA_RETENTION_DAYS: z.coerce.number().int().positive().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

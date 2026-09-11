@@ -48,6 +48,13 @@ export const leadSchema = z.object({
   /** Score de conversão 0–100 (inteiro), base da temperatura. */
   score: z.number(),
   temperature: leadTemperatureSchema,
+  /**
+   * Quando os dados pessoais deste lead foram anonimizados a pedido (P1.5).
+   * `null` = lead normal. Anonimizado, nome/telefone/e-mail já vêm vazios —
+   * o campo existe para a tela **dizer por quê** em vez de exibir um contato
+   * misteriosamente em branco.
+   */
+  anonymizedAt: z.string().nullable().default(null),
 });
 export type LeadDto = z.infer<typeof leadSchema>;
 
@@ -100,8 +107,33 @@ export type LeadAppointment = z.infer<typeof leadAppointmentSchema>;
 export const leadDetailSchema = leadSchema.extend({
   conversations: z.array(leadConversationSchema),
   appointments: z.array(leadAppointmentSchema),
+  /**
+   * O contato pediu para não receber mensagem automática (F9 · `ContactOptOut`).
+   * Vivia só no banco e no comportamento da fila; a partir do P1.5 a tela
+   * também mostra e permite alternar — um pedido de descadastro que ninguém
+   * consegue ver é um pedido que a equipe atropela por engano.
+   */
+  optedOut: z.boolean().default(false),
 });
 export type LeadDetail = z.infer<typeof leadDetailSchema>;
+
+/**
+ * Estado de privacidade de um lead (P1.5) — resposta das duas operações da
+ * LGPD, para a tela atualizar sem refazer o detalhe inteiro.
+ */
+export const leadPrivacySchema = z.object({
+  leadId: z.string().uuid(),
+  /** ISO 8601, ou `null` se o lead não foi anonimizado. */
+  anonymizedAt: z.string().nullable(),
+  optedOut: z.boolean(),
+});
+export type LeadPrivacy = z.infer<typeof leadPrivacySchema>;
+
+/** Corpo de PUT /leads/:id/opt-out. */
+export const updateOptOutSchema = z.object({
+  optedOut: z.boolean(),
+});
+export type UpdateOptOutInput = z.infer<typeof updateOptOutSchema>;
 
 /**
  * Exportação/importação de leads (F8). Export: GET /leads/export?format=…

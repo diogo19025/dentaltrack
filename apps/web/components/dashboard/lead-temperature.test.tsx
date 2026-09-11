@@ -17,6 +17,7 @@ const makeLead = (overrides: Partial<LeadDto> = {}): LeadDto => ({
   createdAt: "2026-06-10T12:00:00.000Z",
   score: 50,
   temperature: "medio",
+  anonymizedAt: null,
   ...overrides,
 });
 

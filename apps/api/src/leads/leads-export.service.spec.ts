@@ -14,6 +14,8 @@ const LEAD: LeadDto = {
   createdAt: '2026-06-01T12:00:00.000Z',
   score: 87,
   temperature: 'quente',
+  // Lead normal: dados pessoais intactos (P1.5).
+  anonymizedAt: null,
 };
 
 describe('LeadsExportService', () => {

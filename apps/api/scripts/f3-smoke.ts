@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { OptOutService } from "../src/automations/opt-out.service";
 import { LeadsService } from "../src/leads/leads.service";
 import { MetricsService } from "../src/metrics/metrics.service";
 import { PrismaService } from "../src/prisma/prisma.service";
@@ -49,7 +50,10 @@ async function main(): Promise<void> {
       `${m.line.labels.length} pontos · bot=${m.line.bot.reduce((a, b) => a + b, 0)} · paciente=${m.line.patient.reduce((a, b) => a + b, 0)}`,
     );
 
-    const leadsRes = await new LeadsService(prisma).list(DEMO);
+    const leadsRes = await new LeadsService(
+      prisma,
+      new OptOutService(prisma),
+    ).list(DEMO);
     console.log("\nLeads resumo:", leadsRes.summary);
     const first = leadsRes.leads[0];
     if (first) {

@@ -1,0 +1,13 @@
+-- F17 (P1.5, PR 9): LGPD operacional — anonimização a pedido do titular.
+--
+-- **Anonimização, não exclusão física.** A linha do lead permanece: ela sustenta
+-- o histórico de atendimento, os agendamentos e a `daily_metric` já fechada.
+-- O que sai são os dados que identificam a pessoa — nome, telefone, e-mail e o
+-- id dela no sistema de gestão da empresa. Apagar a linha destruiria números
+-- que não são dela, e que a empresa tem obrigação de guardar.
+--
+-- `anonymized_at` é o registro de que isso aconteceu, e é o que faz a tela
+-- explicar um contato em branco em vez de parecer um cadastro corrompido.
+--
+-- Aditiva e compatível com a versão anterior do código: uma coluna nula.
+ALTER TABLE "lead" ADD COLUMN IF NOT EXISTS "anonymized_at" TIMESTAMP(3);

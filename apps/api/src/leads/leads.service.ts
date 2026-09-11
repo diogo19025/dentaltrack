@@ -5,6 +5,7 @@ import type {
   LeadsResponse,
   LeadTag,
 } from '@dentaltrack/shared';
+import { OptOutService } from '../automations/opt-out.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { scoreLead, type LeadScoreSignals } from './lead-scoring';
 
@@ -18,7 +19,10 @@ import { scoreLead, type LeadScoreSignals } from './lead-scoring';
  */
 @Injectable()
 export class LeadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly optOut: OptOutService,
+  ) {}
 
   /** Nome da clínica (cabeçalho do PDF exportado — F8). */
   async clinicName(clinicId: string): Promise<string | undefined> {
@@ -127,6 +131,7 @@ export class LeadsService {
         createdAt: lead.createdAt.toISOString(),
         score,
         temperature,
+        anonymizedAt: lead.anonymizedAt?.toISOString() ?? null,
       };
     });
 
@@ -220,6 +225,10 @@ export class LeadsService {
       createdAt: lead.createdAt.toISOString(),
       score,
       temperature,
+      anonymizedAt: lead.anonymizedAt?.toISOString() ?? null,
+      // Um pedido de descadastro que ninguem consegue ver e um pedido que a
+      // equipe atropela por engano (P1.5).
+      optedOut: await this.optOut.isOptedOut(clinicId, lead.phone),
       conversations: lead.conversations.map((convo) => ({
         id: convo.id,
         channel: convo.channel,

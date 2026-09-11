@@ -1,5 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { OptOutService } from '../automations/opt-out.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { LeadsService } from './leads.service';
 
@@ -20,6 +21,11 @@ describe('LeadsService', () => {
       providers: [
         LeadsService,
         { provide: PrismaService, useValue: prismaMock },
+        // Estado de descadastro do contato (P1.5) — por padrao, nao pediu parar.
+        {
+          provide: OptOutService,
+          useValue: { isOptedOut: jest.fn().mockResolvedValue(false) },
+        },
       ],
     }).compile();
     service = moduleRef.get(LeadsService);

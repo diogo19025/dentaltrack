@@ -28,6 +28,25 @@ Monorepo: **web → Vercel**, **api + Evolution (WhatsApp) → Railway (Docker)*
 
 > Opcionais (defaults ok): `AI_TAG_MIN_CONFIDENCE` (0.6), `AI_STAGE_MIN_CONFIDENCE` (0.6), `ABANDON_AFTER_HOURS` (24), `WHATSAPP_SESSION_HOURS` — ver `apps/api/.env.example`.
 
+### Retenção de dados (P1.5) — nasce desligada
+
+| Var | Default | O que faz |
+|---|---|---|
+| `RETENTION_ENABLED` | **`false`** | Liga o expurgo diário (3h) da fila de saída já finalizada. |
+| `DATA_RETENTION_DAYS` | `365` | Janela de retenção. O job impõe um piso de 30 dias. |
+
+**O default desligado é decisão de produto, não descuido.** Apagar dado de
+cliente sem ele ter pedido é pior do que guardar demais: o histórico é o que
+responde "o que foi combinado com essa pessoa?" quando alguém reclama, e ele não
+volta. Ligar é do dono, e vale escrever a política antes.
+
+O expurgo alcança **só a fila de saída finalizada** (`enviado`, `falhou`,
+`suprimido`, `cancelado`) — registro operacional, não histórico de atendimento.
+`pendente` e `enviando` ficam de fora de propósito: linha presa na fila é
+problema a investigar, e apagá-la esconderia o sintoma. O conteúdo das conversas
+**não** é expurgado por tempo — ele sai por pedido do titular, em Leads →
+Privacidade → *Anonimizar dados pessoais*, que é o caminho que a LGPD prevê.
+
 **`apps/web`** (ver `apps/web/.env.local.example`)
 | Var | Onde obter |
 |---|---|

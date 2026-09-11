@@ -6,7 +6,7 @@
 
 ## Placar
 
-**5 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
+**5 de 12 concluídos** (mais 5 com código completo aguardando merge). Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
 
 | #   | PR                                                    | Entrega                                                                                                                                                            | Status                                                                       | Migration                                           |
 | --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------- |
@@ -19,7 +19,7 @@
 | 6   | **WhatsApp robusto** (P0.4)                           | `InboundMessage`, fila da resposta reativa, estado persistido                                                                                                      | 🚧 **código completo 2026-09-10** · aguarda merge                            | `f16_whatsapp_robustez` ⚠️ criada, **não aplicada** |
 | 7   | **Estados de erro e carregamento** (P1.3)             | `ErrorState`, error boundaries, `api-client`                                                                                                                       | 🚧 **código completo 2026-09-10** · aguarda merge                            | —                                                   |
 | 8   | **Permissões owner/staff** (P1.4)                     | `RolesGuard` + UI                                                                                                                                                  | 🚧 **código completo 2026-09-10** · aguarda merge                            | —                                                   |
-| 9   | **LGPD operacional** (P1.5)                           | Anonimização, opt-out na UI, retenção                                                                                                                              | ⬜ a fazer                                                                   | `f17_lgpd`                                          |
+| 9   | **LGPD operacional** (P1.5)                            | Anonimização a pedido, opt-out na UI, retenção opcional                                                                                                                                                                             | 🚧 **código completo 2026-09-11** · aguarda merge                            | `f17_lgpd` ⚠️ criada, **não aplicada**              |
 | 10  | **Onboarding + demo** (P1.1, P1.2)                    | Checklist derivado, seed completo                                                                                                                                  | ⬜ a fazer                                                                   | —                                                   |
 | 11  | **CI dos fluxos críticos** (P1.6)                     | 5 e2e de API + workflow + `chat.spec.ts` corrigido                                                                                                                 | ⬜ a fazer                                                                   | —                                                   |
 | 12  | **Runbook de produção** (P1.7)                        | `docs/production-runbook.md`                                                                                                                                       | ⬜ a fazer                                                                   | —                                                   |
@@ -293,7 +293,16 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 **Banco.** Nenhuma. **Testes.** `api-client` (204, timeout, requestId), `ErrorState`, `ConfirmDialog`, e um por aba corrigida (erro renderiza mensagem, não skeleton). **Risco:** baixo. **Esforço:** M.
 
-## P1.5 · LGPD operacional ⬜ _PR 9_
+## P1.5 · LGPD operacional 🚧 _PR 9 — código completo em 2026-09-11_
+
+> **O que mudou em relação ao planejado**, registrado por honestidade:
+>
+> - **A retenção não expurga `InboundMessage`.** O PR 6 já entregou essa limpeza (`WhatsappService.cleanupInboundMessages`, janela de dias), e duplicá-la aqui criaria duas políticas para a mesma tabela. O `RetentionJobs` cuida só da fila de saída finalizada.
+> - **O expurgo ganhou um piso de 30 dias.** `DATA_RETENTION_DAYS=1` apagaria o mês corrente por um dedo errado, e nenhuma política legítima precisa disso.
+> - **`PUT /leads/:id/opt-out` ficou owner-only**, ainda que descadastrar seja a direção protetora: a mesma rota faz o caminho de volta, e **reativar** o envio para quem pediu para parar é a decisão que precisa de dono. O descadastro pelo próprio contato segue automático pela palavra no WhatsApp, sem depender de ninguém na tela.
+> - **A anonimização também cancela o que está pendente na fila** para aquele telefone — o plano não pedia, mas limpar o nome do lead e deixar uma mensagem enfileirada com ele no corpo seria anonimizar pela metade. Fica **fora** da transação de propósito: a anonimização já está commitada e um erro aqui não pode desfazê-la.
+> - **O lead anonimizado recebe um nome genérico**, não `null`. Um contato totalmente em branco na tela parece cadastro corrompido; "Contato anonimizado" mais a data dizem o que de fato aconteceu.
+> - **A política de retenção foi escrita em `docs/DEPLOY.md`**, não no runbook — ele é o PR 12 e ainda não existe. Quando nascer, o texto migra.
 
 **Anonimização, não exclusão física.** `DELETE /leads/:id/dados-pessoais` (owner-only), numa `$transaction`: o lead perde nome, telefone, e-mail e `externalId`; as conversas perdem `contactPhone`; o conteúdo das mensagens e do corpo das mensagens de saída é substituído. **`Appointment` é preservado** — não carrega PII própria, e apagá-lo destruiria histórico e `DailyMetric`. **`ContactOptOut` é mantido, deliberadamente:** aquele telefone é justamente o que impede reenviar mensagem para quem pediu para parar; apagá-lo em nome da privacidade produziria a violação que ele previne.
 

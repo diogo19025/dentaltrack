@@ -1,7 +1,7 @@
 "use client";
 
 import type { LeadDetail } from "@dentaltrack/shared";
-import { Bell, MessageCircle } from "lucide-react";
+import { BellOff, Bell, MessageCircle, ShieldOff } from "lucide-react";
 import { type ReactNode, useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { OwnerOnly } from "@/components/auth/role-context";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Tag } from "@/components/ui/tag";
-import { useLeadDetail } from "@/hooks/use-leads";
+import {
+  useAnonymizeLead,
+  useLeadDetail,
+  useSetLeadOptOut,
+} from "@/hooks/use-leads";
 import { formatCaptured, initials, sourceLabel, timeAgo } from "@/lib/format";
 import { TEMPERATURE_META } from "@/lib/lead-temperature";
 import { whatsappUrl } from "@/lib/whatsapp";
@@ -165,6 +171,10 @@ export function LeadDetailContent({ detail }: { detail: LeadDetail }) {
         />
       )}
 
+      <OwnerOnly>
+        <PrivacySection detail={detail} />
+      </OwnerOnly>
+
       <div>
         <SectionLabel>
           Conversas ({detail.conversations.length})
@@ -252,6 +262,95 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
         {label}
       </div>
       <div className="mt-1 text-[13.5px]">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Privacidade do contato (P1.5) — as duas ações que a LGPD exige, no lugar
+ * onde a equipe já olha para o contato.
+ *
+ * Owner-only na tela, e também no servidor: esconder o botão é conveniência,
+ * a barreira de segurança é a rota.
+ */
+function PrivacySection({ detail }: { detail: LeadDetail }) {
+  const anonymize = useAnonymizeLead(detail.id);
+  const optOut = useSetLeadOptOut(detail.id);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const anonymized = Boolean(detail.anonymizedAt);
+
+  return (
+    <div>
+      <SectionLabel>Privacidade</SectionLabel>
+
+      {anonymized ? (
+        <p className="mt-2 text-[13px] text-muted-foreground">
+          Dados pessoais anonimizados a pedido em{" "}
+          {formatCaptured(detail.anonymizedAt as string)}. O histórico de
+          atendimento foi preservado.
+        </p>
+      ) : (
+        <p className="mt-2 text-[13px] text-muted-foreground">
+          {detail.optedOut
+            ? "Este contato pediu para não receber mensagens automáticas. Lembretes e automações não saem para ele."
+            : "Este contato recebe lembretes e automações normalmente."}
+        </p>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-fit"
+          disabled={optOut.isPending || anonymized || !detail.phone}
+          onClick={() => optOut.mutate(!detail.optedOut)}
+        >
+          {detail.optedOut ? (
+            <>
+              <Bell className="size-4" /> Reativar mensagens
+            </>
+          ) : (
+            <>
+              <BellOff className="size-4" /> Descadastrar das automações
+            </>
+          )}
+        </Button>
+
+        {!anonymized && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-fit text-destructive"
+            onClick={() => setConfirmOpen(true)}
+          >
+            <ShieldOff className="size-4" /> Anonimizar dados pessoais
+          </Button>
+        )}
+      </div>
+
+      {optOut.isError && (
+        <p role="alert" className="mt-2 text-[12.5px] text-destructive">
+          Não foi possível alterar o descadastro agora. Tente novamente.
+        </p>
+      )}
+
+      {/* O texto da confirmação diz exatamente o que some e o que fica — é a
+          diferença entre um clique consciente e um arrependimento. */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        destructive
+        title="Anonimizar os dados deste contato?"
+        description="Nome, telefone, e-mail e o conteúdo das mensagens serão removidos e não podem ser recuperados. Os agendamentos e as métricas do período continuam valendo, e o descadastro das automações é mantido."
+        confirmLabel="Anonimizar"
+        isPending={anonymize.isPending}
+        error={anonymize.isError ? anonymize.error : undefined}
+        onConfirm={() =>
+          anonymize.mutate(undefined, {
+            onSuccess: () => setConfirmOpen(false),
+          })
+        }
+      />
     </div>
   );
 }
