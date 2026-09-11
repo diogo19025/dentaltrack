@@ -59,6 +59,14 @@ interface IntegrationRow {
 @Injectable()
 export class IntegrationService {
   private readonly logger = new Logger(IntegrationService.name);
+  /**
+   * Agenda simulada por empresa (P1.2). O `MockAgendaProvider` guarda em
+   * memória o que foi criado, cancelado e remarcado na sessão; instanciá-lo a
+   * cada `getProvider()` fazia a agenda demo se contradizer entre chamadas —
+   * o agente marcava um horário e a tela seguinte não o via. A chave inclui o
+   * fuso porque ele é parâmetro do construtor: trocá-lo recria a agenda.
+   */
+  private readonly mockProviders = new Map<string, MockAgendaProvider>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -416,6 +424,20 @@ export class IntegrationService {
     return row?.timezone ?? DEFAULT_TIMEZONE;
   }
 
+  /** Uma agenda simulada por empresa (e fuso), viva enquanto o processo viver. */
+  private mockProviderFor(
+    clinicId: string,
+    timeZone: string,
+  ): MockAgendaProvider {
+    const key = `${clinicId}:${timeZone}`;
+    let provider = this.mockProviders.get(key);
+    if (!provider) {
+      provider = new MockAgendaProvider(timeZone);
+      this.mockProviders.set(key, provider);
+    }
+    return provider;
+  }
+
   /** Linha ativa (modo ≠ desligado). A exclusividade é garantida no `update`. */
   private activeRow(clinicId: string) {
     return this.prisma.clinicIntegration.findFirst({
@@ -435,7 +457,7 @@ export class IntegrationService {
   ): Promise<{ provider: AgendaProvider | null; reason?: string }> {
     const timeZone = await this.timeZoneOf(clinicId);
     if (row.mode === 'mock') {
-      return { provider: new MockAgendaProvider(timeZone) };
+      return { provider: this.mockProviderFor(clinicId, timeZone) };
     }
 
     if (row.provider === 'google') {

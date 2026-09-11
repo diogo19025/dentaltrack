@@ -79,6 +79,45 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       expect(provider?.live).toBe(false);
     });
 
+    it('modo simulado: a mesma agenda entre chamadas — o que o agente marca, a tela vê', async () => {
+      const row = { provider: 'clinicorp', mode: 'mock', credentials: null };
+      prismaMock.clinicIntegration.findFirst.mockResolvedValue(row);
+
+      const first = await integrations.getProvider(CLINIC);
+      const second = await integrations.getProvider(CLINIC);
+      expect(second).toBe(first);
+
+      const startsAt = new Date(Date.now() + 400 * 24 * 3_600_000);
+      await first!.createAppointment({
+        patientId: '501',
+        patientName: 'Marina Alves',
+        patientPhone: null,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 30 * 60_000),
+        professionalId: '10',
+        unitId: '1',
+        procedureName: 'Avaliação',
+      });
+      const seen = await second!.listAppointments({
+        from: new Date(startsAt.getTime() - 3_600_000),
+        to: new Date(startsAt.getTime() + 3_600_000),
+      });
+      expect(seen.map((a) => a.patientName)).toContain('Marina Alves');
+    });
+
+    it('modo simulado: empresas diferentes não compartilham a agenda', async () => {
+      prismaMock.clinicIntegration.findFirst.mockResolvedValue({
+        provider: 'clinicorp',
+        mode: 'mock',
+        credentials: null,
+      });
+      const a = await integrations.getProvider(CLINIC);
+      const b = await integrations.getProvider(
+        '00000000-0000-0000-0000-00000000c1b2',
+      );
+      expect(b).not.toBe(a);
+    });
+
     it('Clinicorp real com credenciais: adapter do fornecedor', async () => {
       prismaMock.clinicIntegration.findFirst.mockResolvedValueOnce({
         provider: 'clinicorp',
