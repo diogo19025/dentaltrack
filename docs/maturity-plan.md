@@ -2,11 +2,11 @@
 
 > Fase 1 da etapa de maturidade. Deriva de [`maturity-audit.md`](maturity-audit.md).
 > Objetivo: encerrar o desenvolvimento exploratório e deixar o produto em estado de **validação comercial**.
-> Criado em 2026-09-08 · placar atualizado em 2026-09-10.
+> Criado em 2026-09-08 · placar atualizado em 2026-09-11.
 
 ## Placar
 
-**5 de 12 concluídos** (mais 5 com código completo aguardando merge). Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
+**11 de 12 concluídos.** Esta tabela é a fonte de verdade do progresso — se ela e a realidade divergirem, ela está errada.
 
 | #   | PR                                                    | Entrega                                                                                                                                                            | Status                                                                       | Migration                                           |
 | --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------- |
@@ -15,12 +15,12 @@
 | 2   | **Idempotência do agendamento** (P0.5, parte 1)       | `book()` reordenado + `bookingKey` no índice único                                                                                                                 | ✅ **2026-09-09**                                                            | `f13_booking_idempotency` ✅ aplicada 2026-09-09    |
 | 3   | **Cancelar/remarcar + claim da fila** (P0.5, parte 2) | Porta ganha cancelar/remarcar (3 adapters + endpoints + tela); re-checagem de horário no `book()`; `dispatchDue` com claim; `enqueue` e sync sem check-then-create | ✅ **2026-09-09**                                                            | `f14_outbound_claim` ✅ aplicada 2026-09-09         |
 | 4   | **Agenda real endurecida** (P0.1)                     | Retry só em leitura, erros tipados, `google:smoke` com escrita, UI de erro na aba Integração                                                                       | ✅ **2026-09-10**                                                            | —                                                   |
-| 5   | **Handoff humano** (P0.2)                             | IA pausável por conversa, endpoints, UI no dialog                                                                                                                  | 🚧 **código completo 2026-09-10** · aguarda merge                            | `f15_handoff` ✅ aplicada 2026-09-11           |
-| 6   | **WhatsApp robusto** (P0.4)                           | `InboundMessage`, fila da resposta reativa, estado persistido                                                                                                      | 🚧 **código completo 2026-09-10** · aguarda merge                            | `f16_whatsapp_robustez` ✅ aplicada 2026-09-11 |
-| 7   | **Estados de erro e carregamento** (P1.3)             | `ErrorState`, error boundaries, `api-client`                                                                                                                       | 🚧 **código completo 2026-09-10** · aguarda merge                            | —                                                   |
-| 8   | **Permissões owner/staff** (P1.4)                     | `RolesGuard` + UI                                                                                                                                                  | 🚧 **código completo 2026-09-10** · aguarda merge                            | —                                                   |
-| 9   | **LGPD operacional** (P1.5)                            | Anonimização a pedido, opt-out na UI, retenção opcional                                                                                                                                                                             | 🚧 **código completo 2026-09-11** · aguarda merge                            | `f17_lgpd` ✅ aplicada 2026-09-11              |
-| 10  | **Onboarding + demo** (P1.1, P1.2)                    | Checklist derivado, seed completo                                                                                                                                  | ⬜ a fazer                                                                   | —                                                   |
+| 5   | **Handoff humano** (P0.2)                             | IA pausável por conversa, endpoints, UI no dialog                                                                                                                  | ✅ **2026-09-10**                                                            | `f15_handoff` ✅ aplicada 2026-09-11           |
+| 6   | **WhatsApp robusto** (P0.4)                           | `InboundMessage`, fila da resposta reativa, estado persistido                                                                                                      | ✅ **2026-09-10** · boot corrigido em 2026-09-11 (ver nota)                  | `f16_whatsapp_robustez` ✅ aplicada 2026-09-11 |
+| 7   | **Estados de erro e carregamento** (P1.3)             | `ErrorState`, error boundaries, `api-client`                                                                                                                       | ✅ **2026-09-10**                                                            | —                                                   |
+| 8   | **Permissões owner/staff** (P1.4)                     | `RolesGuard` + UI                                                                                                                                                  | ✅ **2026-09-10**                                                            | —                                                   |
+| 9   | **LGPD operacional** (P1.5)                            | Anonimização a pedido, opt-out na UI, retenção opcional                                                                                                                                                                             | ✅ **2026-09-11**                                                            | `f17_lgpd` ✅ aplicada 2026-09-11              |
+| 10  | **Onboarding + demo** (P1.1, P1.2)                    | Checklist derivado, seed completo, `MockAgendaProvider` memoizado                                                                                                  | ✅ **2026-09-11**                                                            | —                                                   |
 | 11  | **CI dos fluxos críticos** (P1.6)                     | 5 e2e de API + workflow + `chat.spec.ts` corrigido                                                                                                                 | ⬜ a fazer                                                                   | —                                                   |
 | 12  | **Runbook de produção** (P1.7)                        | `docs/production-runbook.md`                                                                                                                                       | ⬜ a fazer                                                                   | —                                                   |
 
@@ -184,7 +184,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.2 · Handoff humano 🚧 _PR 5 — código completo em 2026-09-10, aguarda merge_
+## P0.2 · Handoff humano ✅ _entregue em 2026-09-10_
 
 > **O que já está de pé** (backend + UI):
 >
@@ -222,8 +222,10 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 ---
 
-## P0.4 · Robustez da conexão WhatsApp 🚧 _PR 6 — código completo em 2026-09-10, aguarda merge_
+## P0.4 · Robustez da conexão WhatsApp ✅ _entregue em 2026-09-10_
 
+> **Regressão corrigida em 2026-09-11 (branch do PR 10):** o `EvolutionService` mudou para o `WhatsappTransportModule`, mas o `HealthModule` seguiu importando o `WhatsappModule`, que não o exporta — **a API não subia** (`Nest can't resolve dependencies of the HealthController`). Nenhum spec pegava porque os controllers são testados com dependências mockadas; o healthcheck do Railway nunca ficou verde e o deploy anterior (PR 3) continuou no ar. Corrigido importando o módulo certo, com `health.module.spec.ts` compilando o módulo de verdade. Lição para o PR 11: o job de CI precisa de um boot real da aplicação, não só dos specs unitários.
+>
 > **O que mudou em relação ao planejado**, registrado por honestidade:
 >
 > - O `EvolutionService` foi extraído para um `WhatsappTransportModule`. Quando o adapter de entrada passou a depender da fila, importar o `WhatsappModule` inteiro nas automações criaria um ciclo NestJS; o módulo estreito mantém uma única instância do transporte sem `forwardRef`.
@@ -259,9 +261,9 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 # P1 — maturidade operacional
 
-## P1.4 · Permissões (owner / staff) 🚧 _PR 8_
+## P1.4 · Permissões (owner / staff) ✅ _entregue em 2026-09-10_
 
-**Código completo em 2026-09-10; aguarda merge.** O bootstrap devolve o papel da membership e o layout o distribui por um `RoleProvider` fail-closed. O `TenantGuard` resolve `clinicId` e `role` na mesma consulta; o `RolesGuard` lê `@Roles('owner')` depois dele e devolve 403 para staff nas rotas administrativas. No web, `<OwnerOnly>` esconde Configurações, onboarding/status do WhatsApp, integração e histórico de automações da Agenda e importação de leads; staff preserva leitura/exportação de leads, agenda e suas ações, dashboard, funil, conversas, handoff e lembretes.
+**Entregue em 2026-09-10.** O bootstrap devolve o papel da membership e o layout o distribui por um `RoleProvider` fail-closed. O `TenantGuard` resolve `clinicId` e `role` na mesma consulta; o `RolesGuard` lê `@Roles('owner')` depois dele e devolve 403 para staff nas rotas administrativas. No web, `<OwnerOnly>` esconde Configurações, onboarding/status do WhatsApp, integração e histórico de automações da Agenda e importação de leads; staff preserva leitura/exportação de leads, agenda e suas ações, dashboard, funil, conversas, handoff e lembretes.
 
 > **Diferença em relação ao planejado:** `GET /settings` permanece acessível a staff porque o shell e o chat usam nome, persona e saudação como configuração de leitura. `PATCH /settings` e todas as abas administrativas seguem owner-only; expor a identidade que o próprio assistente apresenta não concede capacidade administrativa.
 
@@ -275,9 +277,9 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 **Risco:** médio — trancar alguém para fora. Mitigado: todo membership existente é `owner` por default, e `@Roles` fica limitado aos seis grupos listados.
 **Esforço:** M. **Fora:** RBAC genérico, editor de permissões, tela de convite de membros (criar `staff` fica documentado no runbook).
 
-## P1.3 · Estados de erro e carregamento 🚧 _PR 7_
+## P1.3 · Estados de erro e carregamento ✅ _entregue em 2026-09-10_
 
-**Código completo em 2026-09-10; aguarda merge.** O cliente HTTP agora limita chamadas a 15 segundos, aceita `204`/corpo vazio e preserva o `requestId` devolvido pela API. O TanStack Query não repete 4xx, limita retries transitórios e registra falhas de query/mutação num ponto único. `ErrorState` substituiu o falso carregamento no dashboard, na página-base de Configurações e nas abas Automações, WhatsApp e Integração; os dois error boundaries cobrem falha de render. Exportar leads e o bootstrap do layout deixaram de engolir erro. `ConfirmDialog` substituiu as três confirmações nativas (procedimento, tag e troca do número do WhatsApp), mantendo falhas de mutação inline. A aba por `?tab=` já havia entrado no PR 6 porque o banner global dependia dela.
+**Entregue em 2026-09-10.** O cliente HTTP agora limita chamadas a 15 segundos, aceita `204`/corpo vazio e preserva o `requestId` devolvido pela API. O TanStack Query não repete 4xx, limita retries transitórios e registra falhas de query/mutação num ponto único. `ErrorState` substituiu o falso carregamento no dashboard, na página-base de Configurações e nas abas Automações, WhatsApp e Integração; os dois error boundaries cobrem falha de render. Exportar leads e o bootstrap do layout deixaram de engolir erro. `ConfirmDialog` substituiu as três confirmações nativas (procedimento, tag e troca do número do WhatsApp), mantendo falhas de mutação inline. A aba por `?tab=` já havia entrado no PR 6 porque o banner global dependia dela.
 
 > **Diferença em relação ao plano:** o `onError` global registra metadados não sensíveis e o `requestId`, mas não adiciona o SDK do Sentry ao Next.js. A própria decisão do PR 1 e a seção [Sugestões futuras](#sugestões-futuras) mantêm Sentry no front fora de escopo; falhas HTTP da API já são capturadas no backend e correlacionadas pelo mesmo código. Erros puramente de render ficam no console e nos boundaries até essa decisão ser reavaliada.
 
@@ -293,7 +295,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 **Banco.** Nenhuma. **Testes.** `api-client` (204, timeout, requestId), `ErrorState`, `ConfirmDialog`, e um por aba corrigida (erro renderiza mensagem, não skeleton). **Risco:** baixo. **Esforço:** M.
 
-## P1.5 · LGPD operacional 🚧 _PR 9 — código completo em 2026-09-11_
+## P1.5 · LGPD operacional ✅ _entregue em 2026-09-11_
 
 > **O que mudou em relação ao planejado**, registrado por honestidade:
 >
@@ -310,11 +312,27 @@ Logs sem PII já vêm do `redactPhone` do P0.3 — nenhum serviço precisa ser e
 
 **Banco.** `f17_lgpd`: `Lead.anonymizedAt DateTime?`. **Testes.** Anonimiza tudo o que deve, é idempotente, cross-tenant → 404. **Risco:** médio (operação destrutiva) — mitigado por owner-only, confirmação, transação e ausência de delete físico. **Esforço:** M. **Dependências:** P0.3, P1.3, P1.4.
 
-## P1.1 · Onboarding guiado ⬜ _PR 10_
+## P1.1 · Onboarding guiado ✅ _PR 10 — entregue em 2026-09-11_
+
+> **O que mudou em relação ao planejado**, registrado por honestidade:
+>
+> - **"Automações revisadas" exige um salvamento na aba**, não a existência da linha. A linha de `automation_settings` nasce sozinha: o planejador chama `AutomationSettingsService.get()` para toda empresa com WhatsApp, então "existe" não prova que alguém olhou. O critério é `updatedAt` andar em relação a `createdAt` (com folga de 1s para a diferença entre o `now()` do banco e o `@updatedAt` do Prisma).
+> - **"Identidade" = especialidade + nome do assistente + saudação**, os três campos que o prompt mais depende; nome da empresa já vem do signup.
+> - **O card só aparece para o dono** (`<OwnerOnly>`): Configurações é owner-only, então para o staff seria uma lista de coisas que ele não pode fazer. Erro ao carregar o checklist **esconde o card** em vez de mostrar `ErrorState` — é ajuda, não alarme, e o dashboard já tem o seu.
+> - Contrato em `packages/shared/src/onboarding.ts`; serviço em `onboarding/onboarding-checklist.service.ts` (6 testes); web em `hooks/use-onboarding-checklist.ts` + `components/dashboard/onboarding-checklist.tsx` (3 testes).
 
 `GET /onboarding/checklist` **derivado das tabelas existentes**, como o `NotificationsService` faz — nenhuma tabela nova, ~50 linhas. Seis itens `{ key, label, done, href }`: identidade, procedimentos, tags, WhatsApp conectado (usa o `whatsappState` do P0.4), agenda conectada, automações revisadas. Um card no topo do dashboard, que some quando tudo está feito. Depende do `?tab=` do P1.3. **Banco.** Nenhuma. **Risco:** baixo. **Esforço:** P-M. **Dependências:** P0.4, P1.3.
 
-## P1.2 · Ambiente de demonstração ⬜ _PR 10_
+## P1.2 · Ambiente de demonstração ✅ _PR 10 — entregue em 2026-09-11_
+
+> **O que mudou em relação ao planejado**, registrado por honestidade:
+>
+> - **Telefones da demo passaram a usar DDD 00**, como o `MockAgendaProvider` já fazia. A demo agora enfileira mensagens de saída, e um ambiente apontando para um WhatsApp real não pode alcançar o número de alguém: com DDD inválido a mensagem falha no transporte, que é o pior resultado aceitável.
+> - **A fila usa as mesmas chaves de `automation-keys.ts`** (`lembrete_1d:<id>:<minutos>`, `falta:<id>:1`), para o planejador reconhecer as linhas da demo e não enfileirar de novo o que ela já cobriu.
+> - **Um terço dos agendamentos cai nos próximos 10 dias**, independentemente da data da conversa — senão o histórico de 50 dias deixava a semana da `/agenda` vazia (a primeira rodada produziu 3 futuros em 30).
+> - **Descadastro é um por telefone**: um lead recorrente pode ter duas faltas, e a mesma supressão gravada duas vezes colidia no índice único da fila.
+> - **A memoização do `MockAgendaProvider` fica por empresa _e fuso_** — o fuso é parâmetro do construtor, então trocá-lo recria a agenda. Instância viva enquanto o processo viver, como o `HolidaysService` já faz com o cache.
+> - **Validado ao vivo em 2026-09-11** na clínica demo do Supabase: 90 conversas, 31 agendamentos nos seis status, fila com 4 pendentes/8 enviadas/2 falhas/2 suprimidas, 2 descadastros, 2 conversas em atendimento humano, 22 feriados, integração simulada com 7/8 status mapeados.
 
 `seed.ts` ganha `AutomationSettings`, `ClinicIntegration` em `mode: 'mock'` **com os `statusMappings` já preenchidos** — é isso que faz a `/agenda` demo ter conteúdo real — e feriados. `seed-demo.ts` ganha agendamentos nos seis status com horário real, `OutboundMessage` nos quatro status (cobre a aba Automações e o painel de mensagens programadas), dois opt-outs e duas conversas em handoff. `Membership` só é criada se `DEMO_USER_ID` vier por env — inventar um UUID geraria membership órfã. Correção associada: memoizar o `MockAgendaProvider` por empresa no `IntegrationService` (três linhas), senão a agenda demo se contradiz entre chamadas. **Banco.** Nenhuma. **Validação:** rodar e conferir as sete telas. **Risco:** baixo. **Esforço:** P-M. **Dependências:** P0.2, P0.4.
 

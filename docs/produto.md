@@ -246,7 +246,7 @@ pnpm typecheck && pnpm lint && pnpm test && pnpm build
 pnpm --filter @dentaltrack/web e2e   # Playwright — roda offline com LLM_PROVIDER=mock
 ```
 
-Estado em 2026-09-11: **640 testes na API** (Jest, ao lado do código) e **194 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
+Estado em 2026-09-11: **649 testes na API** (Jest, ao lado do código) e **191 no web** (Vitest), mais 5 fluxos de UI no Playwright. Não há CI — é o PR 11 do [plano de maturidade](maturity-plan.md), e até lá a verificação é local.
 
 > **Cuidado com teste que expira.** Dois specs já fixaram um `NOW` no fixture enquanto o serviço lia `Date.now()` real: passaram no dia em que foram escritos e ficaram vermelhos no dia seguinte, sem ninguém mexer em nada. Quando o cenário depende de uma data, congele o relógio (`jest.spyOn(Date, 'now')`) — é o que `outbound.service.spec.ts` e `agenda.service.spec.ts` fazem, com o porquê escrito no topo.
 
@@ -300,13 +300,14 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 | 2026-09-10 | **Agenda real endurecida** (P0.1, PR 4): toda falha de agenda ganhou **categoria** (`auth`, `config`, `indisponivel`, `timeout`, `resposta_invalida`, `conflito`) — a tela passou a dizer o que fazer a respeito em vez de repetir a mensagem do fornecedor, e o transporte passou a repetir **só leitura** (`createEvent` nunca repete: é assim que se duplica agendamento). `google:smoke` fecha o ciclo real criando, confirmando e apagando um evento; `clinicorp:smoke --write` faz o equivalente com opt-in duplo. A aba Integração ganhou tratamento de erro — não tinha nenhum — com o `requestId` para o suporte. Corrigida a divergência do remarcar do Clinicorp (cancela e recria; falhar no meio deixava a linha local prometendo uma consulta que não existia mais). Sem migration. |
 
 | 2026-09-11 | **LGPD operacional** (P1.5, PR 9): `DELETE /leads/:id/dados-pessoais` (owner-only) **anonimiza, não apaga** — a linha do lead sustenta histórico, agendamentos e métricas que não são do titular. Numa transação, saem nome/telefone/e-mail/`externalId`, o `contactPhone` das conversas, o conteúdo das mensagens e o corpo das mensagens de saída; `Appointment` fica, e o `ContactOptOut` **também fica**, porque é ele que impede reenviar para quem pediu parar. O descadastro saiu da invisibilidade: aparece e se alterna no painel do lead. Retenção diária da fila finalizada, **desligada por padrão**. Migration `f17_lgpd`. |
+| 2026-09-11 | **Onboarding + demo** (P1.1/P1.2, PR 10): checklist de primeiros passos no dashboard, **derivado das tabelas existentes** (seis passos, cada um apontando para a aba que o resolve; some quando tudo está feito). Seeds deixam a empresa demo operacional: automações, agenda simulada com mapeamento de status, feriados, agendamentos com horário real nos seis status, fila de saída nos quatro status, descadastros e conversas em atendimento humano. `MockAgendaProvider` memoizado por empresa. No mesmo PR, corrigida a regressão que impedia a API de subir desde o PR 6 (`HealthModule` importando o módulo errado). Sem migration. |
 ---
 
 ## § Onde estamos
 
 O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial.
 
-**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **5 de 12 concluídos** e mais 5 (PRs 5–9) com código completo aguardando merge. Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
+**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha. Hoje, **11 de 12 concluídos** — resta o CI dos fluxos críticos (PR 11) e o runbook de produção (PR 12). Cada PR atualiza a própria linha no mesmo commit da entrega — placar atualizado depois vira placar desatualizado.
 
 **Riscos abertos, registrados honestamente:**
 
