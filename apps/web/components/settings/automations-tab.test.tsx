@@ -191,6 +191,16 @@ describe("AutomationsTab", () => {
     expect(screen.queryByRole("button", { name: /Mostrar todos/i })).toBeNull();
   });
 
+  it("fuso horário é uma lista fechada de fusos do Brasil, não um campo livre", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    render(<AutomationsTab />);
+    openGroup(/Configurar Regras de envio/i);
+
+    const select = screen.getByRole("combobox", { name: /Fuso horário/i });
+    expect(select).toHaveTextContent(/Brasília/);
+    expect(screen.queryByDisplayValue("America/Sao_Paulo")).toBeNull();
+  });
+
   it("sem edição, o botão indica que está tudo salvo", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);

@@ -37,6 +37,13 @@ import {
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,6 +72,31 @@ import { cn } from "@/lib/utils";
  */
 
 type GroupKey = "envio" | "lembretes" | "faltas" | "retorno";
+
+/**
+ * Fusos do Brasil (IANA). Só atendemos empresas em solo brasileiro, então a
+ * lista é curta e nomeada pelo que o dono reconhece — o estado, não a zona.
+ */
+const BRAZIL_TIMEZONES: { value: string; label: string }[] = [
+  {
+    value: "America/Sao_Paulo",
+    label: "Brasília (SP, RJ, MG, sul, centro-sul, DF)",
+  },
+  { value: "America/Bahia", label: "Bahia" },
+  { value: "America/Fortaleza", label: "Ceará, Maranhão, Piauí, RN, Paraíba" },
+  { value: "America/Recife", label: "Pernambuco" },
+  { value: "America/Maceio", label: "Alagoas, Sergipe" },
+  { value: "America/Belem", label: "Pará (leste), Amapá" },
+  { value: "America/Araguaina", label: "Tocantins" },
+  { value: "America/Cuiaba", label: "Mato Grosso" },
+  { value: "America/Campo_Grande", label: "Mato Grosso do Sul" },
+  { value: "America/Manaus", label: "Amazonas, Roraima, Rondônia (Manaus)" },
+  { value: "America/Porto_Velho", label: "Rondônia" },
+  { value: "America/Boa_Vista", label: "Roraima" },
+  { value: "America/Santarem", label: "Pará (oeste)" },
+  { value: "America/Rio_Branco", label: "Acre" },
+  { value: "America/Noronha", label: "Fernando de Noronha" },
+];
 
 const GROUPS: Record<
   GroupKey,
@@ -196,12 +228,12 @@ export function AutomationsTab() {
               />
               <div className="grid gap-5 p-6 md:grid-cols-2">
                 <Field label="Fuso horário" htmlFor="tz">
-                  <Input
+                  <TimezoneSelect
                     id="tz"
                     value={current.timezone}
-                    onChange={(e) => patch({ timezone: e.target.value })}
+                    onChange={(timezone) => patch({ timezone })}
                   />
-                  <Hint>Ancora os horários. Ex.: America/Sao_Paulo.</Hint>
+                  <Hint>Ancora a janela de envio e os lembretes.</Hint>
                 </Field>
 
                 <Field label="Teto de mensagens por dia" htmlFor="cap">
@@ -447,6 +479,40 @@ export function AutomationsTab() {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Lista fechada de fusos do Brasil. Um valor gravado fora da lista (banco
+ * antigo, ajuste manual) continua aparecendo como opção para não sumir do
+ * campo nem ser trocado sem querer.
+ */
+function TimezoneSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const known = BRAZIL_TIMEZONES.some((tz) => tz.value === value);
+  const options = known
+    ? BRAZIL_TIMEZONES
+    : [{ value, label: value }, ...BRAZIL_TIMEZONES];
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger id={id} aria-label="Fuso horário">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((tz) => (
+          <SelectItem key={tz.value} value={tz.value}>
+            {tz.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
