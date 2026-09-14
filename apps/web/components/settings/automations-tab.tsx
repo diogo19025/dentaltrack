@@ -13,15 +13,25 @@ import {
   CalendarDays,
   CalendarPlus,
   Check,
+  ChevronRight,
   Clock,
   Plus,
   RefreshCw,
   RotateCcw,
+  SendHorizontal,
   Trash2,
   UserX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ErrorState } from "@/components/ui/error-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,8 +54,42 @@ import { cn } from "@/lib/utils";
  * falta e retorno de manutenção — mais a higiene de envio (janela, feriados,
  * teto diário) que vale para todos.
  *
+ * A tela mostra só a visão geral: quatro grupos, cada um com o estado das suas
+ * automações. Os campos ficam num painel por grupo (Dialog) — clicar fora
+ * fecha e devolve a visão geral. O rascunho sobrevive ao fechar: o "Salvar"
+ * é um só, na aba, e vale para o que foi mexido em qualquer painel.
+ *
  * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
+
+type GroupKey = "envio" | "lembretes" | "faltas" | "retorno";
+
+const GROUPS: Record<
+  GroupKey,
+  { title: string; desc: string; icon: ReactNode }
+> = {
+  envio: {
+    title: "Regras de envio",
+    desc: "Horário, fuso, teto diário e feriados. Vale para todas as automações.",
+    icon: <SendHorizontal className="size-[18px]" />,
+  },
+  lembretes: {
+    title: "Lembretes de consulta",
+    desc: "Confirmações antes do horário marcado.",
+    icon: <BellRing className="size-[18px]" />,
+  },
+  faltas: {
+    title: "Atrasos e faltas",
+    desc: "Quem não chegou na hora e quem não apareceu.",
+    icon: <UserX className="size-[18px]" />,
+  },
+  retorno: {
+    title: "Retorno de clientes",
+    desc: "Quem compareceu e saiu sem deixar a próxima marcada.",
+    icon: <RotateCcw className="size-[18px]" />,
+  },
+};
+
 export function AutomationsTab() {
   const { data, isLoading, isError, error, refetch } = useAutomations();
   const update = useUpdateAutomations();
@@ -53,6 +97,7 @@ export function AutomationsTab() {
   // em vez de sincronizar num efeito evita o refetch apagar o que está sendo
   // digitado — e dispensa o efeito por completo.
   const [edits, setEdits] = useState<AutomationSettings | null>(null);
+  const [open, setOpen] = useState<GroupKey | null>(null);
 
   if (isError && !data) {
     return <ErrorState error={error} onRetry={() => void refetch()} />;
@@ -60,7 +105,8 @@ export function AutomationsTab() {
   if (isLoading || !data) return <AutomationsSkeleton />;
 
   const current = edits ?? data;
-  const dirty = edits !== null && JSON.stringify(edits) !== JSON.stringify(data);
+  const dirty =
+    edits !== null && JSON.stringify(edits) !== JSON.stringify(data);
   const patch = (values: Partial<AutomationSettings>) =>
     setEdits({ ...current, ...values });
 
@@ -69,222 +115,310 @@ export function AutomationsTab() {
     update.mutate(current, { onSuccess: () => setEdits(null) });
   }
 
+  const reminders = [
+    current.lembrete3d,
+    current.lembrete1d,
+    current.lembrete1h,
+  ];
+
   return (
     <div className="flex flex-col gap-5">
-      <Card className="gap-0 p-0">
-        <SectionHeader
-          title="Como e quando enviar"
-          desc="Vale para todas as automações. O canal é um WhatsApp comum: disparo fora de hora ou em rajada põe o número da empresa em risco."
+      <div className="grid gap-4 md:grid-cols-2">
+        <GroupCard
+          group="envio"
+          summary={`${current.sendWindowStart}–${current.sendWindowEnd} · até ${current.dailyCap} mensagens/dia`}
+          items={[
+            { label: "Não enviar em feriados", enabled: current.skipHolidays },
+            {
+              label: "Não enviar em fins de semana",
+              enabled: current.skipWeekends,
+            },
+          ]}
+          onOpen={() => setOpen("envio")}
         />
-        <div className="grid gap-5 p-6 md:grid-cols-2">
-          <Field label="Fuso horário" htmlFor="tz">
-            <Input
-              id="tz"
-              value={current.timezone}
-              onChange={(e) => patch({ timezone: e.target.value })}
-            />
-            <Hint>Ancora os horários. Ex.: America/Sao_Paulo.</Hint>
-          </Field>
+        <GroupCard
+          group="lembretes"
+          summary={activeSummary(reminders)}
+          items={[
+            {
+              label: AUTOMATION_LABELS.lembrete_3d,
+              enabled: current.lembrete3d.enabled,
+            },
+            {
+              label: AUTOMATION_LABELS.lembrete_1d,
+              enabled: current.lembrete1d.enabled,
+            },
+            {
+              label: AUTOMATION_LABELS.lembrete_1h,
+              enabled: current.lembrete1h.enabled,
+            },
+          ]}
+          onOpen={() => setOpen("lembretes")}
+        />
+        <GroupCard
+          group="faltas"
+          summary={activeSummary([current.atraso, current.falta])}
+          items={[
+            {
+              label: AUTOMATION_LABELS.atraso,
+              enabled: current.atraso.enabled,
+            },
+            { label: AUTOMATION_LABELS.falta, enabled: current.falta.enabled },
+          ]}
+          onOpen={() => setOpen("faltas")}
+        />
+        <GroupCard
+          group="retorno"
+          summary={
+            current.retorno.enabled
+              ? `${current.retorno.afterDays} dias após o atendimento`
+              : "Desligado"
+          }
+          items={[
+            {
+              label: AUTOMATION_LABELS.retorno,
+              enabled: current.retorno.enabled,
+            },
+          ]}
+          onOpen={() => setOpen("retorno")}
+        />
+      </div>
 
-          <Field label="Teto de mensagens por dia" htmlFor="cap">
-            <Input
-              id="cap"
-              type="number"
-              min={1}
-              max={2000}
-              value={current.dailyCap}
-              onChange={(e) =>
-                patch({ dailyCap: Number(e.target.value) || 1 })
+      <GroupDialog group={open} onClose={() => setOpen(null)}>
+        {open === "envio" && (
+          <>
+            <Card className="gap-0 p-0">
+              <SectionHeader
+                title="Como e quando enviar"
+                desc="O canal é um WhatsApp comum: disparo fora de hora ou em rajada põe o número da empresa em risco."
+              />
+              <div className="grid gap-5 p-6 md:grid-cols-2">
+                <Field label="Fuso horário" htmlFor="tz">
+                  <Input
+                    id="tz"
+                    value={current.timezone}
+                    onChange={(e) => patch({ timezone: e.target.value })}
+                  />
+                  <Hint>Ancora os horários. Ex.: America/Sao_Paulo.</Hint>
+                </Field>
+
+                <Field label="Teto de mensagens por dia" htmlFor="cap">
+                  <Input
+                    id="cap"
+                    type="number"
+                    min={1}
+                    max={2000}
+                    value={current.dailyCap}
+                    onChange={(e) =>
+                      patch({ dailyCap: Number(e.target.value) || 1 })
+                    }
+                  />
+                  <Hint>Atingido o teto, o restante do dia é adiado.</Hint>
+                </Field>
+
+                <Field label="Enviar a partir de" htmlFor="from">
+                  <Input
+                    id="from"
+                    type="time"
+                    value={current.sendWindowStart}
+                    onChange={(e) => patch({ sendWindowStart: e.target.value })}
+                  />
+                </Field>
+
+                <Field label="Enviar até" htmlFor="to">
+                  <Input
+                    id="to"
+                    type="time"
+                    value={current.sendWindowEnd}
+                    onChange={(e) => patch({ sendWindowEnd: e.target.value })}
+                  />
+                </Field>
+
+                <ToggleRow
+                  label="Não enviar em feriados"
+                  desc="Disparos que caírem em feriado são adiados para o próximo dia útil."
+                  checked={current.skipHolidays}
+                  onChange={(skipHolidays) => patch({ skipHolidays })}
+                />
+                <ToggleRow
+                  label="Não enviar em fins de semana"
+                  desc="Útil para empresas que só atendem em dias úteis."
+                  checked={current.skipWeekends}
+                  onChange={(skipWeekends) => patch({ skipWeekends })}
+                />
+              </div>
+            </Card>
+
+            <HolidaysCard />
+          </>
+        )}
+
+        {open === "lembretes" && (
+          <>
+            <RuleCard
+              icon={<BellRing className="size-[18px]" />}
+              title={AUTOMATION_LABELS.lembrete_3d}
+              desc="Confirma com folga suficiente para a agenda ser reaproveitada se o cliente desmarcar."
+              rule={current.lembrete3d}
+              onChange={(lembrete3d) => patch({ lembrete3d })}
+            />
+            <RuleCard
+              icon={<BellRing className="size-[18px]" />}
+              title={AUTOMATION_LABELS.lembrete_1d}
+              desc="O lembrete que mais reduz falta."
+              rule={current.lembrete1d}
+              onChange={(lembrete1d) => patch({ lembrete1d })}
+            />
+            <RuleCard
+              icon={<Clock className="size-[18px]" />}
+              title={AUTOMATION_LABELS.lembrete_1h}
+              desc="O empurrãozinho final. Se cair fora da janela de envio, é descartado em vez de enviado atrasado."
+              rule={current.lembrete1h}
+              onChange={(lembrete1h) => patch({ lembrete1h })}
+            />
+          </>
+        )}
+
+        {open === "faltas" && (
+          <>
+            <RuleCard
+              icon={<AlertTriangle className="size-[18px]" />}
+              title={AUTOMATION_LABELS.atraso}
+              desc="Só funciona se a recepção marcar a chegada do cliente no sistema de gestão em tempo real."
+              warning="Sem esse hábito na recepção, a mensagem chega para quem já está na sala de espera. Deixe desligado até ter certeza."
+              rule={current.atraso}
+              onChange={(atraso) => patch({ atraso })}
+              extra={
+                <Field label="Tolerância (minutos)" htmlFor="tolerance">
+                  <Input
+                    id="tolerance"
+                    type="number"
+                    min={5}
+                    max={120}
+                    value={current.atraso.toleranceMinutes}
+                    onChange={(e) =>
+                      patch({
+                        atraso: {
+                          ...current.atraso,
+                          toleranceMinutes: Number(e.target.value) || 15,
+                        },
+                      })
+                    }
+                  />
+                </Field>
               }
             />
-            <Hint>Atingido o teto, o restante do dia é adiado.</Hint>
-          </Field>
 
-          <Field label="Enviar a partir de" htmlFor="from">
-            <Input
-              id="from"
-              type="time"
-              value={current.sendWindowStart}
-              onChange={(e) => patch({ sendWindowStart: e.target.value })}
-            />
-          </Field>
-
-          <Field label="Enviar até" htmlFor="to">
-            <Input
-              id="to"
-              type="time"
-              value={current.sendWindowEnd}
-              onChange={(e) => patch({ sendWindowEnd: e.target.value })}
-            />
-          </Field>
-
-          <ToggleRow
-            label="Não enviar em feriados"
-            desc="Disparos que caírem em feriado são adiados para o próximo dia útil."
-            checked={current.skipHolidays}
-            onChange={(skipHolidays) => patch({ skipHolidays })}
-          />
-          <ToggleRow
-            label="Não enviar em fins de semana"
-            desc="Útil para clínicas que só atendem em dias úteis."
-            checked={current.skipWeekends}
-            onChange={(skipWeekends) => patch({ skipWeekends })}
-          />
-        </div>
-      </Card>
-
-      <RuleCard
-        icon={<BellRing className="size-[18px]" />}
-        title={AUTOMATION_LABELS.lembrete_3d}
-        desc="Confirma com folga suficiente para a agenda ser reaproveitada se o cliente desmarcar."
-        rule={current.lembrete3d}
-        onChange={(lembrete3d) => patch({ lembrete3d })}
-      />
-      <RuleCard
-        icon={<BellRing className="size-[18px]" />}
-        title={AUTOMATION_LABELS.lembrete_1d}
-        desc="O lembrete que mais reduz falta."
-        rule={current.lembrete1d}
-        onChange={(lembrete1d) => patch({ lembrete1d })}
-      />
-      <RuleCard
-        icon={<Clock className="size-[18px]" />}
-        title={AUTOMATION_LABELS.lembrete_1h}
-        desc="O empurrãozinho final. Se cair fora da janela de envio, é descartado em vez de enviado atrasado."
-        rule={current.lembrete1h}
-        onChange={(lembrete1h) => patch({ lembrete1h })}
-      />
-
-      <RuleCard
-        icon={<AlertTriangle className="size-[18px]" />}
-        title={AUTOMATION_LABELS.atraso}
-        desc="Só funciona se a recepção marcar a chegada do cliente no sistema de gestão em tempo real."
-        warning="Sem esse hábito na recepção, a mensagem chega para quem já está na sala de espera. Deixe desligado até ter certeza."
-        rule={current.atraso}
-        onChange={(atraso) => patch({ atraso })}
-        extra={
-          <Field label="Tolerância (minutos)" htmlFor="tolerance">
-            <Input
-              id="tolerance"
-              type="number"
-              min={5}
-              max={120}
-              value={current.atraso.toleranceMinutes}
-              onChange={(e) =>
-                patch({
-                  atraso: {
-                    ...current.atraso,
-                    toleranceMinutes: Number(e.target.value) || 15,
-                  },
-                })
+            <RuleCard
+              icon={<UserX className="size-[18px]" />}
+              title={AUTOMATION_LABELS.falta}
+              desc="Tenta remarcar quem não apareceu. A sequência para assim que o cliente responder."
+              rule={current.falta}
+              onChange={(falta) => patch({ falta })}
+              extra={
+                <>
+                  <Field label="Tentativas (máx. 3)" htmlFor="attempts">
+                    <Input
+                      id="attempts"
+                      type="number"
+                      min={1}
+                      max={3}
+                      value={current.falta.attempts}
+                      onChange={(e) =>
+                        patch({
+                          falta: {
+                            ...current.falta,
+                            attempts: Math.min(Number(e.target.value) || 1, 3),
+                          },
+                        })
+                      }
+                    />
+                    <Hint>
+                      Insistir além disso vira spam e arrisca o número.
+                    </Hint>
+                  </Field>
+                  <Field
+                    label="Intervalo entre tentativas (horas)"
+                    htmlFor="interval"
+                  >
+                    <Input
+                      id="interval"
+                      type="number"
+                      min={1}
+                      max={168}
+                      value={current.falta.intervalHours}
+                      onChange={(e) =>
+                        patch({
+                          falta: {
+                            ...current.falta,
+                            intervalHours: Number(e.target.value) || 48,
+                          },
+                        })
+                      }
+                    />
+                  </Field>
+                </>
               }
             />
-          </Field>
-        }
-      />
-
-      <RuleCard
-        icon={<UserX className="size-[18px]" />}
-        title={AUTOMATION_LABELS.falta}
-        desc="Tenta remarcar quem não apareceu. A sequência para assim que o cliente responder."
-        rule={current.falta}
-        onChange={(falta) => patch({ falta })}
-        extra={
-          <>
-            <Field label="Tentativas (máx. 3)" htmlFor="attempts">
-              <Input
-                id="attempts"
-                type="number"
-                min={1}
-                max={3}
-                value={current.falta.attempts}
-                onChange={(e) =>
-                  patch({
-                    falta: {
-                      ...current.falta,
-                      attempts: Math.min(Number(e.target.value) || 1, 3),
-                    },
-                  })
-                }
-              />
-              <Hint>Insistir além disso vira spam e arrisca o número.</Hint>
-            </Field>
-            <Field label="Intervalo entre tentativas (horas)" htmlFor="interval">
-              <Input
-                id="interval"
-                type="number"
-                min={1}
-                max={168}
-                value={current.falta.intervalHours}
-                onChange={(e) =>
-                  patch({
-                    falta: {
-                      ...current.falta,
-                      intervalHours: Number(e.target.value) || 48,
-                    },
-                  })
-                }
-              />
-            </Field>
           </>
-        }
-      />
+        )}
 
-      <RuleCard
-        icon={<RotateCcw className="size-[18px]" />}
-        title={AUTOMATION_LABELS.retorno}
-        desc="Procura quem fez manutenção, compareceu e saiu sem deixar a próxima marcada."
-        rule={current.retorno}
-        onChange={(retorno) => patch({ retorno })}
-        extra={
-          <>
-            <Field label="Dias após o atendimento" htmlFor="after">
-              <Input
-                id="after"
-                type="number"
-                min={1}
-                max={365}
-                value={current.retorno.afterDays}
-                onChange={(e) =>
-                  patch({
-                    retorno: {
-                      ...current.retorno,
-                      afterDays: Number(e.target.value) || 30,
-                    },
-                  })
-                }
-              />
-            </Field>
-            <Field
-              label="O que conta como manutenção"
-              htmlFor="keywords"
-              className="md:col-span-2"
-            >
-              <Input
-                id="keywords"
-                value={current.retorno.procedureKeywords.join(", ")}
-                onChange={(e) =>
-                  patch({
-                    retorno: {
-                      ...current.retorno,
-                      procedureKeywords: e.target.value
-                        .split(",")
-                        .map((k) => k.trim())
-                        .filter(Boolean),
-                    },
-                  })
-                }
-              />
-              <Hint>
-                Palavras separadas por vírgula, comparadas com o nome do
-                procedimento. Ex.: manutenção, limpeza, profilaxia.
-              </Hint>
-            </Field>
-          </>
-        }
-      />
-
-      <HolidaysCard />
+        {open === "retorno" && (
+          <RuleCard
+            icon={<RotateCcw className="size-[18px]" />}
+            title={AUTOMATION_LABELS.retorno}
+            desc="Procura quem fez manutenção, compareceu e saiu sem deixar a próxima marcada."
+            rule={current.retorno}
+            onChange={(retorno) => patch({ retorno })}
+            extra={
+              <>
+                <Field label="Dias após o atendimento" htmlFor="after">
+                  <Input
+                    id="after"
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={current.retorno.afterDays}
+                    onChange={(e) =>
+                      patch({
+                        retorno: {
+                          ...current.retorno,
+                          afterDays: Number(e.target.value) || 30,
+                        },
+                      })
+                    }
+                  />
+                </Field>
+                <Field
+                  label="O que conta como manutenção"
+                  htmlFor="keywords"
+                  className="md:col-span-2"
+                >
+                  <Input
+                    id="keywords"
+                    value={current.retorno.procedureKeywords.join(", ")}
+                    onChange={(e) =>
+                      patch({
+                        retorno: {
+                          ...current.retorno,
+                          procedureKeywords: e.target.value
+                            .split(",")
+                            .map((k) => k.trim())
+                            .filter(Boolean),
+                        },
+                      })
+                    }
+                  />
+                  <Hint>
+                    Palavras separadas por vírgula, comparadas com o nome do
+                    procedimento. Ex.: manutenção, limpeza, profilaxia.
+                  </Hint>
+                </Field>
+              </>
+            }
+          />
+        )}
+      </GroupDialog>
 
       {update.isError && (
         <ErrorState
@@ -311,6 +445,123 @@ export function AutomationsTab() {
         </Button>
       </div>
     </div>
+  );
+}
+
+/** "2 de 3 ativos" — o resumo que a visão geral mostra sem abrir o painel. */
+function activeSummary(rules: { enabled: boolean }[]) {
+  const on = rules.filter((r) => r.enabled).length;
+  if (on === 0) return "Tudo desligado";
+  if (rules.length === 1) return "Ativo";
+  return `${on} de ${rules.length} ativos`;
+}
+
+/** Cartão de um grupo na visão geral: estado de cada automação + botão para abrir. */
+function GroupCard({
+  group,
+  summary,
+  items,
+  onOpen,
+}: {
+  group: GroupKey;
+  summary: string;
+  items: { label: string; enabled: boolean }[];
+  onOpen: () => void;
+}) {
+  const { title, desc, icon } = GROUPS[group];
+  return (
+    <Card className="gap-0 p-0">
+      <div className="flex items-start gap-3 border-b border-border px-6 py-[18px]">
+        <span className="mt-0.5 text-muted-foreground">{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-semibold tracking-[-0.01em]">
+            {title}
+          </div>
+          <div className="mt-0.5 text-[13px] text-muted-foreground">{desc}</div>
+        </div>
+      </div>
+
+      <ul className="flex flex-col gap-2 px-6 py-4">
+        {items.map((item) => (
+          <li key={item.label} className="flex items-center gap-2.5 text-sm">
+            <span
+              aria-hidden
+              className={cn(
+                "size-2 flex-none rounded-full",
+                item.enabled
+                  ? "bg-[var(--success)]"
+                  : "bg-[var(--border-strong)]",
+              )}
+            />
+            <span
+              className={cn("flex-1", !item.enabled && "text-muted-foreground")}
+            >
+              {item.label}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {item.enabled ? "Ativo" : "Desligado"}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-auto flex items-center justify-between gap-3 border-t border-border px-6 py-3">
+        <span className="tabular text-xs text-muted-foreground">{summary}</span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onOpen}
+          aria-label={`Configurar ${title}`}
+        >
+          Configurar <ChevronRight className="size-4" />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Painel de um grupo. Clicar fora (ou Esc) fecha e volta à visão geral; o que
+ * foi digitado continua no rascunho da aba até o "Salvar".
+ */
+function GroupDialog({
+  group,
+  onClose,
+  children,
+}: {
+  group: GroupKey | null;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const meta = group ? GROUPS[group] : null;
+  return (
+    <Dialog open={group !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="flex max-h-[88vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="flex-none border-b border-border px-6 py-[18px]">
+          <DialogTitle className="flex items-center gap-2.5 text-base tracking-[-0.01em]">
+            <span className="text-muted-foreground">{meta?.icon}</span>
+            {meta?.title}
+          </DialogTitle>
+          <DialogDescription className="text-[13px]">
+            {meta?.desc}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-5 overflow-y-auto bg-background p-6">
+          {children}
+        </div>
+
+        <DialogFooter className="flex-none items-center border-t border-border px-6 py-3 sm:justify-between">
+          <span className="text-xs text-muted-foreground">
+            As alterações ficam no rascunho — salve pelo botão da aba.
+          </span>
+          <Button type="button" variant="outline" size="sm" onClick={onClose}>
+            Voltar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -347,15 +598,17 @@ function RuleCard({
         <div className="flex gap-3">
           <span className="mt-0.5 text-muted-foreground">{icon}</span>
           <div>
-            <div className="text-base font-semibold tracking-[-0.01em]">{title}</div>
-            <div className="mt-0.5 text-[13px] text-muted-foreground">{desc}</div>
+            <div className="text-base font-semibold tracking-[-0.01em]">
+              {title}
+            </div>
+            <div className="mt-0.5 text-[13px] text-muted-foreground">
+              {desc}
+            </div>
           </div>
         </div>
         <Switch
           checked={rule.enabled}
-          onCheckedChange={(enabled) =>
-            onChange({ ...rule, enabled } as never)
-          }
+          onCheckedChange={(enabled) => onChange({ ...rule, enabled } as never)}
           aria-label={`Ativar ${title}`}
         />
       </div>
@@ -372,7 +625,11 @@ function RuleCard({
 
       <div className="grid gap-5 p-6 md:grid-cols-2">
         {extra}
-        <Field label="Mensagem" htmlFor={`tpl-${title}`} className="md:col-span-2">
+        <Field
+          label="Mensagem"
+          htmlFor={`tpl-${title}`}
+          className="md:col-span-2"
+        >
           <Textarea
             id={`tpl-${title}`}
             rows={3}
@@ -433,8 +690,9 @@ function HolidaysCard() {
               Feriados de {year}
             </div>
             <div className="mt-0.5 text-[13px] text-muted-foreground">
-              Dias em que as mensagens automáticas são adiadas. Cadastre à mão os
-              feriados da cidade e os recessos — nenhuma lista nacional os conhece.
+              Dias em que as mensagens automáticas são adiadas. Cadastre à mão
+              os feriados da cidade e os recessos — nenhuma lista nacional os
+              conhece.
             </div>
           </div>
         </div>
@@ -562,9 +820,9 @@ function ToggleRow({
 
 function AutomationsSkeleton() {
   return (
-    <div className="flex flex-col gap-5">
-      {[0, 1, 2].map((i) => (
-        <Skeleton key={i} className="h-48 w-full rounded-[var(--radius)]" />
+    <div className="grid gap-4 md:grid-cols-2">
+      {[0, 1, 2, 3].map((i) => (
+        <Skeleton key={i} className="h-56 w-full rounded-[var(--radius)]" />
       ))}
     </div>
   );
