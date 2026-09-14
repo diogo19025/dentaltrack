@@ -661,12 +661,25 @@ export class OutboundService {
     return candidate;
   }
 
-  /** Já batemos o teto de mensagens automáticas do dia? */
+  /**
+   * Já batemos o teto de mensagens automáticas do dia?
+   *
+   * A contagem exclui os tipos reativos pelo mesmo motivo que o teto não os
+   * bloqueia: o limite existe para conter **iniciativa nossa**, e responder a
+   * quem escreveu não é iniciativa. Contá-los sem bloqueá-los seria a metade
+   * errada da regra — cada resposta que passou pela fila gastaria cota de
+   * lembrete, e a empresa perderia disparos legítimos por ter sido procurada.
+   */
   private async reachedDailyCap(clinicId: string): Promise<boolean> {
     const settings = await this.settings.get(clinicId);
     const since = startOfZonedDay(new Date(), settings.timezone);
     const sent = await this.prisma.outboundMessage.count({
-      where: { clinicId, status: 'enviado', sentAt: { gte: since } },
+      where: {
+        clinicId,
+        status: 'enviado',
+        sentAt: { gte: since },
+        kind: { notIn: [...REACTIVE_KINDS] },
+      },
     });
     if (sent >= settings.dailyCap) {
       this.logger.warn(

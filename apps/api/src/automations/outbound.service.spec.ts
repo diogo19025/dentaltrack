@@ -764,5 +764,19 @@ describe('OutboundService (fila de saída · F9)', () => {
       expect(summary.enviados).toBe(1);
       expect(evolutionMock.sendText).toHaveBeenCalledTimes(1);
     });
+
+    it('a resposta da IA também não **conta** para o teto', async () => {
+      // Não bloquear e mesmo assim contar seria a metade errada da regra: cada
+      // resposta que passou pela fila gastaria cota de lembrete, e a empresa
+      // perderia disparos legítimos por ter sido procurada.
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        { ...base, kind: 'lembrete_1d' as const },
+      ]);
+
+      await outbound.dispatchDue(NOW);
+
+      const where = prismaMock.outboundMessage.count.mock.calls[0][0].where;
+      expect(where.kind).toEqual({ notIn: ['resposta_ia'] });
+    });
   });
 });
