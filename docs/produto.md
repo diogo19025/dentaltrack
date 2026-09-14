@@ -8,7 +8,7 @@
 >
 > O **que fazer a seguir** está em [`maturity-plan.md`](maturity-plan.md); o
 > **estado auditado** que o originou, em [`maturity-audit.md`](maturity-audit.md).
-> Atualizado em: 2026-09-11.
+> Atualizado em: 2026-09-14.
 
 ---
 
@@ -301,6 +301,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 
 | 2026-09-11 | **LGPD operacional** (P1.5, PR 9): `DELETE /leads/:id/dados-pessoais` (owner-only) **anonimiza, não apaga** — a linha do lead sustenta histórico, agendamentos e métricas que não são do titular. Numa transação, saem nome/telefone/e-mail/`externalId`, o `contactPhone` das conversas, o conteúdo das mensagens e o corpo das mensagens de saída; `Appointment` fica, e o `ContactOptOut` **também fica**, porque é ele que impede reenviar para quem pediu parar. O descadastro saiu da invisibilidade: aparece e se alterna no painel do lead. Retenção diária da fila finalizada, **desligada por padrão**. Migration `f17_lgpd`. |
 | 2026-09-11 | **Onboarding + demo** (P1.1/P1.2, PR 10): checklist de primeiros passos no dashboard, **derivado das tabelas existentes** (seis passos, cada um apontando para a aba que o resolve; some quando tudo está feito). A agenda mock conta imediatamente; a live exige provider utilizável e a última verificação verde. A revisão das automações tem marcador explícito. Seeds deixam a empresa demo operacional com baseline determinístico dos seis status, quatro estados da fila, dois descadastros e dois handoffs. `MockAgendaProvider` memoizado por empresa e substituído ao mudar o fuso. No mesmo PR, corrigida a regressão que impedia a API de subir desde o PR 6 (`HealthModule` importando o módulo errado). Migration aditiva `f18_automation_reviewed`. |
+| 2026-09-14 | **Automações agrupadas em painéis** (web, sem migration): a aba Automações mostrava as seis automações, as regras de envio e o calendário de feriados de uma vez. Agora a visão geral são **quatro cartões** — Regras de envio · Lembretes de consulta · Atrasos e faltas · Retorno de clientes — com o estado de cada automação e um resumo (janela/teto, "2 de 3 ativos"); os campos abrem num **painel por grupo** (Dialog, fundo desfocado), e clicar fora ou Esc volta à visão geral. O rascunho sobrevive ao fechar: o **Salvar continua único**, na aba. `components/settings/automations-tab.tsx`. |
 
 ---
 
