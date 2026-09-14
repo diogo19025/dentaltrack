@@ -129,6 +129,12 @@ consulta essa lista antes de se aplicar.** Ao acrescentar uma nova, a pergunta
 obrigatória é: *isto existe para conter iniciativa nossa ou para conter volume?*
 Se for iniciativa, não alcança tipo reativo.
 
+> **Bloquear e contar são duas perguntas.** Na primeira versão desta correção o
+> teto deixou de suprimir a resposta reativa, mas continuou **contando** — cada
+> resposta que passou pela fila gastava cota de lembrete, e a conta invertida
+> sobrevivia pela metade. Uma salvaguarda com contador declara a categoria nos
+> dois lugares: no que ela bloqueia e no que ela soma.
+
 ---
 
 ## 4. Regra que atravessa a fronteira mora no `shared`
@@ -152,6 +158,14 @@ fonte, dois consumidores.
 > Critério prático: se uma regra precisa ser verdadeira nos dois lados para o
 > produto não mentir, ela é contrato — vai para o `shared` com um teste, não para
 > um comentário nem para um documento de plano.
+
+> **Regra nova não pode prender o estado que ela passa a proibir.** O `release`
+> ficou permissivo de propósito, para limpar o `handoffAt` gravado antes da
+> regra existir — mas a tela escondia os dois botões juntos, e a saída
+> documentada não tinha caminho no produto. Não era cosmético: `revalidate()`
+> suprime qualquer mensagem de conversa com `handoffAt`, então a conversa presa
+> calaria os lembretes do próprio agendamento dela. Ao passar a recusar um
+> estado, verifique quem já está nele e por onde sai.
 
 ---
 
@@ -235,7 +249,9 @@ rodando o build de 2026-09-09 enquanto o repositório dizia outra coisa.
 - [ ] Mexeu em algum `*.module.ts`? `app.module.spec.ts` verde.
 - [ ] Algum `catch` ou valor inicial está escolhendo um estado do domínio? Ou é
       justificado por escrito, ou vira um estado "desconhecido" explícito.
-- [ ] Criou salvaguarda na fila de saída? Ela declara se alcança tipo reativo.
+- [ ] Criou salvaguarda na fila de saída? Ela declara se alcança tipo reativo —
+      no que bloqueia **e** no que conta.
+- [ ] Passou a recusar um estado? Quem já está nele tem caminho de saída na tela.
 - [ ] A regra precisa ser verdadeira na API **e** na tela? Então está no `shared`.
 - [ ] Mexeu em PII? A busca cobre todas as chaves que identificam a pessoa.
 - [ ] Criou alerta? Ele enumera os estados que o disparam.
