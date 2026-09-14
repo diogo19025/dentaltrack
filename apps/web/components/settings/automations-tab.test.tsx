@@ -201,6 +201,31 @@ describe("AutomationsTab", () => {
     expect(screen.queryByDisplayValue("America/Sao_Paulo")).toBeNull();
   });
 
+  it("palavras de manutenção: vírgula e espaço não somem enquanto se digita", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    render(<AutomationsTab />);
+    openGroup(/Configurar Retorno de clientes/i);
+
+    const input = screen.getByLabelText(/O que conta como manutenção/i);
+    fireEvent.change(input, { target: { value: "limpeza, " } });
+    expect((input as HTMLInputElement).value).toBe("limpeza, ");
+
+    fireEvent.change(input, { target: { value: "limpeza, revisão" } });
+    fireEvent.blur(input);
+    expect((input as HTMLInputElement).value).toBe("limpeza, revisão");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Voltar$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Salvar alterações/i }));
+    expect(state.update.mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        retorno: expect.objectContaining({
+          procedureKeywords: ["limpeza", "revisão"],
+        }),
+      }),
+      expect.anything(),
+    );
+  });
+
   it("sem edição, o botão indica que está tudo salvo", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);

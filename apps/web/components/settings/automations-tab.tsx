@@ -432,18 +432,12 @@ export function AutomationsTab() {
                   htmlFor="keywords"
                   className="md:col-span-2"
                 >
-                  <Input
+                  <KeywordsInput
                     id="keywords"
-                    value={current.retorno.procedureKeywords.join(", ")}
-                    onChange={(e) =>
+                    value={current.retorno.procedureKeywords}
+                    onChange={(procedureKeywords) =>
                       patch({
-                        retorno: {
-                          ...current.retorno,
-                          procedureKeywords: e.target.value
-                            .split(",")
-                            .map((k) => k.trim())
-                            .filter(Boolean),
-                        },
+                        retorno: { ...current.retorno, procedureKeywords },
                       })
                     }
                   />
@@ -517,6 +511,49 @@ function TimezoneSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function parseKeywords(text: string) {
+  return text
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Lista de palavras separadas por vírgula. O texto cru fica local enquanto
+ * se digita — normalizar a cada tecla apagava a vírgula e o espaço recém
+ * digitados, porque viravam uma palavra vazia e eram descartados. A lista
+ * limpa sobe a cada tecla; o texto só é arrumado ao sair do campo.
+ */
+function KeywordsInput({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string[];
+  onChange: (keywords: string[]) => void;
+}) {
+  const fromProps = value.join(", ");
+  const [text, setText] = useState(fromProps);
+  const [seen, setSeen] = useState(fromProps);
+  // Valor mudou por fora (salvar, refetch, reset): o texto acompanha.
+  if (seen !== fromProps) {
+    setSeen(fromProps);
+    if (parseKeywords(text).join(", ") !== fromProps) setText(fromProps);
+  }
+  return (
+    <Input
+      id={id}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(parseKeywords(e.target.value));
+      }}
+      onBlur={() => setText(parseKeywords(text).join(", "))}
+    />
   );
 }
 
