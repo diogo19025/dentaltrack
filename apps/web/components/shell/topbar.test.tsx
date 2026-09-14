@@ -55,11 +55,31 @@ describe("WhatsappStatusBanner", () => {
     render(<WhatsappStatusBanner />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "WhatsApp: desconectado",
+      "A sessão do WhatsApp caiu",
     );
-    expect(screen.getByRole("link", { name: "Ver conexão" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Reconectar" })).toHaveAttribute(
       "href",
       "/settings?tab=whatsapp",
     );
+  });
+
+  /**
+   * O alerta aparecia para qualquer estado diferente de `conectado`, então
+   * acusava falha **durante o pareamento** — com o dono olhando o QR na tela.
+   * Alerta que toca na operação normal é alerta que se aprende a ignorar.
+   */
+  it("fica calado enquanto o QR está sendo lido", () => {
+    state.connection = connection({ state: "aguardando_leitura" });
+    render(<WhatsappStatusBanner />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("fica calado quando não há instância configurada", () => {
+    state.connection = connection({
+      state: "nao_configurado",
+      instanceName: null,
+    });
+    render(<WhatsappStatusBanner />);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

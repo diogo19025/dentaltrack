@@ -1,5 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { HandoffState } from '@dentaltrack/shared';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { type HandoffState, supportsHandoff } from '@dentaltrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -41,6 +46,20 @@ export class HandoffService {
     reason?: string | null,
   ): Promise<HandoffState> {
     const current = await this.require(clinicId, conversationId);
+
+    // **Só onde a pausa é aplicada de verdade.** O gate da IA mora no
+    // `processInboundMessage`, que é o caminho dos canais sem login; o `/chat`
+    // do web passa pelo `streamMessage` e continuaria respondendo. Aceitar o
+    // handoff ali gravaria um `handoffAt` que o motor ignora, a tela exibiria
+    // "atendimento humano" e a fila de saída suprimiria mensagens por causa de
+    // um estado que não corresponde a nada. É melhor recusar do que registrar
+    // uma promessa que o sistema não cumpre.
+    if (!supportsHandoff(current.channel)) {
+      throw new UnprocessableEntityException(
+        'Esta conversa é do chat de teste — não há um cliente do outro lado para assumir.',
+      );
+    }
+
     if (current.handoffAt) {
       this.logger.log({
         event: 'conversation.handoff',
@@ -79,6 +98,10 @@ export class HandoffService {
    * O motivo é limpo junto: ele descrevia o atendimento que acabou, e mantê-lo
    * faria a próxima abertura da conversa mostrar a justificativa de um handoff
    * que já não existe.
+   *
+   * **Não** checa o canal, ao contrário do `assume`: devolver a conversa para a
+   * IA precisa funcionar sempre, inclusive para limpar um `handoffAt` gravado
+   * por uma versão anterior que aceitava qualquer canal.
    */
   async release(
     clinicId: string,
@@ -108,7 +131,8 @@ export class HandoffService {
   private async require(clinicId: string, conversationId: string) {
     const convo = await this.prisma.conversation.findFirst({
       where: { id: conversationId, clinicId },
-      select: { handoffAt: true, handoffReason: true },
+      // O canal decide se a operação faz sentido — ver `assume`.
+      select: { handoffAt: true, handoffReason: true, channel: true },
     });
     if (!convo) {
       throw new NotFoundException(`Conversa ${conversationId} não encontrada.`);

@@ -25,6 +25,7 @@ Monorepo: **web → Vercel**, **api + Evolution (WhatsApp) → Railway (Docker)*
 | `LLM_FALLBACK_PROVIDER=groq` · `GROQ_API_KEY` | Fallback (ou `google` + `GOOGLE_GENERATIVE_AI_API_KEY`). |
 | `CORS_ORIGIN` | Domínio do frontend (ex.: `https://app.vercel.app`). |
 | `EVOLUTION_API_URL` · `EVOLUTION_API_KEY` · `EVOLUTION_WEBHOOK_TOKEN` | URL do serviço Evolution no Railway + `AUTHENTICATION_API_KEY` dele + segredo do webhook. |
+| **`APP_VERSION`** | **SHA do commit publicado** (no Railway: `${{ RAILWAY_GIT_COMMIT_SHA }}`). Sai em `GET /health` e é o release do Sentry. Sem ela, `version` responde `null` e **não há como saber qual versão está no ar** — foi assim que produção ficou dois dias servindo um build antigo sem ninguém notar (ver [ARMADILHAS.md §7](ARMADILHAS.md)). |
 
 > Opcionais (defaults ok): `AI_TAG_MIN_CONFIDENCE` (0.6), `AI_STAGE_MIN_CONFIDENCE` (0.6), `ABANDON_AFTER_HOURS` (24), `WHATSAPP_SESSION_HOURS` — ver `apps/api/.env.example`.
 
@@ -102,7 +103,19 @@ Confirme os dois UUIDs antes de executar. Um `staff` pode operar atendimento, le
 
 ## 5. Smoke pós-deploy (validar em ~3 min)
 
-1. `GET https://<api>/health` → 200 (healthcheck do Railway verde).
+1. `GET https://<api>/health` → 200 **e `version` igual ao commit que você acabou de publicar.**
+   Um 200 sozinho **não** prova que o deploy entrou: quando o build novo falha o
+   healthcheck, o Railway mantém o anterior servindo, em silêncio — o `/health`
+   continua verde, respondendo pela versão velha. Confira também o `uptime`: se
+   ele for maior que o tempo desde o deploy, o build novo não subiu.
+   Se `version` vier `null`, defina `APP_VERSION` (ver acima); enquanto isso, a
+   impressão digital de rotas resolve — uma rota que existe devolve `401` e uma
+   que não existe devolve `404`, então um endpoint recém-criado diz qual build
+   está no ar:
+   ```bash
+   curl -s -o /dev/null -w "%{http_code}
+" https://<api>/onboarding/checklist
+   ```
 2. Abrir o domínio da Vercel → `/login` carrega com o painel de marca.
 3. Login → dashboard com dados (se a clínica demo foi semeada) ou estados vazios corretos.
 4. `/chat` → enviar "Quero saber sobre limpeza" → resposta em **streaming** (token a token).

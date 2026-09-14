@@ -1,6 +1,10 @@
 "use client";
 
-import type { ChatMessageDto, ConversationDetail } from "@dentaltrack/shared";
+import {
+  type ChatMessageDto,
+  type ConversationDetail,
+  supportsHandoff,
+} from "@dentaltrack/shared";
 import {
   Bell,
   Bot,
@@ -92,7 +96,16 @@ export function ConversationDetailContent({
   const [replyOpen, setReplyOpen] = useState(false);
   const assume = useAssumeConversation(detail.id);
   const release = useReleaseConversation(detail.id);
+  // O handoff só existe onde a IA de fato é pausada (hoje, WhatsApp). A regra
+  // mora no `shared` porque a API recusa a mesma operação — ver `HANDOFF_CHANNELS`.
+  const canHandoff = supportsHandoff(detail.channel);
   const handoffActive = detail.handoffAt !== null;
+  // Estado gravado por uma versão anterior, que aceitava assumir qualquer canal.
+  // A fila de saída o respeita (`revalidate` → `atendimento_humano`), então uma
+  // conversa presa aqui cala lembretes legítimos do agendamento dela. Por isso
+  // o `release` da API segue permissivo — e por isso a tela precisa continuar
+  // oferecendo o caminho de volta, mesmo onde não oferece o de ida.
+  const handoffStale = !canHandoff && handoffActive;
   const handoffPending = assume.isPending || release.isPending;
   const handoffError = assume.isError || release.isError;
 
@@ -123,14 +136,26 @@ export function ConversationDetailContent({
         </Field>
         <div className="col-span-full">
           <Field label="Responsável pelo atendimento">
-            <span className="flex flex-wrap items-center gap-2">
-              <HandoffBadge active={handoffActive} />
-              {handoffActive && detail.handoffAt && (
-                <span className="text-[12.5px] text-muted-foreground">
-                  desde {formatCaptured(detail.handoffAt)}
-                </span>
-              )}
-            </span>
+            {canHandoff || handoffActive ? (
+              <span className="flex flex-wrap items-center gap-2">
+                <HandoffBadge active={handoffActive} />
+                {handoffActive && detail.handoffAt && (
+                  <span className="text-[12.5px] text-muted-foreground">
+                    desde {formatCaptured(detail.handoffAt)}
+                  </span>
+                )}
+                {handoffStale && (
+                  <span className="text-[12.5px] text-muted-foreground">
+                    — conversa de teste: a IA nunca chegou a ser pausada aqui.
+                    Devolva para limpar o estado.
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                Conversa de teste — não há cliente do outro lado para assumir.
+              </span>
+            )}
           </Field>
         </div>
         <div className="col-span-full">
@@ -151,23 +176,27 @@ export function ConversationDetailContent({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 justify-self-start">
-        <Button
-          type="button"
-          variant={handoffActive ? "outline" : "default"}
-          disabled={handoffPending}
-          onClick={() => (handoffActive ? release.mutate() : assume.mutate({}))}
-        >
-          {handoffActive ? (
-            <RefreshCw className="size-4" />
-          ) : (
-            <Headphones className="size-4" />
-          )}
-          {handoffPending
-            ? "Atualizando…"
-            : handoffActive
-              ? "Devolver para IA"
-              : "Assumir atendimento"}
-        </Button>
+        {(canHandoff || handoffActive) && (
+          <Button
+            type="button"
+            variant={handoffActive ? "outline" : "default"}
+            disabled={handoffPending}
+            onClick={() =>
+              handoffActive ? release.mutate() : assume.mutate({})
+            }
+          >
+            {handoffActive ? (
+              <RefreshCw className="size-4" />
+            ) : (
+              <Headphones className="size-4" />
+            )}
+            {handoffPending
+              ? "Atualizando…"
+              : handoffActive
+                ? "Devolver para IA"
+                : "Assumir atendimento"}
+          </Button>
+        )}
 
         {wa && handoffActive && (
           <Button type="button" onClick={() => setReplyOpen(true)}>

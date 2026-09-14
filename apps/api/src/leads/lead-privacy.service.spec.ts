@@ -11,8 +11,13 @@ const ANONIMIZADO_EM = new Date('2026-09-11T10:00:00.000Z');
 function setup() {
   const prisma = {
     lead: { findFirst: jest.fn(), update: jest.fn() },
-    conversation: { updateMany: jest.fn() },
+    conversation: {
+      updateMany: jest.fn(),
+      // Conversas do titular — por vínculo **ou** por telefone.
+      findMany: jest.fn().mockResolvedValue([{ id: 'c1' }, { id: 'c2' }]),
+    },
     message: { updateMany: jest.fn() },
+    appointment: { updateMany: jest.fn() },
     outboundMessage: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     $transaction: jest.fn().mockResolvedValue([]),
   };
@@ -26,12 +31,10 @@ function setup() {
   return { service, prisma, optOut };
 }
 
-/** Lead normal, com duas conversas. */
 const leadRow = (over: Record<string, unknown> = {}) => ({
   id: LEAD,
   phone: PHONE,
   anonymizedAt: null,
-  conversations: [{ id: 'c1' }, { id: 'c2' }],
   ...over,
 });
 
@@ -52,38 +55,87 @@ describe('LeadPrivacyService (P1.5)', () => {
       expect(data.anonymizedAt).toBeInstanceOf(Date);
     });
 
-    it('apaga a identidade do canal nas conversas do lead', async () => {
+    it('apaga a identidade do canal nas conversas do titular', async () => {
       const { service, prisma } = setup();
       prisma.lead.findFirst.mockResolvedValueOnce(leadRow());
 
       await service.anonymize(CLINIC, LEAD);
 
       expect(prisma.conversation.updateMany).toHaveBeenCalledWith({
-        where: { clinicId: CLINIC, leadId: LEAD },
+        where: { clinicId: CLINIC, id: { in: ['c1', 'c2'] } },
         data: { contactPhone: null },
       });
     });
 
-    it('substitui o conteúdo das mensagens das conversas dele', async () => {
+    /**
+     * A falha que este teste guarda: buscar as conversas só por `leadId`
+     * deixava intactas as que carregam o telefone do contato sem vínculo — o
+     * que ele escreveu **antes** de virar lead, ou numa conversa que ficou
+     * órfã. Ali ficavam a identidade do canal e o conteúdo das mensagens.
+     */
+    it('alcança conversa que tem o telefone mas não o vínculo', async () => {
       const { service, prisma } = setup();
       prisma.lead.findFirst.mockResolvedValueOnce(leadRow());
 
       await service.anonymize(CLINIC, LEAD);
 
+      const where = prisma.conversation.findMany.mock.calls[0][0].where;
+      expect(where.clinicId).toBe(CLINIC);
+      expect(where.OR).toEqual([
+        { leadId: LEAD },
+        { contactPhone: { in: [PHONE, NORMALIZED] } },
+      ]);
+    });
+
+    it('substitui o conteúdo das mensagens de todas essas conversas', async () => {
+      const { service, prisma } = setup();
+      prisma.lead.findFirst.mockResolvedValueOnce(leadRow());
+      prisma.conversation.findMany.mockResolvedValueOnce([
+        { id: 'c1' },
+        { id: 'sem-vinculo' },
+      ]);
+
+      await service.anonymize(CLINIC, LEAD);
+
       const call = prisma.message.updateMany.mock.calls[0][0];
-      expect(call.where.conversationId).toEqual({ in: ['c1', 'c2'] });
+      expect(call.where.conversationId).toEqual({
+        in: ['c1', 'sem-vinculo'],
+      });
       expect(call.where.clinicId).toBe(CLINIC);
       expect(call.data.content).toContain('removido');
     });
 
-    it('limpa corpo e telefone das mensagens de saída', async () => {
+    /**
+     * `preferredTime` é texto livre do cliente ("terça de manhã, é para o meu
+     * filho João") e volta para o system prompt do agente em `ai/prompt.ts` —
+     * preservar a linha do agendamento não pode significar preservar a fala.
+     */
+    it('limpa a preferência de horário sem apagar o agendamento', async () => {
+      const { service, prisma } = setup();
+      prisma.lead.findFirst.mockResolvedValueOnce(leadRow());
+
+      await service.anonymize(CLINIC, LEAD);
+
+      const call = prisma.appointment.updateMany.mock.calls[0][0];
+      expect(call.data).toEqual({ preferredTime: null });
+      expect(call.where.OR).toEqual([
+        { leadId: LEAD },
+        { conversationId: { in: ['c1', 'c2'] } },
+      ]);
+    });
+
+    it('limpa corpo e telefone das mensagens de saída, com ou sem vínculo', async () => {
       const { service, prisma } = setup();
       prisma.lead.findFirst.mockResolvedValueOnce(leadRow());
 
       await service.anonymize(CLINIC, LEAD);
 
       const call = prisma.outboundMessage.updateMany.mock.calls[0][0];
-      expect(call.where).toMatchObject({ clinicId: CLINIC, leadId: LEAD });
+      expect(call.where.clinicId).toBe(CLINIC);
+      expect(call.where.OR).toEqual([
+        { leadId: LEAD },
+        { phone: { in: [PHONE, NORMALIZED] } },
+      ]);
       expect(call.data.phone).toBeNull();
     });
 
@@ -95,7 +147,7 @@ describe('LeadPrivacyService (P1.5)', () => {
       await service.anonymize(CLINIC, LEAD);
 
       expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(4);
+      expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(5);
     });
 
     it('cancela o que ainda não saiu para aquele telefone', async () => {
@@ -143,13 +195,17 @@ describe('LeadPrivacyService (P1.5)', () => {
       expect(state.anonymizedAt).toBe(ANONIMIZADO_EM.toISOString());
     });
 
-    it('lead sem telefone não quebra a limpeza da fila', async () => {
+    it('lead sem telefone busca as conversas só pelo vínculo', async () => {
       const { service, prisma } = setup();
       prisma.lead.findFirst.mockResolvedValueOnce(leadRow({ phone: null }));
 
       await expect(service.anonymize(CLINIC, LEAD)).resolves.toMatchObject({
         leadId: LEAD,
       });
+
+      expect(prisma.conversation.findMany.mock.calls[0][0].where.OR).toEqual([
+        { leadId: LEAD },
+      ]);
       // Só a chamada de dentro da transação, sem a limpeza por telefone.
       expect(prisma.outboundMessage.updateMany).toHaveBeenCalledTimes(1);
     });
