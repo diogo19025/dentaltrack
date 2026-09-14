@@ -74,32 +74,18 @@ import { cn } from "@/lib/utils";
 type GroupKey = "envio" | "lembretes" | "faltas" | "retorno";
 
 /**
- * Fusos do Brasil (IANA), ordenados pelo GMT. Só atendemos empresas em solo
- * brasileiro, então a lista é curta e nomeada pelo que o dono reconhece — o
- * GMT e o estado, não a zona. O Brasil não tem horário de verão desde 2019.
+ * Fusos do Brasil, um por GMT. Só atendemos empresas em solo brasileiro, e o
+ * dono reconhece o GMT e as cidades — não a zona IANA. O Brasil não tem
+ * horário de verão desde 2019, então o GMT vale o ano inteiro.
  */
 const BRAZIL_TIMEZONES: { value: string; label: string }[] = [
   { value: "America/Noronha", label: "GMT-2 · Fernando de Noronha" },
   {
     value: "America/Sao_Paulo",
-    label: "GMT-3 · Brasília (SP, RJ, MG, ES, PR, SC, RS, GO, DF)",
+    label: "GMT-3 · Brasília, São Paulo, Rio de Janeiro",
   },
-  { value: "America/Bahia", label: "GMT-3 · Bahia" },
-  {
-    value: "America/Fortaleza",
-    label: "GMT-3 · Ceará, Maranhão, Piauí, RN, PB",
-  },
-  { value: "America/Recife", label: "GMT-3 · Pernambuco" },
-  { value: "America/Maceio", label: "GMT-3 · Alagoas, Sergipe" },
-  { value: "America/Belem", label: "GMT-3 · Pará (leste), Amapá" },
-  { value: "America/Araguaina", label: "GMT-3 · Tocantins" },
-  { value: "America/Santarem", label: "GMT-3 · Pará (oeste)" },
-  { value: "America/Cuiaba", label: "GMT-4 · Mato Grosso" },
-  { value: "America/Campo_Grande", label: "GMT-4 · Mato Grosso do Sul" },
-  { value: "America/Manaus", label: "GMT-4 · Amazonas (Manaus)" },
-  { value: "America/Porto_Velho", label: "GMT-4 · Rondônia" },
-  { value: "America/Boa_Vista", label: "GMT-4 · Roraima" },
-  { value: "America/Rio_Branco", label: "GMT-5 · Acre" },
+  { value: "America/Manaus", label: "GMT-4 · Manaus, Cuiabá, Campo Grande" },
+  { value: "America/Rio_Branco", label: "GMT-5 · Rio Branco" },
 ];
 
 const GROUPS: Record<
