@@ -232,29 +232,27 @@ describe("AutomationsTab", () => {
     openGroup(/Configurar Atrasos e faltas/i);
 
     // Aviso de atraso vem desligado: aviso visível, campos escondidos.
+    // O corpo fica montado (é o que permite animar), mas invisível e inerte.
     expect(screen.getByText(/já está na sala de espera/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/Tolerância \(minutos\)/i)).toBeNull();
+    const tolerance = screen.getByLabelText(/Tolerância \(minutos\)/i);
+    expect(tolerance).not.toBeVisible();
 
     fireEvent.click(
       screen.getAllByRole("button", { name: /Ver detalhes/i })[0],
     );
-    expect(
-      screen.getByLabelText(/Tolerância \(minutos\)/i),
-    ).toBeInTheDocument();
+    expect(tolerance).toBeVisible();
 
     fireEvent.click(screen.getAllByRole("button", { name: /^Recolher$/i })[0]);
-    expect(screen.queryByLabelText(/Tolerância \(minutos\)/i)).toBeNull();
+    expect(tolerance).not.toBeVisible();
 
     // Ligar expande sozinho.
     fireEvent.click(
       screen.getByRole("switch", { name: /Ativar Aviso de atraso/i }),
     );
-    expect(
-      screen.getByLabelText(/Tolerância \(minutos\)/i),
-    ).toBeInTheDocument();
+    expect(tolerance).toBeVisible();
 
     // Remarcação após falta vem ligada: já expandida.
-    expect(screen.getByLabelText(/Tentativas \(m/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Tentativas \(m/i)).toBeVisible();
   });
 
   it("sem edição, o botão indica que está tudo salvo", () => {

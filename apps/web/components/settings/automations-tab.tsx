@@ -746,38 +746,54 @@ function RuleCard({
         </Button>
       </div>
 
-      {expanded && (
-        <div id={bodyId} className="grid gap-5 p-6 md:grid-cols-2">
-          {extra}
-          <Field
-            label="Mensagem"
-            htmlFor={`tpl-${title}`}
-            className="md:col-span-2"
-          >
-            <Textarea
-              id={`tpl-${title}`}
-              rows={3}
-              value={rule.template}
-              onChange={(e) =>
-                onChange({ ...rule, template: e.target.value } as never)
-              }
-            />
-            <Hint>
-              Marcadores disponíveis:{" "}
-              {TEMPLATE_PLACEHOLDERS.map((p) => `{${p}}`).join(" · ")}
-            </Hint>
-          </Field>
+      {/* Grid 0fr→1fr anima até a altura real do conteúdo, sem medir nada.
+          Recolhido, o conteúdo fica invisível e inerte (sem foco/leitor). */}
+      <div
+        className="grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none"
+        style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
+      >
+        <div
+          id={bodyId}
+          className="min-h-0 overflow-hidden"
+          style={{
+            visibility: expanded ? "visible" : "hidden",
+            transition: expanded ? undefined : "visibility 0s linear 200ms",
+          }}
+          inert={!expanded}
+          aria-hidden={!expanded}
+        >
+          <div className="grid gap-5 p-6 md:grid-cols-2">
+            {extra}
+            <Field
+              label="Mensagem"
+              htmlFor={`tpl-${title}`}
+              className="md:col-span-2"
+            >
+              <Textarea
+                id={`tpl-${title}`}
+                rows={3}
+                value={rule.template}
+                onChange={(e) =>
+                  onChange({ ...rule, template: e.target.value } as never)
+                }
+              />
+              <Hint>
+                Marcadores disponíveis:{" "}
+                {TEMPLATE_PLACEHOLDERS.map((p) => `{${p}}`).join(" · ")}
+              </Hint>
+            </Field>
 
-          <div className="md:col-span-2">
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-              Como o cliente recebe
-            </div>
-            <div className="rounded-[var(--radius-sm)] border border-border bg-secondary px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
-              {preview || "—"}
+            <div className="md:col-span-2">
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+                Como o cliente recebe
+              </div>
+              <div className="rounded-[var(--radius-sm)] border border-border bg-secondary px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
+                {preview || "—"}
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
     </Card>
   );
 }
