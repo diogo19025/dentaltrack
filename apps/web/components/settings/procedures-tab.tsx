@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
+  acceptedFormatsLabel,
   type CreateProcedureInput,
   MEDIA_TYPE_LABELS,
   MEDIA_TYPES,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { MediaUploadButton } from "@/components/settings/media-upload-button";
 import { cn } from "@/lib/utils";
 import {
   useCreateProcedure,
@@ -380,7 +382,7 @@ function ProcedureDialog({
           <div className="grid grid-cols-[minmax(0,1fr)_170px] gap-3 max-[420px]:grid-cols-1">
             <div>
               <Label htmlFor="proc-offer-media" className="mb-2 text-[13px]">
-                Mídia da oferta (URL)
+                Mídia da oferta
               </Label>
               <Input
                 id="proc-offer-media"
@@ -388,6 +390,22 @@ function ProcedureDialog({
                 {...register("offerMediaUrl")}
                 placeholder="https://…/catalogo.pdf"
               />
+              {/* Enviar o arquivo preenche URL e tipo; colar uma URL pública
+                  continua funcionando para quem já hospeda a imagem. */}
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <MediaUploadButton
+                  purpose="oferta"
+                  onUploaded={(result) => {
+                    setValue("offerMediaUrl", result.url, { shouldDirty: true });
+                    setValue("offerMediaType", result.type, {
+                      shouldDirty: true,
+                    });
+                  }}
+                />
+                <span className="text-[12px] text-muted-foreground">
+                  {acceptedFormatsLabel("oferta")}.
+                </span>
+              </div>
             </div>
             <div>
               <Label className="mb-2 text-[13px]">Tipo</Label>

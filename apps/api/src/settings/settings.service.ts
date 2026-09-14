@@ -79,6 +79,7 @@ export class SettingsService {
     const tone = settings?.tone;
     return {
       clinicName: clinic.name,
+      logoUrl: settings?.logoUrl ?? '',
       specialty: settings?.specialty ?? '',
       description: settings?.description ?? '',
       assistantName: settings?.assistantName ?? '',

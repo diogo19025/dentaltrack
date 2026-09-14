@@ -11,6 +11,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { HealthModule } from './health/health.module';
 import { JobsModule } from './jobs/jobs.module';
 import { LeadsModule } from './leads/leads.module';
+import { MediaModule } from './media/media.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
@@ -35,6 +36,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     SettingsModule,
     ProceduresModule,
     TagsModule,
+    MediaModule,
     MetricsModule,
     LeadsModule,
     PipelineModule,
