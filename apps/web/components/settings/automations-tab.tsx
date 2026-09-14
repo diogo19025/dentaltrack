@@ -74,32 +74,18 @@ import { cn } from "@/lib/utils";
 type GroupKey = "envio" | "lembretes" | "faltas" | "retorno";
 
 /**
- * Fusos do Brasil (IANA), ordenados pelo GMT. Só atendemos empresas em solo
- * brasileiro, então a lista é curta e nomeada pelo que o dono reconhece — o
- * GMT e o estado, não a zona. O Brasil não tem horário de verão desde 2019.
+ * Fusos do Brasil, um por GMT. Só atendemos empresas em solo brasileiro, e o
+ * dono reconhece o GMT e as cidades — não a zona IANA. O Brasil não tem
+ * horário de verão desde 2019, então o GMT vale o ano inteiro.
  */
 const BRAZIL_TIMEZONES: { value: string; label: string }[] = [
   { value: "America/Noronha", label: "GMT-2 · Fernando de Noronha" },
   {
     value: "America/Sao_Paulo",
-    label: "GMT-3 · Brasília (SP, RJ, MG, ES, PR, SC, RS, GO, DF)",
+    label: "GMT-3 · Brasília, São Paulo, Rio de Janeiro",
   },
-  { value: "America/Bahia", label: "GMT-3 · Bahia" },
-  {
-    value: "America/Fortaleza",
-    label: "GMT-3 · Ceará, Maranhão, Piauí, RN, PB",
-  },
-  { value: "America/Recife", label: "GMT-3 · Pernambuco" },
-  { value: "America/Maceio", label: "GMT-3 · Alagoas, Sergipe" },
-  { value: "America/Belem", label: "GMT-3 · Pará (leste), Amapá" },
-  { value: "America/Araguaina", label: "GMT-3 · Tocantins" },
-  { value: "America/Santarem", label: "GMT-3 · Pará (oeste)" },
-  { value: "America/Cuiaba", label: "GMT-4 · Mato Grosso" },
-  { value: "America/Campo_Grande", label: "GMT-4 · Mato Grosso do Sul" },
-  { value: "America/Manaus", label: "GMT-4 · Amazonas (Manaus)" },
-  { value: "America/Porto_Velho", label: "GMT-4 · Rondônia" },
-  { value: "America/Boa_Vista", label: "GMT-4 · Roraima" },
-  { value: "America/Rio_Branco", label: "GMT-5 · Acre" },
+  { value: "America/Manaus", label: "GMT-4 · Manaus, Cuiabá, Campo Grande" },
+  { value: "America/Rio_Branco", label: "GMT-5 · Rio Branco" },
 ];
 
 const GROUPS: Record<
@@ -692,6 +678,10 @@ function RuleCard({
   onChange: (rule: never) => void;
   extra?: ReactNode;
 }) {
+  // Desligada nasce recolhida — o dono vê o que é sem tropeçar nos campos.
+  // Ligar uma recolhida expande na hora; qualquer uma pode recolher.
+  const [expanded, setExpanded] = useState(rule.enabled);
+  const bodyId = `rule-body-${title}`;
   const preview = renderTemplate(rule.template, {
     nome: "Marina",
     empresa: "sua empresa",
@@ -717,7 +707,10 @@ function RuleCard({
         </div>
         <Switch
           checked={rule.enabled}
-          onCheckedChange={(enabled) => onChange({ ...rule, enabled } as never)}
+          onCheckedChange={(enabled) => {
+            if (enabled) setExpanded(true);
+            onChange({ ...rule, enabled } as never);
+          }}
           aria-label={`Ativar ${title}`}
         />
       </div>
@@ -732,36 +725,59 @@ function RuleCard({
         </div>
       )}
 
-      <div className="grid gap-5 p-6 md:grid-cols-2">
-        {extra}
-        <Field
-          label="Mensagem"
-          htmlFor={`tpl-${title}`}
-          className="md:col-span-2"
+      <div className="border-b border-border px-6 py-2.5 last:border-b-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={bodyId}
         >
-          <Textarea
-            id={`tpl-${title}`}
-            rows={3}
-            value={rule.template}
-            onChange={(e) =>
-              onChange({ ...rule, template: e.target.value } as never)
-            }
-          />
-          <Hint>
-            Marcadores disponíveis:{" "}
-            {TEMPLATE_PLACEHOLDERS.map((p) => `{${p}}`).join(" · ")}
-          </Hint>
-        </Field>
+          {expanded ? (
+            <>
+              <ChevronUp className="size-4" /> Recolher
+            </>
+          ) : (
+            <>
+              <ChevronDown className="size-4" /> Ver detalhes
+            </>
+          )}
+        </Button>
+      </div>
 
-        <div className="md:col-span-2">
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Como o cliente recebe
-          </div>
-          <div className="rounded-[var(--radius-sm)] border border-border bg-secondary px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
-            {preview || "—"}
+      {expanded && (
+        <div id={bodyId} className="grid gap-5 p-6 md:grid-cols-2">
+          {extra}
+          <Field
+            label="Mensagem"
+            htmlFor={`tpl-${title}`}
+            className="md:col-span-2"
+          >
+            <Textarea
+              id={`tpl-${title}`}
+              rows={3}
+              value={rule.template}
+              onChange={(e) =>
+                onChange({ ...rule, template: e.target.value } as never)
+              }
+            />
+            <Hint>
+              Marcadores disponíveis:{" "}
+              {TEMPLATE_PLACEHOLDERS.map((p) => `{${p}}`).join(" · ")}
+            </Hint>
+          </Field>
+
+          <div className="md:col-span-2">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Como o cliente recebe
+            </div>
+            <div className="rounded-[var(--radius-sm)] border border-border bg-secondary px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
+              {preview || "—"}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </Card>
   );
 }

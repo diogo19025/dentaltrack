@@ -226,6 +226,37 @@ describe("AutomationsTab", () => {
     );
   });
 
+  it("automação desligada nasce recolhida; ligar expande, e dá para recolher de novo", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    render(<AutomationsTab />);
+    openGroup(/Configurar Atrasos e faltas/i);
+
+    // Aviso de atraso vem desligado: aviso visível, campos escondidos.
+    expect(screen.getByText(/já está na sala de espera/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Tolerância \(minutos\)/i)).toBeNull();
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /Ver detalhes/i })[0],
+    );
+    expect(
+      screen.getByLabelText(/Tolerância \(minutos\)/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^Recolher$/i })[0]);
+    expect(screen.queryByLabelText(/Tolerância \(minutos\)/i)).toBeNull();
+
+    // Ligar expande sozinho.
+    fireEvent.click(
+      screen.getByRole("switch", { name: /Ativar Aviso de atraso/i }),
+    );
+    expect(
+      screen.getByLabelText(/Tolerância \(minutos\)/i),
+    ).toBeInTheDocument();
+
+    // Remarcação após falta vem ligada: já expandida.
+    expect(screen.getByLabelText(/Tentativas \(m/i)).toBeInTheDocument();
+  });
+
   it("sem edição, o botão indica que está tudo salvo", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);
