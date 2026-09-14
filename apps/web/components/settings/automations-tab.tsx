@@ -13,7 +13,9 @@ import {
   CalendarDays,
   CalendarPlus,
   Check,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Clock,
   Plus,
   RefreshCw,
@@ -657,6 +659,9 @@ function RuleCard({
   );
 }
 
+/** Quantos feriados o painel mostra antes do "Mostrar todos". */
+const HOLIDAYS_PREVIEW = 5;
+
 /** Calendário de feriados: nacionais importados, locais na mão. */
 function HolidaysCard() {
   const year = new Date().getFullYear();
@@ -666,6 +671,24 @@ function HolidaysCard() {
   const sync = useSyncHolidays();
   const [date, setDate] = useState("");
   const [name, setName] = useState("");
+  const [showAll, setShowAll] = useState(false);
+
+  // A lista vem por data. Sem "todos", o painel mostra só os próximos 5 a
+  // partir de hoje (ou os 5 últimos, se o ano já passou) — o resto fica
+  // atrás de um botão e rola dentro da própria lista, sem esticar o painel.
+  const today = new Date().toISOString().slice(0, 10);
+  const firstUpcoming = holidays.findIndex((h) => h.date >= today);
+  const start =
+    firstUpcoming === -1
+      ? Math.max(0, holidays.length - HOLIDAYS_PREVIEW)
+      : Math.min(
+          firstUpcoming,
+          Math.max(0, holidays.length - HOLIDAYS_PREVIEW),
+        );
+  const visible = showAll
+    ? holidays
+    : holidays.slice(start, start + HOLIDAYS_PREVIEW);
+  const hidden = holidays.length - visible.length;
 
   function add() {
     if (!date.trim() || !name.trim()) return;
@@ -734,8 +757,13 @@ function HolidaysCard() {
           Nenhum feriado cadastrado para {year}.
         </div>
       ) : (
-        <ul className="divide-y divide-border">
-          {holidays.map((holiday) => (
+        <ul
+          className={cn(
+            "divide-y divide-border",
+            showAll && "max-h-72 overflow-y-auto",
+          )}
+        >
+          {visible.map((holiday) => (
             <li
               key={holiday.id}
               className="flex items-center gap-3 px-6 py-3 text-sm"
@@ -759,6 +787,28 @@ function HolidaysCard() {
             </li>
           ))}
         </ul>
+      )}
+
+      {holidays.length > HOLIDAYS_PREVIEW && (
+        <div className="border-t border-border px-6 py-2.5">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAll((v) => !v)}
+          >
+            {showAll ? (
+              <>
+                <ChevronUp className="size-4" /> Mostrar menos
+              </>
+            ) : (
+              <>
+                <ChevronDown className="size-4" /> Mostrar todos ({hidden} a
+                mais)
+              </>
+            )}
+          </Button>
+        </div>
       )}
     </Card>
   );

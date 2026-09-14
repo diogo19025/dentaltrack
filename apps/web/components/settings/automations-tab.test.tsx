@@ -23,6 +23,7 @@ function openGroup(name: RegExp) {
 
 const state = vi.hoisted(() => ({
   data: null as AutomationSettings | null,
+  holidays: [] as { id: string; date: string; name: string; scope: string }[],
   queryError: null as Error | null,
   refetch: vi.fn(),
   update: {
@@ -42,7 +43,7 @@ vi.mock("@/hooks/use-automations", () => ({
     refetch: state.refetch,
   }),
   useUpdateAutomations: () => state.update,
-  useHolidays: () => ({ data: [], isLoading: false }),
+  useHolidays: () => ({ data: state.holidays, isLoading: false }),
   useCreateHoliday: () => ({ mutate: vi.fn(), isPending: false }),
   useDeleteHoliday: () => ({ mutate: vi.fn(), isPending: false }),
   useSyncHolidays: () => ({ mutate: vi.fn(), isPending: false }),
@@ -51,6 +52,7 @@ vi.mock("@/hooks/use-automations", () => ({
 afterEach(() => {
   vi.clearAllMocks();
   state.data = null;
+  state.holidays = [];
   state.queryError = null;
   state.update.isError = false;
   state.update.error = null;
@@ -152,6 +154,41 @@ describe("AutomationsTab", () => {
 
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("2 de 3 ativos")).toBeInTheDocument();
+  });
+
+  it("feriados: mostra só os próximos 5 e o resto atrás de um botão", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    const year = new Date().getFullYear() + 1; // tudo no futuro → os 5 primeiros
+    state.holidays = Array.from({ length: 12 }, (_, i) => ({
+      id: `h${i}`,
+      date: `${year}-${String(i + 1).padStart(2, "0")}-10`,
+      name: `Feriado ${i + 1}`,
+      scope: "nacional",
+    }));
+    render(<AutomationsTab />);
+    openGroup(/Configurar Regras de envio/i);
+
+    expect(screen.getAllByText(/^Feriado \d+$/)).toHaveLength(5);
+    expect(screen.getByText("Feriado 1")).toBeInTheDocument();
+    expect(screen.queryByText("Feriado 6")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Mostrar todos/i }));
+    expect(screen.getAllByText(/^Feriado \d+$/)).toHaveLength(12);
+
+    fireEvent.click(screen.getByRole("button", { name: /Mostrar menos/i }));
+    expect(screen.getAllByText(/^Feriado \d+$/)).toHaveLength(5);
+  });
+
+  it("feriados: com 5 ou menos, não há botão de mostrar todos", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    state.holidays = [
+      { id: "a", date: "2099-01-01", name: "Único", scope: "local" },
+    ];
+    render(<AutomationsTab />);
+    openGroup(/Configurar Regras de envio/i);
+
+    expect(screen.getByText("Único")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mostrar todos/i })).toBeNull();
   });
 
   it("sem edição, o botão indica que está tudo salvo", () => {
