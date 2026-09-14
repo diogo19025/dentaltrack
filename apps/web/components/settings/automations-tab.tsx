@@ -678,6 +678,10 @@ function RuleCard({
   onChange: (rule: never) => void;
   extra?: ReactNode;
 }) {
+  // Desligada nasce recolhida — o dono vê o que é sem tropeçar nos campos.
+  // Ligar uma recolhida expande na hora; qualquer uma pode recolher.
+  const [expanded, setExpanded] = useState(rule.enabled);
+  const bodyId = `rule-body-${title}`;
   const preview = renderTemplate(rule.template, {
     nome: "Marina",
     empresa: "sua empresa",
@@ -703,7 +707,10 @@ function RuleCard({
         </div>
         <Switch
           checked={rule.enabled}
-          onCheckedChange={(enabled) => onChange({ ...rule, enabled } as never)}
+          onCheckedChange={(enabled) => {
+            if (enabled) setExpanded(true);
+            onChange({ ...rule, enabled } as never);
+          }}
           aria-label={`Ativar ${title}`}
         />
       </div>
@@ -718,36 +725,59 @@ function RuleCard({
         </div>
       )}
 
-      <div className="grid gap-5 p-6 md:grid-cols-2">
-        {extra}
-        <Field
-          label="Mensagem"
-          htmlFor={`tpl-${title}`}
-          className="md:col-span-2"
+      <div className="border-b border-border px-6 py-2.5 last:border-b-0">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={bodyId}
         >
-          <Textarea
-            id={`tpl-${title}`}
-            rows={3}
-            value={rule.template}
-            onChange={(e) =>
-              onChange({ ...rule, template: e.target.value } as never)
-            }
-          />
-          <Hint>
-            Marcadores disponíveis:{" "}
-            {TEMPLATE_PLACEHOLDERS.map((p) => `{${p}}`).join(" · ")}
-          </Hint>
-        </Field>
+          {expanded ? (
+            <>
+              <ChevronUp className="size-4" /> Recolher
+            </>
+          ) : (
+            <>
+              <ChevronDown className="size-4" /> Ver detalhes
+            </>
+          )}
+        </Button>
+      </div>
 
-        <div className="md:col-span-2">
-          <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
-            Como o cliente recebe
-          </div>
-          <div className="rounded-[var(--radius-sm)] border border-border bg-secondary px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
-            {preview || "—"}
+      {expanded && (
+        <div id={bodyId} className="grid gap-5 p-6 md:grid-cols-2">
+          {extra}
+          <Field
+            label="Mensagem"
+            htmlFor={`tpl-${title}`}
+            className="md:col-span-2"
+          >
+            <Textarea
+              id={`tpl-${title}`}
+              rows={3}
+              value={rule.template}
+              onChange={(e) =>
+                onChange({ ...rule, template: e.target.value } as never)
+              }
+            />
+            <Hint>
+              Marcadores disponíveis:{" "}
+              {TEMPLATE_PLACEHOLDERS.map((p) => `{${p}}`).join(" · ")}
+            </Hint>
+          </Field>
+
+          <div className="md:col-span-2">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+              Como o cliente recebe
+            </div>
+            <div className="rounded-[var(--radius-sm)] border border-border bg-secondary px-3.5 py-2.5 text-[13.5px] leading-[1.5]">
+              {preview || "—"}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </Card>
   );
 }
