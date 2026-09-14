@@ -11,7 +11,15 @@ import { AutomationsTab } from "./automations-tab";
  * O que estes testes protegem: o dono precisa (1) ver exatamente o texto que o
  * cliente vai receber antes de ligar, e (2) nunca perder o que digitou por
  * causa de um refetch — daí o estado ser derivado, sem efeito de sincronização.
+ *
+ * Os campos vivem num painel por grupo; a visão geral só resume. Por isso os
+ * testes abrem o grupo antes de procurar o campo — e o rascunho tem de
+ * sobreviver ao fechar o painel, senão o Salvar único não faria sentido.
  */
+
+function openGroup(name: RegExp) {
+  fireEvent.click(screen.getByRole("button", { name }));
+}
 
 const state = vi.hoisted(() => ({
   data: null as AutomationSettings | null,
@@ -63,6 +71,7 @@ describe("AutomationsTab", () => {
   it("mostra o texto já preenchido, como o cliente vai receber", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);
+    openGroup(/Configurar Lembretes de consulta/i);
 
     // A prévia é o texto já resolvido: nenhum marcador cru sobrevive nela.
     // (O marcador segue visível no campo de edição, que é onde ele deve estar.)
@@ -76,19 +85,19 @@ describe("AutomationsTab", () => {
   it("o aviso de atraso chega desligado e explica o porquê", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);
+    openGroup(/Configurar Atrasos e faltas/i);
 
     const toggle = screen.getByRole("switch", {
       name: /Ativar Aviso de atraso/i,
     });
     expect(toggle).toHaveAttribute("data-state", "unchecked");
-    expect(
-      screen.getByText(/já está na sala de espera/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/já está na sala de espera/i)).toBeInTheDocument();
   });
 
   it("o teto de tentativas da remarcação não passa de 3", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);
+    openGroup(/Configurar Atrasos e faltas/i);
 
     const attempts = screen.getByLabelText(/Tentativas \(m/i);
     fireEvent.change(attempts, { target: { value: "9" } });
@@ -96,19 +105,53 @@ describe("AutomationsTab", () => {
     expect((attempts as HTMLInputElement).value).toBe("3");
   });
 
-  it("salvar envia a configuração editada", () => {
+  it("salvar envia a configuração editada, mesmo depois de fechar o painel", () => {
     state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
     render(<AutomationsTab />);
 
+    openGroup(/Configurar Regras de envio/i);
     fireEvent.change(screen.getByLabelText(/Teto de mensagens por dia/i), {
       target: { value: "50" },
     });
+    // Fechar o painel não descarta o rascunho — o Salvar é o da aba.
+    fireEvent.click(screen.getByRole("button", { name: /^Voltar$/i }));
+    expect(screen.queryByLabelText(/Teto de mensagens por dia/i)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Salvar alterações/i }));
 
     expect(state.update.mutate).toHaveBeenCalledWith(
       expect.objectContaining({ dailyCap: 50 }),
       expect.anything(),
     );
+  });
+
+  it("a visão geral resume os grupos sem mostrar os campos", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    render(<AutomationsTab />);
+
+    expect(screen.getByText("Regras de envio")).toBeInTheDocument();
+    expect(screen.getByText("Lembretes de consulta")).toBeInTheDocument();
+    expect(screen.getByText("Atrasos e faltas")).toBeInTheDocument();
+    expect(screen.getByText("Retorno de clientes")).toBeInTheDocument();
+    expect(screen.getByText("3 de 3 ativos")).toBeInTheDocument();
+    expect(screen.getByText("1 de 2 ativos")).toBeInTheDocument();
+
+    // Nenhum campo de texto na visão geral: eles só aparecem no painel.
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("a visão geral reflete o que foi desligado no painel", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    render(<AutomationsTab />);
+
+    openGroup(/Configurar Lembretes de consulta/i);
+    fireEvent.click(
+      screen.getByRole("switch", { name: /Ativar Lembrete — 1 hora antes/i }),
+    );
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("2 de 3 ativos")).toBeInTheDocument();
   });
 
   it("sem edição, o botão indica que está tudo salvo", () => {
