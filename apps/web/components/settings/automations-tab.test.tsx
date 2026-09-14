@@ -51,6 +51,7 @@ vi.mock("@/hooks/use-automations", () => ({
 
 afterEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   state.data = null;
   state.holidays = [];
   state.queryError = null;
@@ -253,6 +254,22 @@ describe("AutomationsTab", () => {
 
     // Remarcação após falta vem ligada: já expandida.
     expect(screen.getByLabelText(/Tentativas \(m/i)).toBeVisible();
+  });
+
+  it("expandido/recolhido sobrevive a fechar e reabrir o painel", () => {
+    state.data = { ...DEFAULT_AUTOMATION_SETTINGS };
+    render(<AutomationsTab />);
+
+    // Expande o atraso (desligado, nasce recolhido) e recolhe a falta (ligada).
+    openGroup(/Configurar Atrasos e faltas/i);
+    fireEvent.click(screen.getByRole("button", { name: /Ver detalhes/i }));
+    // Com o atraso expandido, há dois "Recolher": o segundo é o da falta.
+    fireEvent.click(screen.getAllByRole("button", { name: /^Recolher$/i })[1]);
+    fireEvent.click(screen.getByRole("button", { name: /^Voltar$/i }));
+
+    openGroup(/Configurar Atrasos e faltas/i);
+    expect(screen.getByLabelText(/Tolerância \(minutos\)/i)).toBeVisible();
+    expect(screen.getByLabelText(/Tentativas \(m/i)).not.toBeVisible();
   });
 
   it("sem edição, o botão indica que está tudo salvo", () => {

@@ -55,6 +55,7 @@ import {
   useSyncHolidays,
   useUpdateAutomations,
 } from "@/hooks/use-automations";
+import { useStoredToggle } from "@/hooks/use-stored-toggle";
 import { cn } from "@/lib/utils";
 
 /**
@@ -679,8 +680,13 @@ function RuleCard({
   extra?: ReactNode;
 }) {
   // Desligada nasce recolhida — o dono vê o que é sem tropeçar nos campos.
-  // Ligar uma recolhida expande na hora; qualquer uma pode recolher.
-  const [expanded, setExpanded] = useState(rule.enabled);
+  // Ligar uma recolhida expande na hora; qualquer uma pode recolher. A
+  // escolha fica guardada no navegador: fechar o painel ou recarregar a
+  // página não a desfaz.
+  const [expanded, setExpanded] = useStoredToggle(
+    `automation-expanded:${title}`,
+    rule.enabled,
+  );
   const bodyId = `rule-body-${title}`;
   const preview = renderTemplate(rule.template, {
     nome: "Marina",
@@ -730,7 +736,7 @@ function RuleCard({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={() => setExpanded((v) => !v)}
+          onClick={() => setExpanded(!expanded)}
           aria-expanded={expanded}
           aria-controls={bodyId}
         >
