@@ -74,28 +74,32 @@ import { cn } from "@/lib/utils";
 type GroupKey = "envio" | "lembretes" | "faltas" | "retorno";
 
 /**
- * Fusos do Brasil (IANA). Só atendemos empresas em solo brasileiro, então a
- * lista é curta e nomeada pelo que o dono reconhece — o estado, não a zona.
+ * Fusos do Brasil (IANA), ordenados pelo GMT. Só atendemos empresas em solo
+ * brasileiro, então a lista é curta e nomeada pelo que o dono reconhece — o
+ * GMT e o estado, não a zona. O Brasil não tem horário de verão desde 2019.
  */
 const BRAZIL_TIMEZONES: { value: string; label: string }[] = [
+  { value: "America/Noronha", label: "GMT-2 · Fernando de Noronha" },
   {
     value: "America/Sao_Paulo",
-    label: "Brasília (SP, RJ, MG, sul, centro-sul, DF)",
+    label: "GMT-3 · Brasília (SP, RJ, MG, ES, PR, SC, RS, GO, DF)",
   },
-  { value: "America/Bahia", label: "Bahia" },
-  { value: "America/Fortaleza", label: "Ceará, Maranhão, Piauí, RN, Paraíba" },
-  { value: "America/Recife", label: "Pernambuco" },
-  { value: "America/Maceio", label: "Alagoas, Sergipe" },
-  { value: "America/Belem", label: "Pará (leste), Amapá" },
-  { value: "America/Araguaina", label: "Tocantins" },
-  { value: "America/Cuiaba", label: "Mato Grosso" },
-  { value: "America/Campo_Grande", label: "Mato Grosso do Sul" },
-  { value: "America/Manaus", label: "Amazonas, Roraima, Rondônia (Manaus)" },
-  { value: "America/Porto_Velho", label: "Rondônia" },
-  { value: "America/Boa_Vista", label: "Roraima" },
-  { value: "America/Santarem", label: "Pará (oeste)" },
-  { value: "America/Rio_Branco", label: "Acre" },
-  { value: "America/Noronha", label: "Fernando de Noronha" },
+  { value: "America/Bahia", label: "GMT-3 · Bahia" },
+  {
+    value: "America/Fortaleza",
+    label: "GMT-3 · Ceará, Maranhão, Piauí, RN, PB",
+  },
+  { value: "America/Recife", label: "GMT-3 · Pernambuco" },
+  { value: "America/Maceio", label: "GMT-3 · Alagoas, Sergipe" },
+  { value: "America/Belem", label: "GMT-3 · Pará (leste), Amapá" },
+  { value: "America/Araguaina", label: "GMT-3 · Tocantins" },
+  { value: "America/Santarem", label: "GMT-3 · Pará (oeste)" },
+  { value: "America/Cuiaba", label: "GMT-4 · Mato Grosso" },
+  { value: "America/Campo_Grande", label: "GMT-4 · Mato Grosso do Sul" },
+  { value: "America/Manaus", label: "GMT-4 · Amazonas (Manaus)" },
+  { value: "America/Porto_Velho", label: "GMT-4 · Rondônia" },
+  { value: "America/Boa_Vista", label: "GMT-4 · Roraima" },
+  { value: "America/Rio_Branco", label: "GMT-5 · Acre" },
 ];
 
 const GROUPS: Record<

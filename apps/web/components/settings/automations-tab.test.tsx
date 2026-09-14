@@ -197,7 +197,7 @@ describe("AutomationsTab", () => {
     openGroup(/Configurar Regras de envio/i);
 
     const select = screen.getByRole("combobox", { name: /Fuso horário/i });
-    expect(select).toHaveTextContent(/Brasília/);
+    expect(select).toHaveTextContent(/GMT-3 · Brasília/);
     expect(screen.queryByDisplayValue("America/Sao_Paulo")).toBeNull();
   });
 
