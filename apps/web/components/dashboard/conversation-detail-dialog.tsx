@@ -100,6 +100,12 @@ export function ConversationDetailContent({
   // mora no `shared` porque a API recusa a mesma operação — ver `HANDOFF_CHANNELS`.
   const canHandoff = supportsHandoff(detail.channel);
   const handoffActive = detail.handoffAt !== null;
+  // Estado gravado por uma versão anterior, que aceitava assumir qualquer canal.
+  // A fila de saída o respeita (`revalidate` → `atendimento_humano`), então uma
+  // conversa presa aqui cala lembretes legítimos do agendamento dela. Por isso
+  // o `release` da API segue permissivo — e por isso a tela precisa continuar
+  // oferecendo o caminho de volta, mesmo onde não oferece o de ida.
+  const handoffStale = !canHandoff && handoffActive;
   const handoffPending = assume.isPending || release.isPending;
   const handoffError = assume.isError || release.isError;
 
@@ -130,12 +136,18 @@ export function ConversationDetailContent({
         </Field>
         <div className="col-span-full">
           <Field label="Responsável pelo atendimento">
-            {canHandoff ? (
+            {canHandoff || handoffActive ? (
               <span className="flex flex-wrap items-center gap-2">
                 <HandoffBadge active={handoffActive} />
                 {handoffActive && detail.handoffAt && (
                   <span className="text-[12.5px] text-muted-foreground">
                     desde {formatCaptured(detail.handoffAt)}
+                  </span>
+                )}
+                {handoffStale && (
+                  <span className="text-[12.5px] text-muted-foreground">
+                    — conversa de teste: a IA nunca chegou a ser pausada aqui.
+                    Devolva para limpar o estado.
                   </span>
                 )}
               </span>
@@ -164,7 +176,7 @@ export function ConversationDetailContent({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 justify-self-start">
-        {canHandoff && (
+        {(canHandoff || handoffActive) && (
           <Button
             type="button"
             variant={handoffActive ? "outline" : "default"}

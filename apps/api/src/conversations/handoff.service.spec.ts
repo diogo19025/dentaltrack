@@ -143,6 +143,25 @@ describe('HandoffService (P0.2)', () => {
       });
     });
 
+    it('devolve conversa do chat web — é como se limpa estado gravado antes da regra', async () => {
+      // A assimetria com o `assume` é deliberada e precisa de teste: sem ele,
+      // mover a checagem de canal para o `require()` pareceria uma limpeza
+      // inofensiva e deixaria presa toda conversa marcada pela versão anterior
+      // — com a fila de saída suprimindo lembretes por causa dela.
+      const { service, prisma } = setup();
+      prisma.conversation.findFirst.mockResolvedValueOnce({
+        channel: 'web' as const,
+        handoffAt: ASSUMIDA_EM,
+        handoffReason: null,
+      });
+      jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
+
+      const state = await service.release(CLINIC, CONVERSATION);
+
+      expect(prisma.conversation.update).toHaveBeenCalled();
+      expect(state.handoffAt).toBeNull();
+    });
+
     it('devolver o que já está com a IA é sucesso, não erro', async () => {
       const { service, prisma } = setup();
       prisma.conversation.findFirst.mockResolvedValueOnce(comIa);

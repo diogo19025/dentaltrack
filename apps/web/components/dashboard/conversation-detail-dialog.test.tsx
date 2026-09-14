@@ -178,6 +178,39 @@ describe("ConversationDetailDialog", () => {
     ).toBeInTheDocument();
   });
 
+  /**
+   * Estado gravado antes de a regra do canal existir. A fila de saída o
+   * respeita e suprime com `atendimento_humano`, então uma conversa presa aqui
+   * cala lembretes legítimos — esconder o controle junto com o de assumir
+   * deixaria o dono sem nenhum caminho de volta. É por isso que o `release` da
+   * API segue permissivo.
+   */
+  it("handoff já gravado no chat web ainda pode ser devolvido para a IA", () => {
+    const mutate = vi.fn();
+    mockUseReleaseConversation.mockReturnValue(
+      mutationResult(mutate) as ReleaseResult,
+    );
+    mockUseConversationDetail.mockReturnValue(
+      hookResult({
+        data: makeDetail({
+          channel: "web",
+          contactPhone: null,
+          handoffAt: "2026-09-10T12:00:00.000Z",
+        }),
+      }),
+    );
+
+    render(
+      <ConversationDetailDialog conversationId="c-1" onOpenChange={() => {}} />,
+    );
+
+    expect(
+      screen.queryByRole("button", { name: /assumir atendimento/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /devolver para ia/i }));
+    expect(mutate).toHaveBeenCalledTimes(1);
+  });
+
   it("handoff ativo mostra o badge, a resposta e permite devolver para a IA", () => {
     const mutate = vi.fn();
     mockUseReleaseConversation.mockReturnValue(
