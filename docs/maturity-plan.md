@@ -20,7 +20,7 @@
 | 7   | **Estados de erro e carregamento** (P1.3)             | `ErrorState`, error boundaries, `api-client`                                                                                                                       | ✅ **2026-09-10**                                                            | —                                                |
 | 8   | **Permissões owner/staff** (P1.4)                     | `RolesGuard` + UI                                                                                                                                                  | ✅ **2026-09-10**                                                            | —                                                |
 | 9   | **LGPD operacional** (P1.5)                           | Anonimização a pedido, opt-out na UI, retenção opcional                                                                                                            | ✅ **2026-09-11**                                                            | `f17_lgpd` ✅ aplicada 2026-09-11                |
-| 10  | **Onboarding + demo** (P1.1, P1.2)                    | Checklist derivado, seed completo, `MockAgendaProvider` memoizado                                                                                                  | ✅ **2026-09-11** · [#27](https://github.com/diogo19025/dentaltrack/pull/27) | `f18_automation_reviewed` ⏳ aplicar no deploy   |
+| 10  | **Onboarding + demo** (P1.1, P1.2)                    | Checklist derivado, seed completo, `MockAgendaProvider` memoizado                                                                                                  | ✅ **2026-09-11** · [#27](https://github.com/diogo19025/dentaltrack/pull/27) | `f18_automation_reviewed` ✅ aplicada 2026-09-14 |
 | 11  | **CI dos fluxos críticos** (P1.6)                     | 5 e2e de API + workflow + `chat.spec.ts` corrigido                                                                                                                 | ⬜ a fazer                                                                   | —                                                |
 | 12  | **Runbook de produção** (P1.7)                        | `docs/production-runbook.md`                                                                                                                                       | ⬜ a fazer                                                                   | —                                                |
 
@@ -320,7 +320,7 @@ Logs sem PII já vêm do `redactPhone` do P0.3 — nenhum serviço precisa ser e
 
 **Banco.** `f17_lgpd`: `Lead.anonymizedAt DateTime?`. **Testes.** Anonimiza tudo o que deve, é idempotente, cross-tenant → 404. **Risco:** médio (operação destrutiva) — mitigado por owner-only, confirmação, transação e ausência de delete físico. **Esforço:** M. **Dependências:** P0.3, P1.3, P1.4.
 
-## P1.1 · Onboarding guiado 🚧 _PR 10 — PR #27 aberto_
+## P1.1 · Onboarding guiado ✅ _entregue em 2026-09-11 (PR #27)_
 
 > **O que mudou em relação ao planejado**, registrado por honestidade:
 >
@@ -333,7 +333,7 @@ Logs sem PII já vêm do `redactPhone` do P0.3 — nenhum serviço precisa ser e
 
 `GET /onboarding/checklist` **derivado das tabelas existentes**, como o `NotificationsService` faz — nenhuma tabela nova. Seis itens `{ key, label, done, href }`: identidade, procedimentos, tags, WhatsApp conectado (usa o `whatsappState` do P0.4), agenda conectada, automações revisadas. Um card no topo do dashboard, que some quando tudo está feito. Depende do `?tab=` do P1.3. **Banco.** `f18_automation_reviewed`, uma coluna nullable e aditiva; foi a menor forma confiável de distinguir uma linha criada pelo sistema de uma revisão humana. **Risco:** baixo. **Esforço:** P-M. **Dependências:** P0.4, P1.3.
 
-## P1.2 · Ambiente de demonstração 🚧 _PR 10 — PR #27 aberto_
+## P1.2 · Ambiente de demonstração ✅ _entregue em 2026-09-11 (PR #27)_
 
 > **O que mudou em relação ao planejado**, registrado por honestidade:
 >

@@ -8,7 +8,7 @@
 >
 > O **que fazer a seguir** está em [`maturity-plan.md`](maturity-plan.md); o
 > **estado auditado** que o originou, em [`maturity-audit.md`](maturity-audit.md).
-> Atualizado em: 2026-09-14.
+> Atualizado em: 2026-09-15.
 
 ---
 
@@ -309,7 +309,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 
 O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial.
 
-**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha; a linha 0 de auditoria/plano é preparatória e fica fora dessa contagem. Hoje, **9 de 12 concluídos**, com o PR 10 em revisão; depois dele restam o CI dos fluxos críticos (PR 11) e o runbook de produção (PR 12).
+**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha; a linha 0 de auditoria/plano é preparatória e fica fora dessa contagem. A contagem **não é repetida aqui de propósito** — já foi, e ficou para trás enquanto o placar avançava.
 
 **Riscos abertos, registrados honestamente:**
 
