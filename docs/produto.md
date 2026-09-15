@@ -229,7 +229,7 @@ Schema completo em [`apps/api/prisma/schema.prisma`](../apps/api/prisma/schema.p
 
 ## § Design
 
-> **Fonte de verdade visual:** [`design_handoff_dentaltrack/`](design_handoff_dentaltrack/) — `styles/theme.css` (tokens), `README.md` e `QUICK_HANDOFF.md` são canônicos.
+> **Fonte de verdade visual:** [`design_handoff_dentaltrack/`](design_handoff_dentaltrack/) — `styles/theme.css` (tokens) e `README.md` são canônicos.
 
 **A regra:** reproduzir o design **pixel-perfect** mantendo a stack. Não inventar cores, fontes ou espaçamentos; **sem dark mode** (tema light-only teal); sem emojis nem neon; ícones lucide.
 

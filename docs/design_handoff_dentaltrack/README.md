@@ -17,8 +17,14 @@ colar.** A tarefa é **recriar estas telas no ambiente do codebase alvo**, usand
 bibliotecas já estabelecidos.
 
 Abra `DentalTrack.html` para navegar no protótipo (Login → "Entrar" → Dashboard; navegue pela
-sidebar). `styles/theme.css` é a **fonte de verdade** dos tokens. `QUICK_HANDOFF.md` é o resumo
-rápido; este README é a especificação completa.
+sidebar). `styles/theme.css` é a **fonte de verdade** dos tokens; **este README é a especificação
+completa** e o único texto canônico do handoff.
+
+> **A marca deste handoff está superada.** O protótipo foi desenhado para uma clínica odontológica
+> — logo de dente, wordmark "DentalTrack" — e o produto virou **whitelabel**: a marca visível vem da
+> empresa (`settings.clinicName`) e a da plataforma de `apps/web/lib/brand.ts`. Tokens, layout,
+> espaçamento e motion continuam valendo 1:1; **identidade visual de marca, não**. Ver
+> [`../WHITELABEL.md`](../WHITELABEL.md).
 
 ## Stacks de preferência (MANTER — não substituir)
 | Camada | Stack | Como mapear o design |
@@ -230,7 +236,6 @@ app/screen_chat.jsx         tela 4
 app/screen_settings.jsx     tela 5
 app/screen_leads.jsx        tela 6
 app/app.jsx                 shell (Sidebar + Topbar + roteamento)
-QUICK_HANDOFF.md            versão resumida deste guia
 ```
 
 ## Instrução para o Claude Code (cole no prompt)
