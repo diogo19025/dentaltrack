@@ -269,6 +269,8 @@ Crie uma conta em `/login` — o onboarding cria a empresa no primeiro acesso, d
 
 **Runbooks:** [`WHATSAPP.md`](WHATSAPP.md) · [`CLINICORP.md`](CLINICORP.md) · [`GOOGLE_AGENDA.md`](GOOGLE_AGENDA.md) · [`DEPLOY.md`](DEPLOY.md) · [`WHITELABEL.md`](WHITELABEL.md).
 
+**Antes de mexer:** [`ARMADILHAS.md`](ARMADILHAS.md) — os padrões de defeito que já chegaram a produção com o repositório verde, e a regra que ficou de cada um.
+
 ---
 
 ## § Histórico
