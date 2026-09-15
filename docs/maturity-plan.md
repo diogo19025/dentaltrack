@@ -32,7 +32,8 @@ Legenda: ✅ concluído · 🚧 em andamento · ⬜ a fazer · ⏸️ bloqueado 
 2. **Nenhum PR vira ✅ sem `pnpm typecheck && pnpm lint && pnpm test` verdes nos três pacotes.** Verde parcial é ⬜.
 3. **Quem entregar registra o que saiu diferente do planejado** numa nota `> O que mudou em relação ao planejado` na seção do requisito — como está no P0.3. É essa nota que evita a próxima pessoa refazer uma decisão já tomada.
 4. **Não marcar ✅ por antecipação.** Um PR aberto e não mergeado é 🚧.
-5. **✅ é mergeado e verde — não é "em produção", e os dois divergem.** Entre 2026-09-09 e 2026-09-11 os PRs 5 a 9 estavam ✅ aqui e **nenhum deles estava no ar**: o healthcheck do build novo falhava e o Railway seguiu servindo o anterior, em silêncio. Depois de mergear, confirme a versão que responde (`GET /health` → `version`, hoje `null` porque `APP_VERSION` não está definida no Railway; enquanto isso, a impressão digital de rotas descrita em [`ARMADILHAS.md` §7](ARMADILHAS.md)). Encerrar a etapa de maturidade com o placar cheio e produção atrasada seria o pior desfecho possível deste plano.
+5. **Seção entregue guarda o registro, não o plano.** Quando um requisito vira ✅, o detalhamento pré-trabalho (`Estado atual`, `Mudança`, `Banco`, `Risco`, `Esforço`, `Fora`) sai: ele descrevia no futuro algo que agora existe em código, teste e descrição de PR, e mantê-lo faz este documento crescer para trás. Ficam o parágrafo **Entregue em**, os **Testes entregues** e — obrigatoriamente — as notas `> O que mudou em relação ao planejado`, que são o que impede a próxima pessoa a refazer uma decisão já tomada (regra 3).
+6. **✅ é mergeado e verde — não é "em produção", e os dois divergem.** Entre 2026-09-09 e 2026-09-11 os PRs 5 a 9 estavam ✅ aqui e **nenhum deles estava no ar**: o healthcheck do build novo falhava e o Railway seguiu servindo o anterior, em silêncio. Depois de mergear, confirme a versão que responde (`GET /health` → `version`, hoje `null` porque `APP_VERSION` não está definida no Railway; enquanto isso, a impressão digital de rotas descrita em [`ARMADILHAS.md` §7](ARMADILHAS.md)). Encerrar a etapa de maturidade com o placar cheio e produção atrasada seria o pior desfecho possível deste plano.
 
 ---
 
@@ -89,12 +90,7 @@ agenda.availability → agenda.book → agenda.sync → outbound.dispatch
 
 **Diferença em relação ao plano original:** o Sentry ficou em `common/sentry.ts` (não na raiz) e **não houve instrumentação do Next.js**. O erro que importa diagnosticar nasce no backend — chamada de IA, envio pelo WhatsApp, escrita na agenda —, e o front já carrega o `requestId` que liga a tela ao log do servidor. Instrumentar o web ficou registrado como sugestão futura, não como dívida do P0.3.
 
-**Banco.** Nenhuma alteração.
-
 **Testes entregues.** 37 novos (API foi de 428 para 465): `redact.spec` (telefone e e-mail em log real, sem falso positivo em UUID), `request-context.spec` (contexto sobrevive a `await` e isola escopos concorrentes), `structured-logger.spec` (JSON, redação, log não serializável não derruba a operação), `all-exceptions.filter.spec` (corpos preservados, nada escrito após o início da resposta), `request-id.middleware.spec` (id forjado com quebra de linha é descartado) e `health.controller.spec`.
-
-**Risco:** médio — troca o logger global. Mitigado por `LOG_FORMAT`, que permite voltar ao formato antigo por env.
-**Esforço:** M. **Dependências:** nenhuma.
 
 **Fora deste item, deliberadamente:** `helmet` e `@nestjs/throttler`. A API só serve JSON com CORS restrito, e o webhook público já valida `x-evolution-token` — são duas dependências para risco marginal.
 
@@ -142,13 +138,6 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 **Arquivos afetados.** `agenda/agenda.service.ts`, `agenda/appointment-keys.ts` (novo), `agenda/agenda.controller.ts`, `agenda/agenda-sync.service.ts`, `clinicorp/agenda-provider.ts`, os três adapters, `automations/outbound.service.ts`, `apps/web/app/(app)/agenda/page.tsx`.
 
-**Banco.** `f13_booking_idempotency`: `Appointment.bookingKey String?` + `@@unique([clinicId, bookingKey])`, `Appointment.canceledAt DateTime?`. `f14_outbound_claim`: valor `enviando` em `OutboundStatus`.
-
-**Testes.** `book()` 2× com a mesma chave → 1 linha local e 1 chamada externa; timeout do provedor → linha em `pedido` sem `externalId`, sem órfão; cancelar 2× → sucesso com 1 chamada; remarcar para o mesmo horário → no-op; `P2002` concorrente → devolve o existente; `upsert` concorrente no sync; claim impede duplo envio. **`agenda.service.spec.ts` não existe hoje** — é criado aqui, antes da reordenação.
-
-**Risco:** médio — toca o caminho de conversão. Mitigado escrevendo os testes antes de reordenar; o observável `confirmed` não muda.
-**Esforço:** G. **Dependências:** P0.3.
-
 ---
 
 ## P0.1 · Agenda real ponta a ponta ✅ _entregue em 2026-09-10_
@@ -176,12 +165,6 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 - **UI:** a aba Integração ganha mensagem por `kind`, estado de carregamento no botão e o `requestId` para o suporte; mais um bloco "ainda não tenho a credencial" com o texto do pedido ao fornecedor, copiável.
 
 **Arquivos afetados.** `common/http-retry.ts` (novo), `clinicorp/agenda-provider.ts`, `clinicorp/clinicorp.client.ts`, `google-agenda/google-calendar.client.ts` (+ `deleteEvent`/`patchEvent` para o P0.5), `clinicorp/integration.service.ts`, `agenda/agenda.service.ts`, `ai/tools.ts`, `apps/web/components/settings/integration-tab.tsx`, `scripts/google-agenda-smoke.ts` (novo).
-
-**Banco.** Nenhuma alteração.
-
-**Testes.** Contra fixtures HTTP com `fetch` mockado (nenhum teste toca a rede): 401 → `auth`; 5xx → retry; abort → `timeout`; HTML no corpo → `resposta_invalida`; `POST` não repete; slot ausente → `conflito`; erro de auth grava `lastError`.
-
-**Risco:** baixo-médio. **Esforço:** M. **Dependências:** P0.5 (a ordem nova do `book()` é o que garante "falha externa não cria registro inconsistente").
 
 ---
 
@@ -214,12 +197,6 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 - **UI sem tela nova:** `ConversationDetailDialog` ganha badge de estado, o botão que alterna "Assumir atendimento" / "Devolver para IA", e a caixa de resposta (o `SendReminderDialog` já existente vira o canal, só mudando o rótulo). A lista de conversas recentes ganha o mesmo badge.
 
 **Arquivos afetados.** `conversations/handoff.service.ts` (novo, ~80 linhas), `conversations/conversations.controller.ts` (`POST`/`DELETE /conversations/:id/handoff` e `POST /conversations/:id/messages`), `chat/chat.service.ts`, `automations/outbound.service.ts`, `packages/shared/src/conversations.ts`, `apps/web/components/dashboard/conversation-detail-dialog.tsx`.
-
-**Banco.** `f15_handoff`: três colunas nullable em `conversation` + `@@index([clinicId, handoffAt])`.
-
-**Testes.** Handoff ativo → mensagem persistida e `generateAssistantReply` **não** chamado; devolver reativa; assumir 2× é idempotente; automação pendente é suprimida durante o handoff; cross-tenant → 404.
-
-**Risco:** baixo. **Esforço:** M. **Dependências:** P0.3.
 
 **Fora deste item:** fila de atendentes, distribuição, central de suporte, caixa de chat de operador em tela própria.
 
@@ -255,13 +232,6 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 **Arquivos afetados.** `whatsapp/whatsapp.service.ts`, `whatsapp/evolution.service.ts`, `whatsapp/connection.service.ts`, `automations/outbound.service.ts`, `notifications/notifications.service.ts`, `jobs/`, `apps/web/hooks/use-whatsapp-connection.ts`, `apps/web/components/shell/topbar.tsx`.
 
-**Banco.** `f16_whatsapp_robustez`: model `InboundMessage`; três colunas em `clinic_settings`; valor `resposta_ia` em `AutomationKind`. Migration criada e **não aplicada ao vivo**.
-
-**Testes.** Reentrega após restart → motor não é chamado; falha de envio → uma `OutboundMessage` enfileirada, não duas; `resposta_ia` ignora a janela de horário; `GET` repete e `POST` não; timeout aborta; queda de conexão gera evento; trava de 15 min na reconexão; banner e deep-link para a aba WhatsApp. Suite completa: **604 na API + 165 no web**, além de typecheck, lint e build dos três pacotes.
-
-**Risco:** médio-alto — é o caminho quente do canal. Mitigado pelo fail-open do dedupe e por manter o envio direto como caminho principal.
-**Esforço:** G. **Dependências:** P0.3, P0.5.
-
 ---
 
 # P1 — maturidade operacional
@@ -274,15 +244,7 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 > **Diferença em relação ao planejado:** `GET /settings` permanece acessível a staff porque o shell e o chat usam nome, persona e saudação como configuração de leitura. `PATCH /settings` e todas as abas administrativas seguem owner-only; expor a identidade que o próprio assistente apresenta não concede capacidade administrativa.
 
-**Testes entregues.** `roles.guard.spec.ts`, `tenant.guard.spec.ts`, oito casos reais de `staff → 403` cobrindo os grupos protegidos e testes do `RoleProvider`/`OwnerOnly`. Total: 620 testes na API e 182 no web.
-
-**Estado atual.** `Membership.role` e `enum Role { owner, staff }` existem no schema e **nunca são lidos**.
-
-**Mudança.** `TenantGuard` grava também `request.role` (duas linhas — a query já acontece); `auth/roles.guard.ts` + `@Roles()` (~40 linhas juntos), aplicados depois do TenantGuard. **Owner-only:** integrações, conexão do WhatsApp, automações, settings, CRUD de procedimentos e tags, importação de leads, feriados e o endpoint LGPD. **Staff mantém** dashboard, leads (ler e exportar), funil, agenda — inclusive cancelar e remarcar —, conversas, handoff e lembretes. No front, `role` volta no bootstrap que o layout já chama e alimenta um `<OwnerOnly>` que esconde as abas administrativas: **a UI esconde, o backend nega** — e há teste para o 403 independentemente do botão.
-
-**Banco.** Nenhuma alteração. **Testes.** `roles.guard.spec.ts`, `tenant.guard.spec.ts` (não existe hoje), um `staff → 403` por grupo protegido.
-**Risco:** médio — trancar alguém para fora. Mitigado: todo membership existente é `owner` por default, e `@Roles` fica limitado aos seis grupos listados.
-**Esforço:** M. **Fora:** RBAC genérico, editor de permissões, tela de convite de membros (criar `staff` fica documentado no runbook).
+**Testes entregues.** `roles.guard.spec.ts`, `tenant.guard.spec.ts`, oito casos reais de `staff → 403` cobrindo os grupos protegidos e testes do `RoleProvider`/`OwnerOnly`.
 
 ## P1.3 · Estados de erro e carregamento ✅ _entregue em 2026-09-10_
 
@@ -292,15 +254,9 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 
 **Testes entregues.** 14 novos no web (165 → 179): `api-client` (204, timeout e requestId), retry (4xx não repete), `ErrorState`, `ConfirmDialog`, os cinco pontos corrigidos e confirmação real da troca de número do WhatsApp.
 
-**Estado atual.** Sem error boundary; `automations-tab` sem nenhum `isError`; o padrão `isLoading || !data ? <Skeleton/>` gera **skeleton eterno** em erro (dashboard, automações, WhatsApp); `onExport` com `try/finally` sem `catch`; `catch {}` vazio no bootstrap do layout; `api-client` sem timeout e com `res.json()` sem guard (quebra em 204).
-
 > **Adiantado pelo PR 4:** a `integration-tab` já trata erro de mutação e mostra o `requestId`, e o `errorMessage(err)` já está no `api-client` — a aba precisava dos dois para o P0.1, e duplicá-los para apagar aqui seria pior. Faltam o timeout, o guard de 204 e o primitivo compartilhado.
 
-**Mudança.** `lib/api-client.ts` ganha timeout e guard de corpo vazio (o `requestId` e a mensagem extraída do JSON do Nest já entraram no PR 4). `providers.tsx` ganha `retry` que não repete 4xx e `onError` global mandando para o Sentry. Um primitivo `components/ui/error-state.tsx` (mensagem + "tentar de novo") substitui o padrão do skeleton eterno nos cinco pontos. Mais `app/(app)/error.tsx`, `app/global-error.tsx` e um `confirm-dialog.tsx` sobre o `ui/dialog.tsx` existente, no lugar do `window.confirm()` nativo. `/settings` passa a sincronizar a aba com `?tab=`.
-
 **Sem biblioteca de toast.** O toast é elemento visual fora do handoff, e a mensagem inline já é o padrão da aplicação — para erro de mutação (salvar falhou) ela também é melhor, porque fica ao lado do campo que falhou.
-
-**Banco.** Nenhuma. **Testes.** `api-client` (204, timeout, requestId), `ErrorState`, `ConfirmDialog`, e um por aba corrigida (erro renderiza mensagem, não skeleton). **Risco:** baixo. **Esforço:** M.
 
 ## P1.5 · LGPD operacional ✅ _entregue em 2026-09-11_
 
@@ -317,8 +273,6 @@ O passo 1 sozinho resolve duplo clique, retry, webhook reentregue e o modelo cha
 **Anonimização, não exclusão física.** `DELETE /leads/:id/dados-pessoais` (owner-only), numa `$transaction`: o lead perde nome, telefone, e-mail e `externalId`; as conversas perdem `contactPhone`; o conteúdo das mensagens e do corpo das mensagens de saída é substituído. **A linha do `Appointment` é preservada** — ela sustenta histórico e `DailyMetric` — **mas o `preferredTime` é limpo** (corrigido em 2026-09-11): é texto livre digitado pelo cliente e volta para o system prompt do agente em `ai/prompt.ts`. **`ContactOptOut` é mantido, deliberadamente:** aquele telefone é justamente o que impede reenviar mensagem para quem pediu para parar; apagá-lo em nome da privacidade produziria a violação que ele previne.
 
 Logs sem PII já vêm do `redactPhone` do P0.3 — nenhum serviço precisa ser editado. **Retenção:** `jobs/retention.jobs.ts` diário, **com `RETENTION_ENABLED=false` por padrão** — apagar dado de cliente sem ele pedir é pior do que guardar demais; ligar é decisão do dono, e a política fica escrita no runbook.
-
-**Banco.** `f17_lgpd`: `Lead.anonymizedAt DateTime?`. **Testes.** Anonimiza tudo o que deve, é idempotente, cross-tenant → 404. **Risco:** médio (operação destrutiva) — mitigado por owner-only, confirmação, transação e ausência de delete físico. **Esforço:** M. **Dependências:** P0.3, P1.3, P1.4.
 
 ## P1.1 · Onboarding guiado ✅ _entregue em 2026-09-11 (PR #27)_
 
