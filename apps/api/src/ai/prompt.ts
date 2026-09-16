@@ -298,7 +298,19 @@ export function buildSystemPrompt({
     '- Quando o cliente confirmar que quer marcar, chame `bookAppointment`. Se ele escolheu um horário da consulta, repasse o campo `dataHora` exatamente como veio; caso contrário, descreva a preferência em texto livre. Só confirme o agendamento DEPOIS que a ferramenta retornar sucesso, e siga a `orientacao` devolvida: com `confirmado: false` diga que a equipe confirma em seguida, nunca que já está marcado.',
   );
   lines.push(
-    '- Não afirme que registrou contato ou agendamento se você não chamou a ferramenta correspondente.',
+    '- Quando o cliente disser que NÃO vai poder comparecer, que quer desmarcar, cancelar ou adiar — inclusive de forma indireta ("não vou conseguir hoje", "apareceu um imprevisto") —, chame `findMyAppointments` e depois `cancelAppointment` com o `agendamentoId` devolvido. NUNCA diga que cancelou, desmarcou ou "já dei baixa" antes de `cancelAppointment` responder `ok: true`: até lá o horário continua ocupado na agenda da empresa e alguém vai esperar o cliente.',
+  );
+  lines.push(
+    '- Se `cancelAppointment` responder `ok: false`, diga que a equipe confirma o cancelamento em seguida — nunca que está cancelado. Se `findMyAppointments` vier vazia, não invente: peça o nome usado no agendamento e diga que a equipe verifica.',
+  );
+  lines.push(
+    '- Para MUDAR o horário, faça os dois passos: cancele o agendamento atual com `cancelAppointment` e só então consulte `checkAvailability` e registre o novo com `bookAppointment`. Não prometa o horário novo antes de a segunda ferramenta confirmar.',
+  );
+  lines.push(
+    '- Ao cancelar, seja acolhedor e não cobre explicação. Ofereça remarcar uma vez; se o cliente não quiser, encerre com cordialidade.',
+  );
+  lines.push(
+    '- Não afirme que registrou contato, agendamento ou cancelamento se você não chamou a ferramenta correspondente.',
   );
 
   return lines.join('\n');

@@ -77,6 +77,29 @@ interface PresentOfferInput {
   procedimento?: string;
   interesse?: string;
 }
+interface CancelInput {
+  agendamentoId: string;
+  motivo?: string;
+}
+
+/**
+ * Estados em que um agendamento ainda está de pé — os únicos que fazem sentido
+ * listar para quem quer desmarcar. `pedido` entra porque é um agendamento real
+ * do ponto de vista do cliente (ele pediu e espera), mesmo sem horário
+ * reservado na agenda da empresa.
+ */
+const OPEN_STATUSES = ['pedido', 'agendado', 'confirmado'] as const;
+
+/**
+ * Tolerância para trás ao listar agendamentos.
+ *
+ * Quem escreve "não vou conseguir chegar" às vezes escreve **depois** da hora
+ * marcada — no caminho, atrasado, já passou. Cortar exatamente no instante
+ * atual faria o agente responder "não encontrei nada no seu nome" para a
+ * consulta que começou quinze minutos atrás, que é justamente a que ele quer
+ * desmarcar.
+ */
+const RECENT_TOLERANCE_MS = 3 * 60 * 60 * 1000;
 
 /**
  * Uma oferta escolhida por `presentOffer`: o texto (que o modelo tece na
@@ -171,6 +194,81 @@ const OFFER_SELECT = {
 export function buildChatTools(ctx: ChatToolsContext): ToolSet {
   const { prisma, conversations, clinicId, conversationId, agenda } = ctx;
   const channel: Channel = ctx.channel ?? 'web';
+
+  /**
+   * Agendamentos em aberto **deste contato**, e de mais ninguém.
+   *
+   * O escopo é a conversa: o lead vinculado a ela, ou a própria conversa quando
+   * o agendamento nasceu aqui antes de o lead existir. Nunca por telefone
+   * solto — dois contatos podem compartilhar um número (o celular da família é
+   * comum), e casar por ele deixaria o agente desmarcar a consulta do outro.
+   */
+  async function openAppointments() {
+    const convo = await prisma.conversation.findFirst({
+      where: { id: conversationId, clinicId },
+      select: { leadId: true },
+    });
+
+    const owner = convo?.leadId
+      ? [{ leadId: convo.leadId }, { conversationId }]
+      : [{ conversationId }];
+
+    return prisma.appointment.findMany({
+      where: {
+        clinicId,
+        status: { in: [...OPEN_STATUSES] },
+        OR: owner,
+        // Sem horário (só preferência em texto) também conta: é um pedido de
+        // pé que o cliente pode querer desfazer.
+        AND: [
+          {
+            OR: [
+              { startsAt: null },
+              { startsAt: { gte: new Date(Date.now() - RECENT_TOLERANCE_MS) } },
+            ],
+          },
+        ],
+      },
+      orderBy: [{ startsAt: 'asc' }, { createdAt: 'asc' }],
+      take: 5,
+      select: {
+        id: true,
+        status: true,
+        startsAt: true,
+        preferredTime: true,
+        procedure: { select: { name: true } },
+      },
+    });
+  }
+
+  /**
+   * O id que o modelo mandou é mesmo de um agendamento deste contato?
+   *
+   * **Esta é a checagem que importa.** O `agendamentoId` chega como texto
+   * gerado por um modelo a partir de uma conversa que o cliente escreve — ou
+   * seja, é entrada não confiável por definição. Sem revalidar contra o dono,
+   * uma mensagem bem construída poderia cancelar a consulta de outra pessoa.
+   * Confirmar na lista do próprio contato custa uma consulta e fecha isso.
+   */
+  async function requireOwnAppointment(id: string) {
+    const trimmed = (id ?? '').trim();
+    if (!trimmed) return null;
+    const mine = await openAppointments();
+    return mine.find((row) => row.id === trimmed) ?? null;
+  }
+
+  /** "quinta-feira, 18/09/2026 às 17:00" — ou a preferência em texto livre. */
+  async function whenLabel(row: {
+    startsAt: Date | null;
+    preferredTime: string | null;
+  }): Promise<string> {
+    if (!row.startsAt)
+      return row.preferredTime?.trim() || 'horário a confirmar';
+    const timeZone = agenda
+      ? await agenda.timeZone(clinicId)
+      : 'America/Sao_Paulo';
+    return `${formatDatePtBr(row.startsAt, timeZone)} às ${formatTimePtBr(row.startsAt, timeZone)}`;
+  }
 
   /**
    * Procedimento do catálogo pelo nome, com a duração — que é o que define o
@@ -672,6 +770,110 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
         }
       },
     }),
+
+    findMyAppointments: dynamicTool({
+      description:
+        'Lista os agendamentos em aberto DESTE cliente. Chame SEMPRE antes de falar em desmarcar, cancelar, remarcar ou "não vou poder ir" — é a única forma de saber qual agendamento ele tem e obter o `agendamentoId` que `cancelAppointment` exige. Nunca invente esse id.',
+      inputSchema: jsonSchema<Record<string, never>>({
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      }),
+      execute: async () => {
+        try {
+          const rows = await openAppointments();
+          if (rows.length === 0) {
+            return {
+              agendamentos: [],
+              orientacao:
+                'Nenhum agendamento em aberto no cadastro deste contato. Não afirme que cancelou nada. Peça o nome completo usado no agendamento e diga que a equipe verifica.',
+            };
+          }
+
+          return {
+            agendamentos: await Promise.all(
+              rows.map(async (row) => ({
+                agendamentoId: row.id,
+                quando: await whenLabel(row),
+                procedimento: row.procedure?.name ?? null,
+                situacao: row.status,
+              })),
+            ),
+            orientacao:
+              'Se houver mais de um, pergunte qual antes de cancelar. Use o `agendamentoId` exatamente como veio.',
+          };
+        } catch {
+          return {
+            agendamentos: [],
+            orientacao:
+              'Não foi possível consultar os agendamentos agora. Diga que a equipe verifica e retorna — não afirme que cancelou.',
+          };
+        }
+      },
+    }),
+
+    cancelAppointment: dynamicTool({
+      description:
+        'Cancela DE VERDADE um agendamento deste cliente, na agenda da empresa. Use quando ele disser que não poderá comparecer, que quer desmarcar ou cancelar. Exige o `agendamentoId` vindo de `findMyAppointments` — chame-a primeiro. NUNCA diga ao cliente que cancelou antes desta ferramenta retornar ok:true.',
+      inputSchema: jsonSchema<CancelInput>({
+        type: 'object',
+        properties: {
+          agendamentoId: {
+            type: 'string',
+            description:
+              'Id do agendamento, exatamente como veio de findMyAppointments.',
+          },
+          motivo: {
+            type: 'string',
+            description: 'O que o cliente disse (opcional, para o registro).',
+          },
+        },
+        required: ['agendamentoId'],
+        additionalProperties: false,
+      }),
+      execute: async (input) => {
+        const { agendamentoId } = input as CancelInput;
+        try {
+          const row = await requireOwnAppointment(agendamentoId);
+          if (!row) {
+            // Inclui o caso do id inventado pelo modelo e o do agendamento de
+            // outra pessoa — os dois recebem a mesma resposta, que não confirma
+            // nem nega a existência de nada fora deste contato.
+            return {
+              ok: false,
+              motivo: 'nao_encontrado',
+              orientacao:
+                'Este agendamento não está na lista deste contato. Chame findMyAppointments e confirme com o cliente qual é. Não diga que cancelou.',
+            };
+          }
+
+          const quando = await whenLabel(row);
+
+          if (agenda) {
+            await agenda.cancel(clinicId, row.id);
+          } else {
+            await cancelWithoutAgenda(prisma, clinicId, row.id);
+          }
+
+          return {
+            ok: true,
+            agendamentoId: row.id,
+            quando,
+            orientacao: `Cancelado de verdade na agenda da empresa (${quando}). Confirme ao cliente, com empatia e sem cobrança, e ofereça remarcar — se ele quiser, consulte checkAvailability e registre com bookAppointment.`,
+          };
+        } catch {
+          // Erro do provedor (credencial, indisponibilidade, timeout): o
+          // horário continua ocupado na agenda da empresa. Prometer o
+          // cancelamento aqui é exatamente o defeito que esta tool corrige.
+          return {
+            ok: false,
+            motivo: 'agenda_indisponivel',
+            orientacao:
+              'NÃO foi possível cancelar agora — o horário continua marcado. Diga ao cliente que a equipe confirma o cancelamento em seguida. Não afirme que está cancelado.',
+          };
+        }
+      },
+    }),
   };
 
   return tools as unknown as ToolSet;
@@ -741,6 +943,29 @@ async function bookWithoutAgenda(
     if (!existing) throw err;
     return { appointmentId: existing.id, confirmed: false, startsAt: null };
   }
+}
+
+/**
+ * Cancela quando a conversa **não** tem agenda ligada — só o registro local.
+ *
+ * Espelha o `bookWithoutAgenda` e existe pelo mesmo motivo: hoje o `ChatService`
+ * sempre injeta a agenda, mas "inalcançável" é propriedade que se perde no
+ * primeiro chamador novo, e o modo de falha aqui seria o agente dizer que
+ * cancelou sem ter cancelado — o defeito que estas tools existem para fechar.
+ *
+ * Sem `externalId` para desfazer: a linha local é tudo o que há. Os lembretes
+ * pendentes morrem sozinhos, porque a revalidação da fila suprime o que aponta
+ * para agendamento `cancelado`.
+ */
+async function cancelWithoutAgenda(
+  prisma: PrismaService,
+  clinicId: string,
+  id: string,
+): Promise<void> {
+  await prisma.appointment.updateMany({
+    where: { id, clinicId, status: { not: 'cancelado' } },
+    data: { status: 'cancelado', canceledAt: new Date() },
+  });
 }
 
 /** Cria ou atualiza o lead da conversa (escopo por empresa) e o vincula. */
