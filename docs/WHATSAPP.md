@@ -27,7 +27,43 @@ WhatsApp do paciente
 
 ---
 
-## Passo a passo (dev local)
+## Conectar o WhatsApp (o caminho normal)
+
+Desde a F10, parear o número é parte do produto: **primeiro acesso** ou
+**Configurações → WhatsApp → Gerar QR code**. Nenhum terminal, nenhum SQL.
+
+O que a tela faz por você, e que antes era digitado à mão:
+
+| Passo manual | O que acontece na tela |
+|---|---|
+| `POST /instance/create` com o bloco `webhook` | **Gerar QR code** cria a instância já apontando o webhook para `API_PUBLIC_URL` |
+| `GET /instance/connect/<nome>` | O QR aparece na tela e **se renova sozinho** enquanto a caixa estiver aberta |
+| `GET /instance/connectionState/<nome>` | A tela consulta a cada 3s e vira para "Conectado" sozinha |
+| `update clinic_settings set whatsapp_instance = …` | Gravado automaticamente — o nome da instância é **derivado da empresa**, nunca digitado |
+
+Requisitos no servidor: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY` e
+**`API_PUBLIC_URL`** (a URL pública desta API — é o destino do webhook). Sem
+`API_PUBLIC_URL` o botão fica indisponível e a tela explica o motivo, em vez de
+falhar depois do pareamento.
+
+No **primeiro acesso**, o app pergunta se a empresa já tem um número dedicado
+antes de mostrar qualquer QR. A pergunta não é cerimônia: quem ler aquele código
+passa a ser atendido pelo bot automaticamente, e parear um número pessoal é um
+problema sério. Quem responde "ainda não tenho" não é perguntado de novo — a
+resposta fica guardada na empresa.
+
+## Limites desta etapa
+- **1 instância → 1 empresa.** O pareamento por QR já é multi-empresa (cada uma
+  tem a sua instância, derivada do id), mas cada empresa segue com um número.
+- **Opt-out** é persistido desde a F9 (`ContactOptOut`).
+- **Sem streaming** (a resposta é enviada inteira — característica do canal).
+
+## Procedimento manual (diagnóstico e dev local)
+
+> **Este não é o caminho de uso.** A aplicação automatiza tudo o que está
+> aqui (ver a seção acima). O passo a passo continua documentado porque é
+> o que permite **diagnosticar** quando o pareamento pela tela falha — e
+> porque subir a Evolution em Docker no dev local ainda é manual.
 
 ### 0. Pré-requisitos
 - **Docker Desktop** rodando (Windows).
@@ -131,31 +167,3 @@ agendar uma limpeza"). Esperado:
 | `Evolution ... respondeu 401` (envio) | `EVOLUTION_API_KEY` errada | Use a mesma chave do compose. |
 | Sessão cai sozinha | Reconexão Baileys | A Evolution reconecta; se necessário, refaça o `connect` (passo 4). Mantenha o celular online. |
 | Risco de ban | Número novo / volume alto | Número dedicado, evite disparos em massa, respeite os delays (já aplicados). |
-
-## Pareamento pela tela (F10)
-
-O procedimento manual acima é o que a aplicação agora automatiza:
-
-| Passo manual | O que acontece na tela |
-|---|---|
-| `POST /instance/create` com o bloco `webhook` | **Gerar QR code** cria a instância já apontando o webhook para `API_PUBLIC_URL` |
-| `GET /instance/connect/<nome>` | O QR aparece na tela e **se renova sozinho** enquanto a caixa estiver aberta |
-| `GET /instance/connectionState/<nome>` | A tela consulta a cada 3s e vira para "Conectado" sozinha |
-| `update clinic_settings set whatsapp_instance = …` | Gravado automaticamente — o nome da instância é **derivado da empresa**, nunca digitado |
-
-Requisitos no servidor: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY` e
-**`API_PUBLIC_URL`** (a URL pública desta API — é o destino do webhook). Sem
-`API_PUBLIC_URL` o botão fica indisponível e a tela explica o motivo, em vez de
-falhar depois do pareamento.
-
-No **primeiro acesso**, o app pergunta se a empresa já tem um número dedicado
-antes de mostrar qualquer QR. A pergunta não é cerimônia: quem ler aquele código
-passa a ser atendido pelo bot automaticamente, e parear um número pessoal é um
-problema sério. Quem responde "ainda não tenho" não é perguntado de novo — a
-resposta fica guardada na empresa.
-
-## Limites desta etapa
-- **1 instância → 1 empresa.** O pareamento por QR já é multi-empresa (cada uma
-  tem a sua instância, derivada do id), mas cada empresa segue com um número.
-- **Opt-out** é persistido desde a F9 (`ContactOptOut`).
-- **Sem streaming** (a resposta é enviada inteira — característica do canal).

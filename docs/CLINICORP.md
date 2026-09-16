@@ -2,6 +2,12 @@
 
 > Como conectar a agenda do sistema de gestão da clínica e ligar as automações
 > de relacionamento. Idioma do projeto: **PT-BR**. Atualizado em: 2026-08-31.
+>
+> ⏸️ **Runbook dormente — não é trabalho corrente.** A credencial de API do
+> Clinicorp nunca chegou (quem a pede ao suporte é o dono da empresa, § 1), e
+> por isso o **[Google Agenda](GOOGLE_AGENDA.md)** virou o caminho escolhido
+> para validar a agenda ponta a ponta. O código do adapter está pronto e
+> testado; o que falta é o dia D. Guarde este documento para ele.
 
 ## O que a integração destrava
 

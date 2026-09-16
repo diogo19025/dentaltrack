@@ -35,6 +35,8 @@ export const DEFAULT_AVAILABILITY: AvailabilitySlot[] = [
  */
 export const clinicSettingsSchema = z.object({
   clinicName: z.string(),
+  /** Logo da empresa (F13) — URL pública. Vazio = ainda sem logo. */
+  logoUrl: z.string(),
   specialty: z.string(),
   description: z.string(),
   assistantName: z.string(),
@@ -63,6 +65,7 @@ export type ClinicSettingsDto = z.infer<typeof clinicSettingsSchema>;
  */
 export const updateSettingsSchema = z.object({
   clinicName: z.string().trim().min(1, "Informe o nome da empresa.").max(120).optional(),
+  logoUrl: mediaUrlFieldSchema.optional(),
   specialty: z.string().trim().max(120).optional(),
   description: z.string().trim().max(600).optional(),
   assistantName: z.string().trim().max(60).optional(),

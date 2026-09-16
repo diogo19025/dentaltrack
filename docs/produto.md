@@ -8,7 +8,7 @@
 >
 > O **que fazer a seguir** está em [`maturity-plan.md`](maturity-plan.md); o
 > **estado auditado** que o originou, em [`maturity-audit.md`](maturity-audit.md).
-> Atualizado em: 2026-09-14.
+> Atualizado em: 2026-09-15.
 
 ---
 
@@ -190,7 +190,7 @@ erDiagram
 
 | Entidade                                                                   | Papel                                                                                       |
 | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `clinic` / `clinic_settings`                                               | Tenant e sua configuração: persona, ofertas, mídia, disponibilidade, instância do WhatsApp. |
+| `clinic` / `clinic_settings`                                               | Tenant e sua configuração: persona, logo, ofertas, mídia, disponibilidade, instância do WhatsApp. |
 | `membership`                                                               | Vínculo usuário↔empresa, com `role` (`owner` \| `staff`).                                   |
 | `procedure` / `tag`                                                        | Catálogo (N:N) — alimenta o prompt e o auto-tagging.                                        |
 | `conversation` / `message`                                                 | Sessão de atendimento (canal, status, telefone) e cada turno.                               |
@@ -229,7 +229,7 @@ Schema completo em [`apps/api/prisma/schema.prisma`](../apps/api/prisma/schema.p
 
 ## § Design
 
-> **Fonte de verdade visual:** [`design_handoff_dentaltrack/`](design_handoff_dentaltrack/) — `styles/theme.css` (tokens), `README.md` e `QUICK_HANDOFF.md` são canônicos.
+> **Fonte de verdade visual:** [`design_handoff_dentaltrack/`](design_handoff_dentaltrack/) — `styles/theme.css` (tokens) e `README.md` são canônicos.
 
 **A regra:** reproduzir o design **pixel-perfect** mantendo a stack. Não inventar cores, fontes ou espaçamentos; **sem dark mode** (tema light-only teal); sem emojis nem neon; ícones lucide.
 
@@ -269,6 +269,8 @@ Crie uma conta em `/login` — o onboarding cria a empresa no primeiro acesso, d
 
 **Runbooks:** [`WHATSAPP.md`](WHATSAPP.md) · [`CLINICORP.md`](CLINICORP.md) · [`GOOGLE_AGENDA.md`](GOOGLE_AGENDA.md) · [`DEPLOY.md`](DEPLOY.md) · [`WHITELABEL.md`](WHITELABEL.md).
 
+**Antes de mexer:** [`ARMADILHAS.md`](ARMADILHAS.md) — os padrões de defeito que já chegaram a produção com o repositório verde, e a regra que ficou de cada um.
+
 ---
 
 ## § Histórico
@@ -302,6 +304,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 | 2026-09-11 | **LGPD operacional** (P1.5, PR 9): `DELETE /leads/:id/dados-pessoais` (owner-only) **anonimiza, não apaga** — a linha do lead sustenta histórico, agendamentos e métricas que não são do titular. Numa transação, saem nome/telefone/e-mail/`externalId`, o `contactPhone` das conversas, o conteúdo das mensagens e o corpo das mensagens de saída; `Appointment` fica, e o `ContactOptOut` **também fica**, porque é ele que impede reenviar para quem pediu parar. O descadastro saiu da invisibilidade: aparece e se alterna no painel do lead. Retenção diária da fila finalizada, **desligada por padrão**. Migration `f17_lgpd`. |
 | 2026-09-11 | **Onboarding + demo** (P1.1/P1.2, PR 10): checklist de primeiros passos no dashboard, **derivado das tabelas existentes** (seis passos, cada um apontando para a aba que o resolve; some quando tudo está feito). A agenda mock conta imediatamente; a live exige provider utilizável e a última verificação verde. A revisão das automações tem marcador explícito. Seeds deixam a empresa demo operacional com baseline determinístico dos seis status, quatro estados da fila, dois descadastros e dois handoffs. `MockAgendaProvider` memoizado por empresa e substituído ao mudar o fuso. No mesmo PR, corrigida a regressão que impedia a API de subir desde o PR 6 (`HealthModule` importando o módulo errado). Migration aditiva `f18_automation_reviewed`. |
 | 2026-09-14 | **Automações agrupadas em painéis** (web, sem migration): a aba Automações mostrava as seis automações, as regras de envio e o calendário de feriados de uma vez. Agora a visão geral são **quatro cartões** — Regras de envio · Lembretes de consulta · Atrasos e faltas · Retorno de clientes — com o estado de cada automação e um resumo (janela/teto, "2 de 3 ativos"); os campos abrem num **painel por grupo** (Dialog, fundo desfocado), e clicar fora ou Esc volta à visão geral. O rascunho sobrevive ao fechar: o **Salvar continua único**, na aba. `components/settings/automations-tab.tsx`. |
+| 2026-09-14 | **F13** Envio de arquivo: logo da empresa e mídia das ofertas param de exigir uma URL hospedada por fora. O botão "Enviar logo" era decorativo desde a F2 — ver [`ARMADILHAS.md`](ARMADILHAS.md) §8. |
 | 2026-09-15 | **F14** O agente **desmarca de verdade**: `findMyAppointments` + `cancelAppointment` (escopadas ao contato da conversa). Antes ele dizia que cancelava e o horário continuava ocupado na agenda. |
 
 ---
@@ -310,7 +313,7 @@ Condensado do antigo `update.md`, cujo diário completo — com o "por quê" de 
 
 O produto está funcionalmente completo e no ar. A etapa atual **não é de novas funcionalidades** — é de torná-lo confiável, operável e demonstrável por uma empresa real sem os desenvolvedores por perto, para entrar em validação comercial.
 
-**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha; a linha 0 de auditoria/plano é preparatória e fica fora dessa contagem. Hoje, **9 de 12 concluídos**, com o PR 10 em revisão; depois dele restam o CI dos fluxos críticos (PR 11) e o runbook de produção (PR 12).
+**O progresso vive no [Placar](maturity-plan.md#placar)** de [`maturity-plan.md`](maturity-plan.md): 12 PRs, com status e data de entrega por linha; a linha 0 de auditoria/plano é preparatória e fica fora dessa contagem. A contagem **não é repetida aqui de propósito** — já foi, e ficou para trás enquanto o placar avançava.
 
 **Riscos abertos, registrados honestamente:**
 

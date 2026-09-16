@@ -110,6 +110,7 @@ pnpm --filter @dentaltrack/web e2e   # Playwright, roda offline em modo mock
 - [`docs/WHATSAPP.md`](docs/WHATSAPP.md) — runbook do canal WhatsApp
 - [`docs/CLINICORP.md`](docs/CLINICORP.md) · [`docs/GOOGLE_AGENDA.md`](docs/GOOGLE_AGENDA.md) — runbooks de agenda
 - [`docs/WHITELABEL.md`](docs/WHITELABEL.md) — modelo de marca e regras para código novo
+- [`docs/ARMADILHAS.md`](docs/ARMADILHAS.md) — o que já quebrou, por que passou pelos testes e a regra que ficou
 - [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) — design hi-fi (fonte de verdade visual)
 - [`CLAUDE.md`](CLAUDE.md) — guia canônico para agentes e devs
 

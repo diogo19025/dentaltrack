@@ -13,7 +13,8 @@ A correção é fácil de refazer; o que custa caro é repetir o motivo.
 ## Resumo das causas
 
 Os defeitos de 2026-09-11 não foram sete acidentes independentes. São **seis
-padrões**, e cada um deles produz famílias inteiras de bug:
+padrões**, e cada um deles produz famílias inteiras de bug. O §8 veio depois, de
+outra investigação (2026-09-14), e é o sétimo:
 
 | # | Padrão | Onde apareceu |
 |---|---|---|
@@ -23,6 +24,7 @@ padrões**, e cada um deles produz famílias inteiras de bug:
 | 4 | Regra que só existe de um lado da fronteira | handoff oferecido onde não funciona |
 | 5 | Busca pelo caminho feliz numa operação que exige exaustão | anonimização incompleta |
 | 6 | Alerta que dispara durante a operação normal | faixa vermelha durante o QR |
+| 8 | Controle na tela sem comportamento por trás | "Enviar logo" que não enviava nada |
 
 E, acima de todos, o erro de processo que permitiu os sete viverem dias sem
 ninguém notar: **"concluído" no placar não significa "em produção"** (§7).
@@ -244,6 +246,59 @@ rodando o build de 2026-09-09 enquanto o repositório dizia outra coisa.
 
 ---
 
+## 8. Controle desenhado não é controle entregue
+
+**O que quebrou.** A tela de Configurações tinha, desde a F2, um quadrado
+tracejado com a palavra "Logo" e um botão **"Enviar logo"**. Nenhum dos dois
+fazia nada: sem `onClick`, sem `<input type="file">`, sem coluna `logo_url` no
+banco, sem rota na API. O dono clicava, não acontecia nada, e não havia erro
+para investigar — o que é pior do que falhar, porque parece problema do
+navegador dele.
+
+A mídia de oferta tinha a outra metade do mesmo problema. Ali existia campo e
+existia persistência, mas o campo pedia **uma URL pública**: para colocar uma
+foto da promoção, o dono precisava primeiro hospedar a imagem em algum lugar da
+internet. Para o cliente-alvo deste produto — dono de clínica, barbearia,
+estúdio — isso não é uma etapa a mais, é uma barreira intransponível. A
+funcionalidade existia no código e não existia na vida real.
+
+**Por que passou.**
+
+1. **O handoff de design foi reproduzido 1:1, e 1:1 é sobre aparência.** A regra
+   do projeto (`CLAUDE.md`: *"UI = réplica 1:1 do design"*) é sobre cor,
+   espaçamento e tipografia. Ela não diz nada sobre comportamento — e, sem essa
+   distinção escrita, um botão inerte passa na conferência de fidelidade com
+   nota máxima, porque ele **está** pixel-perfeito.
+2. **Nenhum teste cobre a ausência de um handler.** Os testes da tela verificam
+   o que os controles fazem; um controle que não faz nada não tem o que
+   verificar, então ninguém escreve o teste que faltaria.
+3. **A decisão "mídia por URL, sem storage" estava documentada** em
+   `shared/media.ts` e no `CLAUDE.md`, e por estar escrita parecia resolvida.
+   Documentar uma limitação não a transforma em decisão validada: ninguém
+   perguntou se o dono da empresa teria onde hospedar a imagem.
+
+**A regra agora.**
+
+- **Controle que não faz nada não entra na tela.** Se o design traz um controle
+  cujo backend ainda não existe, ou ele é implementado junto, ou é removido da
+  tela e vira item do plano. Estado intermediário aceitável é um controle
+  `disabled` com o motivo visível — nunca um que aceita o clique em silêncio.
+- **Fidelidade 1:1 é sobre aparência; comportamento se confere à parte.** Todo
+  botão novo vindo do handoff precisa de um teste que clique nele e verifique a
+  consequência. Foi o que faltou aqui, e é barato.
+- **Limitação registrada não é limitação aceita.** Quando a documentação disser
+  *"por ora, X é responsabilidade do usuário"*, a pergunta obrigatória é se o
+  usuário **consegue** fazer X. Se não conseguir, o que está escrito não é uma
+  decisão de escopo: é uma funcionalidade que não existe.
+
+> Como ficou: `POST /media/upload` guarda o arquivo no **Supabase Storage** (já
+> na stack, sem serviço nem dependência nova) e devolve a URL pública — que é o
+> formato que a Evolution exige para enviar mídia no WhatsApp. O campo de URL
+> continua lá para quem já hospeda a imagem; o upload é o caminho de quem não
+> hospeda. Detalhes em [`DEPLOY.md`](DEPLOY.md) § Envio de arquivos.
+
+---
+
 ## Checklist antes de abrir um PR
 
 - [ ] Mexeu em algum `*.module.ts`? `app.module.spec.ts` verde.
@@ -256,4 +311,6 @@ rodando o build de 2026-09-09 enquanto o repositório dizia outra coisa.
 - [ ] Mexeu em PII? A busca cobre todas as chaves que identificam a pessoa.
 - [ ] Criou alerta? Ele enumera os estados que o disparam.
 - [ ] Copy nova? Sem "clínica", "paciente" ou "consulta" — ver [WHITELABEL.md](WHITELABEL.md).
+- [ ] Botão novo vindo do handoff? Tem handler **e** um teste que clica nele.
+- [ ] A doc diz que algo "é responsabilidade do usuário"? Ele consegue fazer?
 - [ ] O PR foi mergeado? Então confirme a versão **no ar** antes de marcar ✅.

@@ -50,6 +50,20 @@ vi.mock("@/components/auth/role-context", () => ({
   OwnerOnly: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+// O botão de enviar arquivo (F13) usa `useMutation`, que exige um
+// QueryClientProvider. Esta suíte renderiza a página sem provider de propósito
+// — o que ela verifica é o formulário. O upload tem testes próprios em
+// `components/settings/media-upload-button.test.tsx`.
+vi.mock("@/hooks/use-media-upload", () => ({
+  useMediaUpload: () => ({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+}));
+
 // A sidebar/topbar não entram aqui; os hooks de leads/pipeline usados por elas
 // não são exercitados nesta página, mas os filhos de outras abas importam hooks
 // — a aba padrão ("identidade") não os renderiza, então não precisam de mock.
@@ -59,6 +73,7 @@ function makeSettings(
 ): ClinicSettingsDto {
   return {
     clinicName: "Empresa Demo",
+    logoUrl: "",
     specialty: "",
     description: "",
     assistantName: "",

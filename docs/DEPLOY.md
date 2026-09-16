@@ -19,7 +19,7 @@ Monorepo: **web → Vercel**, **api + Evolution (WhatsApp) → Railway (Docker)*
 |---|---|
 | `DATABASE_URL` | Supabase → Project Settings → Database → Connection string (com a senha). |
 | `SUPABASE_URL` | Supabase → Project Settings → API. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API. **Obrigatória para o envio de arquivos** (logo e mídia das ofertas) — ver § Envio de arquivos. |
 | `SUPABASE_JWT_SECRET` | (opcional, só HS256) Project Settings → API → JWT. |
 | `LLM_PROVIDER=openai` · `OPENAI_API_KEY` | Provider primário (OpenAI, `gpt-4o-mini`) — exigência LGPD. |
 | `LLM_FALLBACK_PROVIDER=groq` · `GROQ_API_KEY` | Fallback (ou `google` + `GOOGLE_GENERATIVE_AI_API_KEY`). |
@@ -27,7 +27,33 @@ Monorepo: **web → Vercel**, **api + Evolution (WhatsApp) → Railway (Docker)*
 | `EVOLUTION_API_URL` · `EVOLUTION_API_KEY` · `EVOLUTION_WEBHOOK_TOKEN` | URL do serviço Evolution no Railway + `AUTHENTICATION_API_KEY` dele + segredo do webhook. |
 | **`APP_VERSION`** | **SHA do commit publicado** (no Railway: `${{ RAILWAY_GIT_COMMIT_SHA }}`). Sai em `GET /health` e é o release do Sentry. Sem ela, `version` responde `null` e **não há como saber qual versão está no ar** — foi assim que produção ficou dois dias servindo um build antigo sem ninguém notar (ver [ARMADILHAS.md §7](ARMADILHAS.md)). |
 
-> Opcionais (defaults ok): `AI_TAG_MIN_CONFIDENCE` (0.6), `AI_STAGE_MIN_CONFIDENCE` (0.6), `ABANDON_AFTER_HOURS` (24), `WHATSAPP_SESSION_HOURS` — ver `apps/api/.env.example`.
+> Opcionais (defaults ok): `AI_TAG_MIN_CONFIDENCE` (0.6), `AI_STAGE_MIN_CONFIDENCE` (0.6), `ABANDON_AFTER_HOURS` (24), `WHATSAPP_SESSION_HOURS`, `SUPABASE_STORAGE_BUCKET` (`media`) — ver `apps/api/.env.example`.
+
+### Envio de arquivos (F13) — logo e mídia das ofertas
+
+O upload grava no **Supabase Storage** do mesmo projeto. Não há serviço novo
+para provisionar e **o bucket é criado sozinho** na primeira vez que alguém
+envia um arquivo (`MediaStorageService.ensureBucket`, idempotente).
+
+O que o ambiente precisa ter:
+
+| Var | Obrigatória? | Observação |
+|---|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | **Sim, para uploads** | Sem ela a API sobe normalmente e o upload responde **503 com a instrução**, em vez de quebrar. O campo de URL continua funcionando. |
+| `SUPABASE_STORAGE_BUCKET` | Não (`media`) | Só para quem já tem um bucket com outro nome. |
+
+**O bucket é público de propósito.** A Evolution busca a mídia pela URL, do
+servidor dela, sem as nossas credenciais — URL assinada expiraria dentro de uma
+configuração que fica salva por meses, e a oferta pararia de sair sem ninguém
+ter mexido em nada. Os arquivos ficam em `<clinicId>/<finalidade>/<uuid>.<ext>`:
+o caminho nunca vem do cliente, e é ele que permite apagar tudo de uma empresa
+sem varrer o bucket.
+
+**Limites e formatos** (validados na API, não só na tela): logo até **1 MB** em
+PNG/JPG/WEBP; mídia de oferta até **16 MB** em imagem, vídeo, áudio ou PDF.
+**SVG é recusado na logo** — é XML que pode conter `<script>`, e o arquivo é
+servido de um domínio público; dentro de um `<img>` o script não roda, mas basta
+abrir a URL direto. O `.svg` do handoff foi trocado por PNG/JPG/WEBP na copy.
 
 ### Retenção de dados (P1.5) — nasce desligada
 
