@@ -72,6 +72,8 @@ model Tag {
 model ClinicSettings {
   id                           String    @id @default(uuid()) @db.Uuid
   clinicId                     String    @unique @map("clinic_id") @db.Uuid
+  /// Logo da empresa (F13). URL pública no storage; NULL = ainda sem logo.
+  logoUrl                      String?   @map("logo_url")
   specialty                    String?
   description                  String?
   assistantName                String?   @map("assistant_name")

@@ -11,6 +11,10 @@ export const envSchema = z.object({
   // HS256 (projetos legados). Ausente → o guard valida via JWKS (assimétrico).
   SUPABASE_JWT_SECRET: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  // Bucket do Supabase Storage onde ficam logo e mídia das ofertas (F13). O
+  // serviço cria o bucket na primeira vez; a variável existe para quem já tem
+  // um bucket com outro nome.
+  SUPABASE_STORAGE_BUCKET: z.string().optional(),
   // Origens permitidas no CORS (separadas por vírgula).
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
 

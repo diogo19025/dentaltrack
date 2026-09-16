@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  acceptedFormatsLabel,
   type AvailabilitySlot,
   type ClinicSettingsDto,
   clinicSettingsSchema,
@@ -40,6 +41,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/shell/page-header";
+import { MediaUploadButton } from "@/components/settings/media-upload-button";
 import { ProceduresTab } from "@/components/settings/procedures-tab";
 import { TagsTab } from "@/components/settings/tags-tab";
 import { AutomationsTab } from "@/components/settings/automations-tab";
@@ -88,6 +90,7 @@ const SPECIALTIES = [
 
 const BLANK: ClinicSettingsDto = {
   clinicName: "",
+  logoUrl: "",
   specialty: "",
   description: "",
   assistantName: "",
@@ -151,6 +154,7 @@ function SettingsContent() {
   const specialty = useWatch({ control, name: "specialty" });
   const assistantName = useWatch({ control, name: "assistantName" });
   const clinicName = useWatch({ control, name: "clinicName" });
+  const logoUrl = useWatch({ control, name: "logoUrl" });
   const greeting = useWatch({ control, name: "greeting" });
   const greetingMediaType = useWatch({ control, name: "greetingMediaType" });
   const offerText = useWatch({ control, name: "offerText" });
@@ -262,6 +266,13 @@ function SettingsContent() {
                 setGreetingMediaType={(v) =>
                   setValue("greetingMediaType", v, { shouldDirty: true })
                 }
+                setGreetingMediaUrl={(v) =>
+                  setValue("greetingMediaUrl", v, { shouldDirty: true })
+                }
+                logoUrl={logoUrl}
+                setLogoUrl={(v) =>
+                  setValue("logoUrl", v, { shouldDirty: true })
+                }
               />
             ) : (
               <OffersFields
@@ -273,6 +284,9 @@ function SettingsContent() {
                 offerMediaType={offerMediaType}
                 setOfferMediaType={(v) =>
                   setValue("offerMediaType", v, { shouldDirty: true })
+                }
+                setOfferMediaUrl={(v) =>
+                  setValue("offerMediaUrl", v, { shouldDirty: true })
                 }
                 availability={availability}
                 setAvailability={(a) =>
@@ -362,6 +376,7 @@ function MediaFields({
   hint,
   type,
   setType,
+  setUrl,
 }: {
   register: Register;
   urlName: MediaUrlField;
@@ -369,16 +384,31 @@ function MediaFields({
   hint: string;
   type: MediaType | null;
   setType: (v: MediaType | null) => void;
+  setUrl: (v: string) => void;
 }) {
   return (
     <div className="mt-[18px] grid grid-cols-[minmax(0,1fr)_190px] gap-3 max-[560px]:grid-cols-1">
-      <Field label="Mídia (URL pública)" hint={hint} htmlFor={urlName}>
+      <Field label="Mídia" hint={hint} htmlFor={urlName}>
         <Input
           id={urlName}
           type="url"
           {...register(urlName)}
           placeholder={urlPlaceholder}
         />
+        {/* Enviar o arquivo preenche a URL e o tipo; o campo continua editável
+            para quem já tem a imagem publicada em outro lugar. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <MediaUploadButton
+            purpose="oferta"
+            onUploaded={(result) => {
+              setUrl(result.url);
+              setType(result.type);
+            }}
+          />
+          <span className="text-[12px] text-muted-foreground">
+            {acceptedFormatsLabel("oferta")} — ou cole uma URL pública acima.
+          </span>
+        </div>
       </Field>
       <Field label="Tipo">
         <Select
@@ -411,6 +441,9 @@ function IdentityFields({
   setSpecialty,
   greetingMediaType,
   setGreetingMediaType,
+  setGreetingMediaUrl,
+  logoUrl,
+  setLogoUrl,
 }: {
   register: Register;
   tone: Tone;
@@ -419,6 +452,9 @@ function IdentityFields({
   setSpecialty: (v: string) => void;
   greetingMediaType: MediaType | null;
   setGreetingMediaType: (v: MediaType | null) => void;
+  setGreetingMediaUrl: (v: string) => void;
+  logoUrl: string;
+  setLogoUrl: (v: string) => void;
 }) {
   // Garante que o valor carregado apareça mesmo fora da lista padrão.
   const specialtyOptions = Array.from(
@@ -431,18 +467,51 @@ function IdentityFields({
         title="Identidade da empresa"
         desc="Como o agente se apresenta aos clientes."
       >
+        {/* O quadrado e o botão vieram do handoff sem comportamento nenhum —
+            eram enfeite até 2026-09-14. Agora os dois abrem o seletor de
+            arquivo; a URL volta do storage e entra no formulário, e só o
+            "Salvar alterações" persiste. */}
         <div className="mb-[18px] flex items-center gap-[18px]">
-          <div className="flex size-[76px] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-[16px] border-[1.5px] border-dashed border-border-strong bg-muted text-muted-foreground">
-            <Upload className="size-[18px]" />
-            <span className="text-[10.5px]">Logo</span>
-          </div>
+          <MediaUploadButton
+            purpose="logo"
+            label="Enviar logo"
+            onUploaded={(result) => setLogoUrl(result.url)}
+          >
+            {logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoUrl}
+                alt="Logo da empresa"
+                className="size-[76px] shrink-0 cursor-pointer rounded-[16px] border border-border bg-card object-contain p-1.5"
+              />
+            ) : (
+              <span className="flex size-[76px] shrink-0 cursor-pointer flex-col items-center justify-center gap-1 rounded-[16px] border-[1.5px] border-dashed border-border-strong bg-muted text-muted-foreground">
+                <Upload className="size-[18px]" />
+                <span className="text-[10.5px]">Logo</span>
+              </span>
+            )}
+          </MediaUploadButton>
           <div className="flex-1">
             <p className="mb-2 text-[12px] text-muted-foreground">
-              PNG ou SVG, fundo transparente. Até 1&nbsp;MB.
+              {acceptedFormatsLabel("logo")}. Fundo transparente fica melhor.
             </p>
-            <Button type="button" variant="secondary" size="sm">
-              <Upload className="size-4" /> Enviar logo
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <MediaUploadButton
+                purpose="logo"
+                label={logoUrl ? "Trocar logo" : "Enviar logo"}
+                onUploaded={(result) => setLogoUrl(result.url)}
+              />
+              {logoUrl && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLogoUrl("")}
+                >
+                  Remover
+                </Button>
+              )}
+            </div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 max-[560px]:grid-cols-1">
@@ -514,6 +583,7 @@ function IdentityFields({
           hint="Imagem, vídeo ou áudio enviado no 1º contato pelo WhatsApp."
           type={greetingMediaType}
           setType={setGreetingMediaType}
+          setUrl={setGreetingMediaUrl}
         />
       </SectionCard>
     </>
@@ -527,6 +597,7 @@ function OffersFields({
   setOfferEnabled,
   offerMediaType,
   setOfferMediaType,
+  setOfferMediaUrl,
   availability,
   setAvailability,
 }: {
@@ -535,6 +606,7 @@ function OffersFields({
   setOfferEnabled: (v: boolean) => void;
   offerMediaType: MediaType | null;
   setOfferMediaType: (v: MediaType | null) => void;
+  setOfferMediaUrl: (v: string) => void;
   availability: AvailabilitySlot[];
   setAvailability: (a: AvailabilitySlot[]) => void;
 }) {
@@ -611,6 +683,7 @@ function OffersFields({
           hint="Imagem, vídeo, áudio ou catálogo enviado junto da oferta no WhatsApp."
           type={offerMediaType}
           setType={setOfferMediaType}
+          setUrl={setOfferMediaUrl}
         />
       </SectionCard>
 

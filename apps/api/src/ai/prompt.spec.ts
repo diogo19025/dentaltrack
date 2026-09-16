@@ -21,6 +21,7 @@ function makeSettings(over: Partial<ClinicSettings> = {}): ClinicSettings {
   return {
     id: 's1',
     clinicId: 'c1',
+    logoUrl: null,
     specialty: null,
     description: null,
     assistantName: null,
