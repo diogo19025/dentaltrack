@@ -98,3 +98,4 @@ Registradas, não implementadas. Nenhuma entra sem feedback de usuário real, ne
 - **Cache da membership no `TenantGuard`** (uma query por request).
 - **Cores por empresa** e decisão sobre o nome default da plataforma (`"Nexo"` é placeholder).
 - **Webhook do Clinicorp**, se o fornecedor confirmar que existe.
+- **Profissionais na integração** (cadastro espelhado, agenda por profissional, o bot pergunta/deduz, quem faz o quê, nome nos lembretes) — a primeira frente de produto depois da validação comercial, detalhada em [`profissionais-e-pos-clinicorp.md`](profissionais-e-pos-clinicorp.md).
