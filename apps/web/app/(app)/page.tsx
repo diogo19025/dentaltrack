@@ -17,6 +17,7 @@ import { Donut } from "@/components/charts/donut";
 import { Funnel } from "@/components/charts/funnel";
 import { HBars } from "@/components/charts/h-bars";
 import { LineChart } from "@/components/charts/line-chart";
+import { BookingsFootnote } from "@/components/dashboard/bookings-footnote";
 import { ConversationDetailDialog } from "@/components/dashboard/conversation-detail-dialog";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { LeadDetailDialog } from "@/components/dashboard/lead-detail-dialog";
@@ -190,6 +191,7 @@ export default function DashboardPage() {
                 Iniciadas → engajadas → agendadas
               </div>
               <Funnel data={data.funnel} />
+              <BookingsFootnote bookings={data.bookings} />
             </Card>
             <Card className="anim-fade-up gap-0 p-[22px_24px]">
               <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
