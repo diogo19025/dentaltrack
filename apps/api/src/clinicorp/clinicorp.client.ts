@@ -21,14 +21,17 @@ import { normalizeEntityIds } from './field-reader';
 export const CLINICORP_DEFAULT_BASE_URL = 'https://api.clinicorp.com/rest/v1';
 
 /**
- * Rotas usadas pelo conector, do inventário observado da API.
+ * Rotas usadas pelo conector, do contrato OpenAPI publicado pelo fornecedor.
  *
- * As grafias vêm do inventário e são reproduzidas **literalmente**, inclusive
- * onde o próprio fornecedor as digitou errado (`get_avaliable_days`): corrigir
- * a ortografia aqui daria 404. Se alguma divergir na primeira chamada real,
- * este objeto é o único lugar a mexer.
+ * As grafias são reproduzidas **literalmente**, inclusive onde o próprio
+ * fornecedor as digitou errado (`get_avaliable_days`): corrigir a ortografia
+ * aqui daria 404. Se alguma divergir na primeira chamada real, este objeto é o
+ * único lugar a mexer.
  */
 export const CLINICORP_ROUTES = {
+  /** Sem parâmetro: é como se descobre o `subscriber_id` da credencial. */
+  subscribers: '/group/list_subscribers',
+  subscriberClinics: '/group/list_subscribers_clinics',
   units: '/business/list',
   chairs: '/business/list_chairs',
   professionals: '/professional/list_all_professionals',
@@ -52,11 +55,14 @@ export const CLINICORP_ROUTES = {
 } as const;
 
 /**
- * Rotas que **não** recebem `subscriber_id`. Há evidência de contrato recente
- * de que injetá-lo nestas duas atrapalha, então a exceção fica explícita e
- * documentada em vez de virar um bug intermitente.
+ * Rotas que **não** recebem `subscriber_id` — o contrato não o declara nelas
+ * (a disponibilidade e a criação identificam a conta pela credencial), e as de
+ * descoberta existem justamente para quando ele ainda não é conhecido. A
+ * exceção fica explícita e documentada em vez de virar um bug intermitente.
  */
 const ROUTES_WITHOUT_SUBSCRIBER: string[] = [
+  CLINICORP_ROUTES.subscribers,
+  CLINICORP_ROUTES.subscriberClinics,
   CLINICORP_ROUTES.availableTimes,
   CLINICORP_ROUTES.createAppointment,
 ];
@@ -133,14 +139,22 @@ export class ClinicorpClient {
     return `Basic ${Buffer.from(raw, 'utf8').toString('base64')}`;
   }
 
+  /**
+   * `subscriber_id` efetivo. Verificado ao vivo (2026-09-17): numa conta única
+   * `GET /group/list_subscribers` responde `[]` e as rotas recusam com 400 sem
+   * o id — e o valor aceito é o **próprio usuário da API**. Por isso o usuário
+   * é o padrão quando o campo fica vazio; contas de grupo informam o da unidade.
+   */
+  subscriberId(): string {
+    return this.config.subscriberId?.trim() || this.config.username;
+  }
+
   private withSubscriber<T extends Record<string, unknown>>(
     path: string,
     payload: T,
   ): T & { subscriber_id?: string } {
-    if (ROUTES_WITHOUT_SUBSCRIBER.includes(path) || !this.config.subscriberId) {
-      return payload;
-    }
-    return { subscriber_id: this.config.subscriberId, ...payload };
+    if (ROUTES_WITHOUT_SUBSCRIBER.includes(path)) return payload;
+    return { subscriber_id: this.subscriberId(), ...payload };
   }
 
   private async request(

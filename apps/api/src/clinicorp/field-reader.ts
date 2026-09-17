@@ -1,4 +1,4 @@
-import { zonedTimeToUtc } from '../common/time';
+import { zonedDateKey, zonedTimeToUtc } from '../common/time';
 
 /**
  * Leitura **tolerante** das respostas do sistema de gestão (F9).
@@ -150,12 +150,17 @@ export function parseExternalDateTime(
   time: string | null,
   timeZone: string,
 ): Date | null {
-  const value = raw.trim();
+  let value = raw.trim();
 
-  // ISO com offset explícito (…Z ou ±HH:mm): já é um instante, respeita-se.
+  // ISO com offset explícito (…Z ou ±HH:mm): já é um instante, respeita-se —
+  // exceto quando veio uma hora separada. Aí o instante só carrega o **dia**
+  // (o Clinicorp manda `date` como a meia-noite local em UTC, ex.
+  // "2025-04-12T03:00:00.000Z") e a hora de parede é a do campo separado.
   if (/^\d{4}-\d{2}-\d{2}T.*(Z|[+-]\d{2}:?\d{2})$/.test(value)) {
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    if (Number.isNaN(parsed.getTime())) return null;
+    if (!time?.trim()) return parsed;
+    value = zonedDateKey(parsed, timeZone);
   }
 
   const parts = parseDateParts(value);
@@ -246,10 +251,12 @@ export function toCompactDate(date: Date, timeZone: string): string {
  */
 const ENTITY_ID_FIELDS = new Set(
   [
+    'id',
     'Clinic_BusinessId',
     'Dentist_PersonId',
     'Patient_PersonId',
-    'subscriber_id',
+    'ScheduleToId',
+    'CategoryId',
     'business_id',
     'appointment_id',
     'status_id',
@@ -258,7 +265,10 @@ const ENTITY_ID_FIELDS = new Set(
 
 /**
  * Prepara o corpo de uma escrita: ids de entidade em decimal canônico viram
- * inteiro nativo; todo o resto passa intocado.
+ * inteiro nativo; todo o resto passa intocado. Os ids do Clinicorp têm 16
+ * dígitos (ex. 5759793708400640) — o limite é o inteiro seguro do JS, não uma
+ * contagem de dígitos, senão exatamente esses ficariam como texto.
+ * `subscriber_id` fica de fora: o contrato o declara como texto.
  */
 export function normalizeEntityIds(body: Row): Row {
   const out: Row = {};
@@ -266,8 +276,9 @@ export function normalizeEntityIds(body: Row): Row {
     if (
       ENTITY_ID_FIELDS.has(normalizeKey(key)) &&
       typeof value === 'string' &&
-      /^\d{1,15}$/.test(value) &&
-      !/^0\d/.test(value)
+      /^\d+$/.test(value) &&
+      !/^0\d/.test(value) &&
+      Number.isSafeInteger(Number(value))
     ) {
       out[key] = Number(value);
       continue;

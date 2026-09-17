@@ -159,4 +159,43 @@ describe('field-reader (leitura tolerante da API externa · F9)', () => {
       ).toEqual({ Clinic_BusinessId: 12, Notes: null });
     });
   });
+
+  describe('contrato do Clinicorp', () => {
+    it('instante ISO + hora separada: o instante dá o dia local, a hora é a separada', () => {
+      // `appointment/list` manda `date` como a meia-noite local em UTC.
+      expect(
+        parseExternalDateTime(
+          '2026-09-12T03:00:00.000Z',
+          '14:30',
+          SP,
+        )?.toISOString(),
+      ).toBe('2026-09-12T17:30:00.000Z');
+      // Sem hora separada, o instante continua sendo respeitado como veio.
+      expect(
+        parseExternalDateTime(
+          '2026-09-12T17:30:00.000Z',
+          null,
+          SP,
+        )?.toISOString(),
+      ).toBe('2026-09-12T17:30:00.000Z');
+    });
+
+    it('ids de 16 dígitos viram inteiro (o limite é o inteiro seguro); subscriber_id fica texto', () => {
+      expect(
+        normalizeEntityIds({
+          id: '4791226171916288',
+          Clinic_BusinessId: '5759793708400640',
+          subscriber_id: '123',
+          MobilePhone: '11999998888',
+          big: '99999999999999999999',
+        }),
+      ).toEqual({
+        id: 4791226171916288,
+        Clinic_BusinessId: 5759793708400640,
+        subscriber_id: '123',
+        MobilePhone: '11999998888',
+        big: '99999999999999999999',
+      });
+    });
+  });
 });
