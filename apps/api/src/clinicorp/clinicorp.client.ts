@@ -14,7 +14,7 @@ import { normalizeEntityIds } from './field-reader';
  * Autenticação é **HTTP Basic com um par usuário/token de API**, que não é o
  * login do painel web da clínica; e a maior parte das rotas exige ainda o
  * `subscriber_id` como contexto de conta. Ambos são pedidos ao suporte pelo
- * assinante (o dono da clínica) — ver docs/CLINICORP.md.
+ * assinante (o dono da clínica) — ver docs/operacao.md.
  */
 
 /** Base pública da API. Homologação sobrescreve via credencial. */

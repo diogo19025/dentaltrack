@@ -79,7 +79,7 @@ async function main(): Promise<void> {
         "  GOOGLE_CALENDAR_ID=id da agenda a testar",
         "",
         "A agenda precisa estar compartilhada com a conta de serviço com",
-        'permissão "Fazer alterações em eventos". Ver docs/GOOGLE_AGENDA.md.',
+        'permissão "Fazer alterações em eventos". Ver docs/operacao.md.',
       ].join("\n"),
     );
     process.exit(1);

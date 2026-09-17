@@ -1,5 +1,5 @@
 # Render Blueprint — API NestJS (apps/api). Deploy: New → Blueprint → este repo.
-# O frontend (apps/web) vai na Vercel (ver apps/web/vercel.json e docs/DEPLOY.md).
+# O frontend (apps/web) vai na Vercel (ver apps/web/vercel.json e docs/operacao.md).
 services:
   - type: web
     name: dentaltrack-api

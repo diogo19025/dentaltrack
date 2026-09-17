@@ -14,7 +14,7 @@ import { z } from "zod";
  * 2. **Higiene de envio é do contrato, não do código de cada automação.** Janela
  *    de horário, feriado, teto diário e limite de tentativas ficam aqui, num
  *    lugar só, porque valem para todas — o canal é WhatsApp não-oficial e
- *    disparo mal calibrado custa o número da empresa (ver docs/WHATSAPP.md).
+ *    disparo mal calibrado custa o número da empresa (ver docs/operacao.md).
  */
 
 /**

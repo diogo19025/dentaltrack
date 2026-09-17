@@ -3,12 +3,12 @@
 # Uso:
 #   1. copie .env.evolution.example -> .env.evolution e defina EVOLUTION_API_KEY
 #   2. docker compose -f docker-compose.evolution.yml --env-file .env.evolution up -d
-# Depois siga docs/WHATSAPP.md (criar instância + parear QR).
+# Depois siga docs/operacao.md (criar instância + parear QR).
 
 services:
   evolution-api:
     # Namespace atual e mantido (o antigo `atendai/...` travou na 2.2.3, com
-    # Baileys velho → "Connection Failure" sem QR). Ver docs/WHATSAPP.md.
+    # Baileys velho → "Connection Failure" sem QR). Ver docs/operacao.md.
     image: evoapicloud/evolution-api:v2.3.7
     container_name: dentaltrack-evolution
     restart: unless-stopped
@@ -39,7 +39,7 @@ services:
       CONFIG_SESSION_PHONE_NAME: Chrome
       # Versão do "WhatsApp Web" (Baileys). Em branco = deixa a imagem decidir
       # (recomendado com a imagem :latest). Só preencha WA_VERSION no .env.evolution
-      # se precisar forçar uma versão específica (ver docs/WHATSAPP.md).
+      # se precisar forçar uma versão específica (ver docs/operacao.md).
       CONFIG_SESSION_PHONE_VERSION: ${WA_VERSION:-}
       # Nível de log. ERROR/WARN/INFO já mostram conexão e QR; adicione
       # VERBOSE,WEBHOOKS (e LOG_BAILEYS=debug) se precisar depurar o pareamento.

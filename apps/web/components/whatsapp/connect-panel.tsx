@@ -95,7 +95,7 @@ export function WhatsappConnectPanel({
       <Notice tone="warning">
         O WhatsApp ainda não está habilitado neste servidor. Peça a quem cuida da
         infraestrutura para configurar a Evolution API e a URL pública da API
-        (ver <code>docs/WHATSAPP.md</code>).
+        (ver <code>docs/operacao.md</code>).
       </Notice>
     );
   }
