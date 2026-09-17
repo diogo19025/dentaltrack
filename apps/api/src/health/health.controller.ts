@@ -2,6 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import type { HealthResponse } from '@dentaltrack/shared';
 import { Public } from '../auth/public.decorator';
 import { isSentryEnabled } from '../common/sentry';
+import { MediaStorageService } from '../media/media-storage.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from '../whatsapp/evolution.service';
 
@@ -10,6 +11,7 @@ export class HealthController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly evolution: EvolutionService,
+    private readonly media: MediaStorageService,
   ) {}
 
   /**
@@ -34,11 +36,27 @@ export class HealthController {
       db,
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
-      version: process.env.APP_VERSION ?? null,
+      version: appVersion(),
       whatsapp: this.evolution.isConfigured()
         ? 'configurado'
         : 'nao_configurado',
+      arquivos: this.media.isConfigured() ? 'configurado' : 'nao_configurado',
       monitoramento: isSentryEnabled() ? 'ativo' : 'desligado',
     };
   }
+}
+
+/**
+ * Commit publicado — `null` quando não dá para saber.
+ *
+ * String vazia conta como **não saber**, e essa distinção custou uma
+ * investigação: `APP_VERSION=${{ RAILWAY_GIT_COMMIT_SHA }}` pode chegar ao
+ * container vazio (a referência existe, o valor não), e com `??` o `/health`
+ * respondia `"version": ""` — que parece configurado, some num log e não
+ * responde a pergunta que a variável existe para responder (ARMADILHAS §7).
+ * `null` é honesto: ninguém confunde com um SHA.
+ */
+function appVersion(): string | null {
+  const raw = process.env.APP_VERSION?.trim();
+  return raw ? raw : null;
 }
