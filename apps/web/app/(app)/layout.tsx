@@ -6,6 +6,7 @@ import { WhatsappOnboarding } from "@/components/whatsapp/whatsapp-onboarding";
 import { sessionIdFromToken } from "@/lib/session-id";
 import { createClient } from "@/lib/supabase/server";
 import {
+  type ClinicSettingsDto,
   isRole,
   type OnboardingBootstrap,
   type Role,
@@ -63,6 +64,36 @@ async function fetchRole(accessToken: string): Promise<Role | null> {
   return null;
 }
 
+/** O que o shell precisa saber da empresa antes do primeiro paint. */
+type ShellBrand = Pick<ClinicSettingsDto, "clinicName" | "logoUrl">;
+
+/**
+ * Marca da empresa para o primeiro render do shell — nome e logo.
+ *
+ * Sem isto a sidebar nasce com a marca da plataforma e as iniciais, e troca
+ * para a empresa quando `GET /settings` responde no cliente: um piscar em
+ * todo carregamento, no lugar mais visível da tela. Best-effort de propósito:
+ * `null` aqui só significa que o cliente resolve como sempre resolveu.
+ */
+async function fetchBrand(accessToken: string): Promise<ShellBrand | null> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+  try {
+    const response = await fetch(`${apiUrl}/settings`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(BOOTSTRAP_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const settings = (await response.json()) as Partial<ClinicSettingsDto>;
+    return {
+      clinicName: settings.clinicName ?? "",
+      logoUrl: settings.logoUrl ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Shell autenticado (F0.6/F0.7). Gate real de acesso: valida o usuário no
  * servidor e redireciona para /login se não houver sessão.
@@ -92,9 +123,16 @@ export default async function AppLayout({
   // (ver `components/auth/role-context.tsx`). Começar em `staff` era o que
   // rebaixava o dono a atendente sempre que a API demorava ou estava numa
   // versão que ainda não devolvia o papel.
-  const role: Role | null = session?.access_token
-    ? await fetchRole(session.access_token)
-    : null;
+  // A marca vai junto, em paralelo: o bootstrap é quem garante que a empresa
+  // existe, mas o `GET /settings` é idempotente e, no 1º acesso, um 404 aqui só
+  // deixa o cliente resolver a marca como antes.
+  const [role, brandData]: [Role | null, ShellBrand | null] =
+    session?.access_token
+      ? await Promise.all([
+          fetchRole(session.access_token),
+          fetchBrand(session.access_token),
+        ])
+      : [null, null];
 
   return (
     <RoleProvider role={role}>
@@ -103,6 +141,8 @@ export default async function AppLayout({
           aparece uma vez por login e, fechado, só volta no próximo. */}
         <Sidebar
           userEmail={user.email ?? "Conta"}
+          clinicName={brandData?.clinicName}
+          logoUrl={brandData?.logoUrl}
           sessionId={sessionIdFromToken(session?.access_token)}
         />
         <div className="flex min-w-0 flex-1 flex-col">
