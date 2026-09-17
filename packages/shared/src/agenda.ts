@@ -130,9 +130,11 @@ export const REVISABLE_APPOINTMENT_STATUSES = [
 
 /**
  * Corpo de POST /agenda/:id/remarcar — o novo horário (ISO 8601 com offset).
- * Cancelar (POST /agenda/:id/cancelar) não tem corpo. Nenhum dos dois é dado
- * como tool ao agente: o bot cancelando consulta por mal-entendido é dano
- * irreversível.
+ * Cancelar (POST /agenda/:id/cancelar) não tem corpo. Estas duas rotas são da
+ * **tela**, para a equipe. O agente cancela pelas tools da F14
+ * (`findMyAppointments` + `cancelAppointment`), que revalidam o agendamento
+ * contra o próprio contato antes de agir — remarcar, para ele, continua sendo
+ * cancelar e agendar de novo, para não pular a checagem de horário.
  */
 export const rescheduleAppointmentSchema = z.object({
   startsAt: z.string().min(1),
