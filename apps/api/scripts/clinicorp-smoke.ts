@@ -262,8 +262,29 @@ async function writeCycle(
 ): Promise<string | null> {
   console.log("\n--- Ciclo de escrita (CLINICORP_WRITE_TEST=1) ---\n");
 
-  const startsAt = new Date(Date.now() + TEST_DAYS_AHEAD * 24 * 3_600_000);
-  startsAt.setUTCHours(6, 0, 0, 0); // ~03:00 em São Paulo — fora de qualquer expediente
+  // O Clinicorp recusa horário fora do expediente com "horário ocupado"
+  // (visto ao vivo), então o teste pede à própria agenda um horário livre do
+  // dia distante; só sem resposta cai na madrugada.
+  const testDay = new Date(Date.now() + TEST_DAYS_AHEAD * 24 * 3_600_000);
+  let startsAt = new Date(testDay);
+  startsAt.setUTCHours(6, 0, 0, 0); // ~03:00 em São Paulo
+  const professionalId = process.env.CLINICORP_PROFESSIONAL_ID ?? null;
+  const slot = await step("Escolher um horário livre no dia de teste", async () => {
+    const dayStart = new Date(testDay.getTime() - 24 * 3_600_000);
+    const dayEnd = new Date(testDay.getTime() + 24 * 3_600_000);
+    const free = await provider.listAvailableSlots({
+      from: dayStart,
+      to: dayEnd,
+      unitId,
+      professionalId,
+      limit: 1,
+    });
+    if (!free.length) return `nenhum horário livre; usando ${startsAt.toISOString()}`;
+    startsAt = new Date(free[0].startsAt);
+    return `${free[0].startsAt} (profissional ${free[0].professionalId ?? "?"})`;
+  });
+  results.push(slot);
+  print(slot);
   const endsAt = new Date(startsAt.getTime() + 30 * 60_000);
   let externalId: string | null = null;
 
@@ -288,7 +309,7 @@ async function writeCycle(
       startsAt,
       endsAt,
       unitId,
-      professionalId: process.env.CLINICORP_PROFESSIONAL_ID ?? "",
+      professionalId: professionalId ?? "",
       procedureName: null,
       notes: "Criado pelo clinicorp:smoke do DentalTrack. Pode cancelar.",
     });

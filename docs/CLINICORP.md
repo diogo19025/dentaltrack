@@ -9,8 +9,9 @@
 > não-oficial, e vários nomes de parâmetro e formatos de resposta eram palpite
 > (§ 5 lista o que mudou). O smoke de **leitura** passou inteiro na conta real
 > (assinante, unidade, 10 profissionais, 8 status, horários livres, agenda da
-> semana). O que falta é o **ciclo de escrita** (§ 3.2) e ligar o modo real na
-> tela (§ 3.4). O **[Google Agenda](GOOGLE_AGENDA.md)** continua como
+> semana) e o **ciclo de escrita** também: paciente de teste criado,
+> agendamento criado em horário livre a 400 dias e cancelado, confirmado na
+> releitura da agenda. O que falta é ligar o modo real na tela (§ 3.4). O **[Google Agenda](GOOGLE_AGENDA.md)** continua como
 > alternativa para a empresa sem sistema de gestão.
 
 ## O que a integração destrava
@@ -194,7 +195,9 @@ trata isso (`status-heuristics.ts`), mas confira na tela.
 | **Disponibilidade exige profissional** (`professionalId` obrigatório em `list_available_times`) | Sem profissional padrão em Configurações, o adapter consulta **cada profissional** da conta e une os horários (um request por profissional). Escolher o padrão evita o leque. A resposta é aninhada por dia (`[{ date, slots: [...] }]`) e é achatada na leitura |
 | **Criação responde uma lista** `[{ Status: "CREATED", id }]` | O adapter lê o primeiro item e exige `Status = CREATED` além do id |
 | **`patient/create` não documenta o id de retorno** | Sem id na resposta, o paciente recém-criado é localizado por `patient/get` (telefone, senão nome) — sem id não há como vincular o agendamento |
-| **Desmarcado é bandeira, não status** (`Canceled: "X"`; o `StatusId` antigo permanece) | A agenda é lida com `includeCanceled=X`, e a bandeira vira o nome "Desmarcado" **sem id**: se o id antigo fosse traduzido, o mapeamento do operador ganharia e a desmarcação se perderia. Excluídos (`Deleted: "X"`) e itens que não são agendamento de paciente (`ItemType` EVENT/ASSIGN) ficam de fora |
+| **Desmarcado é bandeira, não status** (`Canceled: "X"`; o `StatusId` antigo permanece) | A agenda é lida com `includeCanceled=X` **e** `includeDeleted=X` — visto ao vivo: `cancel_appointment` marca `Canceled: X` e `Deleted: X` ao mesmo tempo, e sem o segundo filtro o cancelamento simplesmente some da varredura. Qualquer das duas bandeiras vira o nome "Desmarcado" **sem id**: se o id antigo fosse traduzido, o mapeamento do operador ganharia e a desmarcação se perderia. Itens que não são agendamento de paciente (`ItemType` EVENT/ASSIGN) ficam de fora |
+| **Horário fora do expediente ou ocupado** → `400 "O horário solicitado encontra-se ocupado"` | Classificado como `conflito` (não 409): o agente oferece outro horário e a linha local vira `pedido`, como na re-checagem. O smoke de escrita pede à própria agenda um horário livre do dia distante em vez de chutar a madrugada |
+| **Nome de paciente repetido** → `400` pedindo `IgnoreSameName: "X"` | Com telefone, cria mesmo assim (telefone diferente é outra pessoa; vincular ao homônimo erraria de paciente). Sem telefone, reaproveita o homônimo existente |
 | Sem webhook | Varredura a cada 10 minutos (`AgendaJobs.syncAgenda`) |
 | **Sem rota de reagendamento** no inventário | Remarcar é **cancelar + recriar** (`cancel_appointment` → `create_appointment_by_api`): o `AppointmentId` muda, e a linha local acompanha. Se o cancelamento passar e a criação falhar, o horário antigo já foi liberado e o novo não existe — o erro sobe dizendo isso, e a tela não confirma nada. **Não validado ao vivo** (depende da credencial). Efeito colateral conhecido: a varredura seguinte pode importar o agendamento antigo como uma linha `cancelado` separada, porque o id dele já não é o da linha remarcada |
 | 404 ao cancelar | Conta como cancelado: é o estado final que se queria, e repetir a operação (duplo clique, retry) não pode virar erro |

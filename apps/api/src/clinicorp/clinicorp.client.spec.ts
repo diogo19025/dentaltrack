@@ -1,5 +1,9 @@
 import { AgendaProviderError } from './agenda-provider';
-import { ClinicorpClient, CLINICORP_ROUTES } from './clinicorp.client';
+import {
+  ClinicorpClient,
+  CLINICORP_ROUTES,
+  classifyFailure,
+} from './clinicorp.client';
 
 /**
  * Transporte do Clinicorp contra `fetch` stubado (P0.1) — nenhum teste deste
@@ -150,6 +154,19 @@ describe('ClinicorpClient (transporte · F9)', () => {
         }),
       ).rejects.toThrow('503');
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('classifyFailure (visto ao vivo em 2026-09-17)', () => {
+    it('400 "horário ocupado" é conflito, não falha desconhecida', () => {
+      expect(
+        classifyFailure(
+          400,
+          '{"Error":400,"Message":"O horário solicitado encontra-se ocupado"}',
+        ),
+      ).toBe('conflito');
+      expect(classifyFailure(400, 'campo inválido')).toBe('desconhecido');
+      expect(classifyFailure(401, '')).toBe('auth');
     });
   });
 });

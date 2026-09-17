@@ -150,7 +150,13 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
    */
   async listStatuses(): Promise<ExternalStatus[]> {
     const payload = await this.client.get(CLINICORP_ROUTES.statuses);
-    return readList(payload, 'status', 'statuses').flatMap((row) => {
+    const rows = readList(payload, 'status', 'statuses');
+    // A bandeira `Active` só é interpretada se a conta a usa (algum status a
+    // traz): aí "vazio" é inativo. Numa resposta sem a bandeira, tudo entra.
+    const usesActiveFlag = rows.some((row) =>
+      isFlag(readString(row, 'Active')),
+    );
+    return rows.flatMap((row) => {
       const id = readId(row, 'Id', 'StatusId', 'Status_Id', 'code');
       const name = readString(
         row,
@@ -160,8 +166,7 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
         'Status',
       );
       if (!id || !name) return [];
-      const active = readString(row, 'Active');
-      if (active !== null && !isFlag(active)) return [];
+      if (usesActiveFlag && !isFlag(readString(row, 'Active'))) return [];
       return [{ id, name }];
     });
   }
@@ -253,9 +258,12 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
   }
 
   /**
-   * Agenda do período. Os desmarcados entram de propósito (`includeCanceled`):
-   * é assim que a sincronização descobre que a recepção desmarcou uma consulta
-   * criada pelo bot e derruba o lembrete. Excluídos ficam de fora.
+   * Agenda do período. Desmarcados **e excluídos** entram de propósito: é assim
+   * que a sincronização descobre que a recepção desmarcou uma consulta criada
+   * pelo bot e derruba o lembrete. Visto ao vivo (2026-09-17): o
+   * `cancel_appointment` marca o agendamento com `Canceled: X` **e**
+   * `Deleted: X`, e ele só volta na listagem com os dois filtros — sem
+   * `includeDeleted` o cancelamento simplesmente sumiria da varredura.
    */
   async listAppointments(query: AgendaWindow): Promise<ExternalAppointment[]> {
     const unitId = query.unitId ?? this.defaults.unitId ?? null;
@@ -264,11 +272,11 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
       to: zonedDateKey(query.to, this.timeZone),
       businessId: unitId ?? undefined,
       includeCanceled: 'X',
+      includeDeleted: 'X',
     });
     return readList(payload, 'appointments', 'schedule').flatMap((row) => {
       const itemType = readString(row, 'ItemType');
       if (itemType && itemType.toUpperCase() !== 'APPOINTMENT') return [];
-      if (isFlag(readString(row, 'Deleted'))) return [];
       const parsed = this.toAppointment(row);
       return parsed ? [parsed] : [];
     });
@@ -318,13 +326,38 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
    * Cria o paciente. O contrato não documenta o id na resposta; quando ele não
    * vem, o paciente recém-criado é localizado pelo telefone (ou pelo nome) —
    * sem id não há como vincular o agendamento a ele.
+   *
+   * **Nome repetido** (visto ao vivo em 2026-09-17): a rota recusa com 400 e
+   * pede `IgnoreSameName: "X"` para criar mesmo assim. Com telefone, cria-se
+   * mesmo assim — telefone diferente é outra pessoa, e vincular a consulta ao
+   * homônimo seria errar de paciente. Sem telefone não há como distinguir, e o
+   * homônimo existente é reaproveitado.
    */
   async createPatient(input: CreatePatientInput): Promise<ExternalPatient> {
-    const payload = await this.client.post(CLINICORP_ROUTES.patientCreate, {
+    const body = {
       Name: input.name,
       MobilePhone: input.phone ?? undefined,
       Email: input.email ?? undefined,
-    });
+    };
+    let payload: unknown;
+    try {
+      payload = await this.client.post(CLINICORP_ROUTES.patientCreate, body);
+    } catch (err) {
+      if (!isSameNameRefusal(err)) throw err;
+      if (input.phone) {
+        payload = await this.client.post(CLINICORP_ROUTES.patientCreate, {
+          ...body,
+          IgnoreSameName: 'X',
+        });
+      } else {
+        const existing = await this.findPatient({ name: input.name });
+        if (!existing) throw err;
+        this.logger.warn(
+          `Paciente "${input.name}" já existia no Clinicorp (sem telefone para distinguir) — reaproveitado: ${existing.id}.`,
+        );
+        return existing;
+      }
+    }
 
     const id =
       readId(payload, 'PatientId', 'Patient_PersonId', 'PersonId', 'id') ??
@@ -489,12 +522,13 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
             60_000,
       );
 
-    // Desmarcado é uma **bandeira** (`Canceled: "X"`), não um status: o
-    // agendamento continua com o StatusId que tinha antes. Se esse id fosse
-    // traduzido, o mapeamento do operador ganharia e a desmarcação se perderia
-    // — por isso a bandeira vira o nome "Desmarcado" sem id, que a heurística
-    // reconhece como `cancelado`.
-    const canceled = isFlag(readString(row, 'Canceled'));
+    // Desmarcado é uma **bandeira** (`Canceled: "X"`, e `Deleted: "X"` quando
+    // excluído da agenda), não um status: o agendamento continua com o
+    // StatusId que tinha antes. Se esse id fosse traduzido, o mapeamento do
+    // operador ganharia e a desmarcação se perderia — por isso a bandeira vira
+    // o nome "Desmarcado" sem id, que a heurística reconhece como `cancelado`.
+    const canceled =
+      isFlag(readString(row, 'Canceled')) || isFlag(readString(row, 'Deleted'));
 
     return {
       externalId,
@@ -558,6 +592,15 @@ function expandSlotRows(payload: unknown): Record<string, unknown>[] {
 /** Primeiro registro de uma resposta em lista; objeto solto passa direto. */
 function firstRow(payload: unknown): unknown {
   return Array.isArray(payload) ? payload[0] : payload;
+}
+
+/** 400 de `patient/create` por nome repetido — pede `IgnoreSameName`. */
+function isSameNameRefusal(err: unknown): boolean {
+  return (
+    err instanceof AgendaProviderError &&
+    err.status === 400 &&
+    /IgnoreSameName|mesmo nome/i.test(err.message)
+  );
 }
 
 /** As bandeiras do Clinicorp são a letra "X" (maiúscula ou minúscula). */

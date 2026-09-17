@@ -81,6 +81,18 @@ export interface ClinicorpConfig {
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 
+/**
+ * Categoria da falha. O Clinicorp sinaliza horário ocupado com **400** e a
+ * mensagem "O horário solicitado encontra-se ocupado" (visto ao vivo em
+ * 2026-09-17), não com 409 — sem esta leitura o agente trataria o conflito
+ * como falha nossa e prometeria o retorno da equipe em vez de oferecer outro
+ * horário.
+ */
+export function classifyFailure(status: number, detail: string) {
+  if (status === 400 && /ocupad/i.test(detail)) return 'conflito' as const;
+  return kindFromHttpStatus(status);
+}
+
 export class ClinicorpClient {
   private readonly logger = new Logger(ClinicorpClient.name);
   private readonly baseUrl: string;
@@ -187,7 +199,7 @@ export class ClinicorpClient {
           `Clinicorp ${path} respondeu ${res.status}${hint}${
             detail ? `: ${detail.slice(0, 300)}` : ''
           }`,
-          { kind: kindFromHttpStatus(res.status), status: res.status },
+          { kind: classifyFailure(res.status, detail), status: res.status },
         );
       }
 
