@@ -39,3 +39,6 @@ Thumbs.db
 
 # WhatsApp (QR gerado no pareamento da Evolution — efêmero, nunca versionar)
 qr.png
+
+# Worktrees do Claude Code (efemeros, nunca versionar)
+.claude/worktrees/
