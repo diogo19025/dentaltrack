@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { MediaModule } from '../media/media.module';
 import { WhatsappTransportModule } from '../whatsapp/whatsapp-transport.module';
 import { HealthController } from './health.controller';
 
@@ -8,9 +9,12 @@ import { HealthController } from './health.controller';
  * `WhatsappTransportModule` (e não o `WhatsappModule`) porque é ele quem
  * exporta o `EvolutionService`; importar o adapter inteiro não o traria e a
  * API não subia (`health.module.spec.ts` guarda isso).
+ *
+ * O `MediaModule` entra pelo mesmo motivo e da mesma forma: só pelo
+ * `isConfigured()`, sem nenhuma chamada externa no healthcheck.
  */
 @Module({
-  imports: [WhatsappTransportModule],
+  imports: [WhatsappTransportModule, MediaModule],
   controllers: [HealthController],
 })
 export class HealthModule {}

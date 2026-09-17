@@ -60,6 +60,33 @@ export const funnelSchema = z.object({
 });
 export type Funnel = z.infer<typeof funnelSchema>;
 
+/**
+ * Agendamentos do período — a leitura honesta ao lado da conversão.
+ *
+ * A "taxa de conversão" conta **conversas** que chegaram ao agendamento, e essa
+ * contagem não volta atrás quando o cliente desmarca depois: a conversa
+ * converteu, o agente fez o trabalho. Desde a F14 o próprio cliente cancela
+ * pelo WhatsApp, então o número passou a precisar de companhia — senão o
+ * dashboard diz "20 agendamentos" num dia em que metade foi desmarcada.
+ *
+ * Por isso a distinção mora aqui, na leitura, e não na máquina de status da
+ * conversa: `created` × `active` × `canceled` são **agendamentos**, população
+ * diferente da do funil (conversas), e é assim que devem ser rotulados na tela.
+ */
+export const bookingsSchema = z.object({
+  /** Agendamentos registrados no período, em qualquer status. */
+  created: z.number(),
+  /** Destes, os que continuam de pé (não cancelados) agora. */
+  active: z.number(),
+  /**
+   * Cancelamentos ocorridos no período (`canceledAt` na janela) — inclui
+   * agendamentos criados antes dela, que é justamente o caso do cliente que
+   * marcou na semana passada e desmarcou hoje.
+   */
+  canceled: z.number(),
+});
+export type Bookings = z.infer<typeof bookingsSchema>;
+
 /** Uma fatia do ranking de tags (top tags). */
 export const topTagSchema = z.object({
   name: z.string(),
@@ -101,6 +128,7 @@ export const metricsSchema = z.object({
   kpis: metricsKpisSchema,
   line: lineSeriesSchema,
   funnel: funnelSchema,
+  bookings: bookingsSchema,
   topTags: z.array(topTagSchema),
   statusDistribution: z.array(statusSliceSchema),
   retention: retentionSchema,

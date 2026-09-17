@@ -17,6 +17,13 @@ export const healthResponseSchema = z.object({
   version: z.string().nullable(),
   /** Transporte do WhatsApp configurado no ambiente (não é o estado da sessão). */
   whatsapp: z.enum(["configurado", "nao_configurado"]),
+  /**
+   * Envio de arquivos (F13) utilizável neste ambiente — ou seja, se a
+   * `SUPABASE_SERVICE_ROLE_KEY` está presente. Está aqui porque a falta dela é
+   * **silenciosa**: a API sobe igual e só quem clica em "Enviar logo" descobre,
+   * pelo 503. Foi assim que a feature ficou semanas no ar sem funcionar.
+   */
+  arquivos: z.enum(["configurado", "nao_configurado"]),
   /** Captura de exceptions ativa (P0.3). */
   monitoramento: z.enum(["ativo", "desligado"]),
 });

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  type Bookings,
   type Kpi,
   type MetricsDto,
   type MetricsRange,
@@ -59,7 +60,7 @@ export class MetricsService {
     const since50 = addDays(today0, -(BOT_WINDOW_DAYS - 1));
     const prev50Since = addDays(since50, -BOT_WINDOW_DAYS);
 
-    const [cur, prev, botMsgs, prevBot, lineMsgs, topTags, returns] =
+    const [cur, prev, botMsgs, prevBot, lineMsgs, topTags, returns, bookings] =
       await Promise.all([
         this.windowStats(clinicId, since, null),
         this.windowStats(clinicId, prevSince, since),
@@ -75,6 +76,7 @@ export class MetricsService {
         }),
         this.topTags(clinicId, since),
         this.leadReturns(clinicId),
+        this.bookings(clinicId, since),
       ]);
 
     // Sparklines: tendência diária no período (decorativa — downsample p/ 12 pts).
@@ -145,6 +147,7 @@ export class MetricsService {
         engaged: cur.engaged,
         scheduled: cur.scheduled,
       },
+      bookings,
       topTags,
       statusDistribution: [
         { status: 'em_andamento', value: cur.byStatus.em_andamento },
@@ -153,6 +156,35 @@ export class MetricsService {
       ],
       retention: this.buildRetention(cur, returns, since, days, labels),
     };
+  }
+
+  /**
+   * Agendamentos do período: registrados, ainda de pé e cancelados.
+   *
+   * São três contagens sobre `Appointment`, não sobre `Conversation` — de
+   * propósito. Cancelar não desfaz a conversão da conversa (a máquina de status
+   * segue com `agendada` terminal, e o funil e o scoring continuam lendo o
+   * mesmo número de antes); o que faltava era o dashboard dizer quantos desses
+   * agendamentos sobreviveram. `canceled` usa `canceledAt`, então pega também o
+   * que foi marcado antes da janela e desmarcado dentro dela.
+   */
+  private async bookings(clinicId: string, since: Date): Promise<Bookings> {
+    const [created, active, canceled] = await Promise.all([
+      this.prisma.appointment.count({
+        where: { clinicId, createdAt: { gte: since } },
+      }),
+      this.prisma.appointment.count({
+        where: {
+          clinicId,
+          createdAt: { gte: since },
+          status: { not: 'cancelado' },
+        },
+      }),
+      this.prisma.appointment.count({
+        where: { clinicId, canceledAt: { gte: since } },
+      }),
+    ]);
+    return { created, active, canceled };
   }
 
   /**

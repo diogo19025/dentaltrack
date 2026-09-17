@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { type ToolSet, dynamicTool, jsonSchema } from 'ai';
 import {
   type Channel,
@@ -26,6 +27,8 @@ import type { PrismaService } from '../prisma/prisma.service';
  * estoura a memória do `tsc`. JSON Schema puro mantém o type-checker leve; a
  * validação da entrada continua sendo feita pelo SDK contra o schema.
  */
+const logger = new Logger('ChatTools');
+
 export interface ChatToolsContext {
   prisma: PrismaService;
   conversations: ConversationsService;
@@ -79,6 +82,9 @@ interface PresentOfferInput {
 }
 interface CancelInput {
   agendamentoId: string;
+  motivo?: string;
+}
+interface FindMyAppointmentsInput {
   motivo?: string;
 }
 
@@ -774,14 +780,36 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
     findMyAppointments: dynamicTool({
       description:
         'Lista os agendamentos em aberto DESTE cliente. Chame SEMPRE antes de falar em desmarcar, cancelar, remarcar ou "não vou poder ir" — é a única forma de saber qual agendamento ele tem e obter o `agendamentoId` que `cancelAppointment` exige. Nunca invente esse id.',
-      inputSchema: jsonSchema<Record<string, never>>({
+      // O parâmetro é opcional para o modelo, mas o objeto de parâmetros NÃO
+      // pode ser vazio: o Gemini — que é justamente o provider de fallback —
+      // recusa a declaração de função com `properties: {}` (400
+      // INVALID_ARGUMENT). Como o fallback só roda depois de o primário já ter
+      // caído, e a falha chega ao usuário como o mesmo 503 amigável de sempre,
+      // uma tool sem parâmetros derrubaria o plano B sem sintoma próprio.
+      inputSchema: jsonSchema<FindMyAppointmentsInput>({
         type: 'object',
-        properties: {},
+        properties: {
+          motivo: {
+            type: 'string',
+            description:
+              'O que o cliente disse, em poucas palavras (opcional) — o mesmo campo de cancelAppointment.',
+          },
+        },
+        required: [],
         additionalProperties: false,
       }),
-      execute: async () => {
+      execute: async (input) => {
+        const { motivo } = (input ?? {}) as FindMyAppointmentsInput;
         try {
           const rows = await openAppointments();
+          // O texto do cliente não vai para o log em hipótese alguma (regra do
+          // `common/redact.ts`); só o fato de ele ter vindo, que é o que diz se
+          // o modelo está seguindo o fluxo de cancelamento.
+          logger.log({
+            event: 'agenda.find_my_appointments',
+            encontrados: rows.length,
+            motivoInformado: Boolean(motivo?.trim()),
+          });
           if (rows.length === 0) {
             return {
               agendamentos: [],

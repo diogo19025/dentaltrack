@@ -40,6 +40,16 @@ O que o ambiente precisa ter:
 | Var | Obrigatória? | Observação |
 |---|---|---|
 | `SUPABASE_SERVICE_ROLE_KEY` | **Sim, para uploads** | Sem ela a API sobe normalmente e o upload responde **503 com a instrução**, em vez de quebrar. O campo de URL continua funcionando. |
+
+> ⚠️ **Declarar a variável vazia é o mesmo que não a ter.** `SUPABASE_SERVICE_ROLE_KEY=`
+> sem valor passa despercebido — o nome está no `.env`, a API sobe, e só quem
+> clica em "Enviar logo" descobre. Use a chave **`service_role`** (Project
+> Settings → API), nunca a `anon`: a `anon` respeita RLS e não escreve no
+> Storage. É segredo de servidor — jamais no `apps/web`.
+>
+> **Como conferir sem tentar um upload:** `GET /health` responde
+> `"arquivos": "configurado" | "nao_configurado"`. É a leitura mais rápida da
+> pergunta "esse ambiente consegue guardar arquivo?" — inclusive em produção.
 | `SUPABASE_STORAGE_BUCKET` | Não (`media`) | Só para quem já tem um bucket com outro nome. |
 
 **O bucket é público de propósito.** A Evolution busca a mídia pela URL, do

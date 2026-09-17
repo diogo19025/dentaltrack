@@ -59,6 +59,7 @@ function buildPrismaMock() {
     },
     appointment: {
       findMany: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
     },
   };
 }
@@ -115,6 +116,44 @@ describe('MetricsService', () => {
   it('range inválido não chega aqui (default já resolvido no controller)', async () => {
     const m = await service.getMetrics(CLINIC, '30d');
     expect(m.range).toBe('30d');
+  });
+
+  describe('bookings (agendamentos do período)', () => {
+    it('conta registrados, ainda de pé e cancelados no período', async () => {
+      // A ordem é a do Promise.all em `bookings()`: criados, ativos, cancelados.
+      prismaMock.appointment.count
+        .mockResolvedValueOnce(10)
+        .mockResolvedValueOnce(7)
+        .mockResolvedValueOnce(4);
+
+      const m = await service.getMetrics(CLINIC, '7d');
+
+      expect(m.bookings).toEqual({ created: 10, active: 7, canceled: 4 });
+    });
+
+    it('cancelar não desfaz a conversão da conversa', async () => {
+      prismaMock.appointment.count
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(1);
+
+      const m = await service.getMetrics(CLINIC, '50d');
+
+      // A conversa segue `agendada` — funil, KPI e distribuição intactos.
+      expect(m.funnel.scheduled).toBe(1);
+      expect(m.kpis.conversionRate.value).toBeCloseTo(0.5);
+      // O que muda é a leitura ao lado: nenhum agendamento de pé.
+      expect(m.bookings.active).toBe(0);
+      expect(m.bookings.canceled).toBe(1);
+    });
+
+    it('cancelados usam `canceledAt`, então alcançam agendamento antigo', async () => {
+      await service.getMetrics(CLINIC, '7d');
+
+      const canceledQuery = prismaMock.appointment.count.mock.calls[2][0];
+      expect(canceledQuery.where).toHaveProperty('canceledAt');
+      expect(canceledQuery.where).not.toHaveProperty('createdAt');
+    });
   });
 
   describe('retention (abandono × recorrência)', () => {

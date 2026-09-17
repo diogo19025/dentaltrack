@@ -33,6 +33,41 @@ describe('buildChatTools', () => {
 
   beforeEach(() => jest.clearAllMocks());
 
+  /**
+   * Nenhuma tool pode declarar objeto de parâmetros vazio.
+   *
+   * Não é preferência de estilo: o Gemini recusa `properties: {}` com 400
+   * INVALID_ARGUMENT, e ele é o **fallback** — o caminho que só roda depois de
+   * o primário cair, quando o usuário já vê o 503 amigável de sempre. Uma tool
+   * assim mata o plano B sem sintoma próprio, por semanas. Este teste é a
+   * guarda para a próxima tool, não para a que existe hoje.
+   */
+  it('nenhuma tool declara objeto de parâmetros vazio (o fallback Gemini recusa)', () => {
+    const vazias = Object.entries(tools())
+      .filter(([, tool]) => {
+        const schema = (
+          tool as { inputSchema?: { jsonSchema?: { properties?: object } } }
+        ).inputSchema?.jsonSchema;
+        return Object.keys(schema?.properties ?? {}).length === 0;
+      })
+      .map(([name]) => name);
+
+    expect(vazias).toEqual([]);
+  });
+
+  it('findMyAppointments aceita o `motivo` opcional sem exigi-lo', () => {
+    const schema = (
+      tools().findMyAppointments as unknown as {
+        inputSchema: {
+          jsonSchema: { properties: Record<string, unknown>; required?: [] };
+        };
+      }
+    ).inputSchema.jsonSchema;
+
+    expect(Object.keys(schema.properties)).toContain('motivo');
+    expect(schema.required ?? []).toEqual([]);
+  });
+
   it('searchProcedures: retorna procedimentos da empresa com preço formatado', async () => {
     prismaMock.procedure.findMany.mockResolvedValueOnce([
       {
