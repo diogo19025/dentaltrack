@@ -106,6 +106,18 @@
 - **Em produção (2026-08-26):** Evolution roda no Railway com webhook na URL pública da API (`host.docker.internal` só no dev local).
 - **Pareamento por QR na tela (F10, 2026-09-01):** criar a instância, ler o QR e vincular à empresa agora acontecem na aplicação (primeiro acesso + `/settings` → WhatsApp). Requer `API_PUBLIC_URL` no servidor. O runbook manual segue em `docs/WHATSAPP.md` para diagnóstico. **Opt-out persistido** desde a F9.
 
+## Commits e PRs (regra fixa — vale para toda mudança)
+
+Toda mudança que vai ser commitada segue este fluxo, sem exceção e sem perguntar:
+
+1. **Branch, nunca a `main` direto.** `feat/…`, `fix/…`, `docs/…` (conventional commits no nome também). Commitar na `main` foi o que deixou a API sem subir por dois dias (ver `docs/ARMADILHAS.md` §7).
+2. **Commits incrementais, um por assunto.** Uma mudança de contrato + serviço + tela + teste que resolve **um** problema é **um** commit; dois problemas são dois commits, mesmo que toquem o mesmo arquivo. Docs que explicam a mudança vão no commit da mudança; docs de status/histórico vão num commit `docs:` próprio no fim. Nunca um commit "wip", "ajustes" ou "várias coisas".
+3. **Mensagem em português objetivo.** Título `tipo(escopo): o que muda`, em minúsculas, sem ponto final, até ~72 caracteres. Corpo em prosa curta: **o problema que existia, o que foi feito, o que deliberadamente não foi feito**. Sem adjetivo, sem "melhoria", sem contar o óbvio que o diff já mostra. Quem lê o `git log` daqui a seis meses tem que entender a decisão sem abrir o diff.
+4. **Sem trailer de IA** (`Co-Authored-By`, "Generated with…"). O autor é quem assina o commit.
+5. **Abre o PR ao final**, com `gh pr create`, base `main`: título em português, corpo com **o que muda** (por commit), **verificação** (o que rodou e o resultado — contagem de testes, typecheck, lint, o que foi validado ao vivo) e **migration: sim/não**. Só o dono faz merge; quando ele pedir, a revisão vai em português como comentário (o GitHub não deixa aprovar o próprio PR) e o merge é `--merge`, mantendo a branch.
+
+Antes de commitar: `pnpm typecheck` e `pnpm lint` verdes, e os testes do pacote tocado rodados. Se algo está vermelho, o commit espera — e a mensagem diz o que ficou de fora se a decisão for subir mesmo assim.
+
 ## Ambiente
 
 - **Windows / PowerShell.** Repositório git com `origin/main`. A documentação vive em `docs/`.

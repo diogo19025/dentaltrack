@@ -46,10 +46,13 @@ function isActive(pathname: string, href: string) {
 export function Sidebar({
   userEmail,
   clinicName,
+  logoUrl,
   sessionId,
 }: {
   userEmail: string;
   clinicName?: string;
+  /** Logo da empresa já resolvida no servidor — evita o piscar das iniciais. */
+  logoUrl?: string;
   /** Id do login atual — o cartão "Assistente ativo" reaparece quando ele muda. */
   sessionId?: string | null;
 }) {
@@ -61,7 +64,10 @@ export function Sidebar({
   const leadsBadge = leadsData?.summary.total || 0;
   // Marca do shell = nome da empresa (multi-tenant); fallback: marca da plataforma.
   const brandName =
-    clinicName?.trim() || settings?.clinicName?.trim() || brand.name;
+    settings?.clinicName?.trim() || clinicName?.trim() || brand.name;
+  // Servidor dá o primeiro paint; depois que o cliente carrega as
+  // configurações, elas mandam — inclusive quando a logo foi removida ("").
+  const brandLogo = settings ? settings.logoUrl : logoUrl;
 
   async function logout() {
     const supabase = createClient();
@@ -83,7 +89,7 @@ export function Sidebar({
           aria-label={`${brandName} — ir para o Dashboard`}
           className="inline-flex max-w-full rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
-          <Logo name={brandName} mark={26} font={18} />
+          <Logo name={brandName} logoUrl={brandLogo} mark={26} font={18} />
         </Link>
       </div>
 
