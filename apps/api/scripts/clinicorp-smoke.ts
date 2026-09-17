@@ -81,10 +81,10 @@ async function main(): Promise<void> {
         "Faltam credenciais. Defina no ambiente (ou no apps/api/.env):",
         "  CLINICORP_USERNAME=usuário da API (não é o login do painel)",
         "  CLINICORP_TOKEN=token da API",
-        "  CLINICORP_SUBSCRIBER_ID=contexto da conta (opcional em algumas rotas)",
+        "  CLINICORP_SUBSCRIBER_ID=id do assinante (o smoke descobre se faltar)",
         "",
-        "Quem pede essas três informações ao suporte do Clinicorp é o assinante",
-        "— o dono da clínica. Ver docs/operacao.md.",
+        "Usuário e token ficam no painel do Clinicorp: Gerenciar Assinatura →",
+        "Acesso Externo e Integrações → Integrações (Usuário API / Token API).",
       ].join("\n"),
     );
     process.exit(1);
@@ -104,12 +104,43 @@ async function main(): Promise<void> {
   const results: StepResult[] = [];
   let unitId: string | null = process.env.CLINICORP_UNIT_ID ?? null;
 
+  // Primeiro passo de propósito: é a única rota que responde sem
+  // `subscriber_id`, então ela diz qual é o valor certo antes de qualquer outra
+  // chamada poder falhar por causa dele.
+  const subscribers = await step(
+    "Descobrir o assinante (subscriber_id)",
+    async () => {
+      const found = await provider.listSubscribers();
+      const configured = process.env.CLINICORP_SUBSCRIBER_ID ?? null;
+      if (!found.length) {
+        // Conta única: a rota responde vazio e o id aceito é o usuário da API.
+        return `conta única (a rota respondeu vazio) — usando subscriber_id=${client.subscriberId()}`;
+      }
+      const lines = found.map(
+        (s) =>
+          `subscriber_id=${s.id}${s.namespace ? ` (namespace ${s.namespace})` : ""}`,
+      );
+      if (!configured) {
+        lines.push(
+          "CLINICORP_SUBSCRIBER_ID não definido — use o valor acima nas próximas rotas.",
+        );
+      } else if (!found.some((s) => s.id === configured)) {
+        lines.push(
+          `CLINICORP_SUBSCRIBER_ID=${configured} não está entre os encontrados.`,
+        );
+      }
+      return lines.join("\n     ");
+    },
+  );
+  results.push(subscribers);
+  print(subscribers);
+
   const units = await step("Listar unidades", async () => {
     const found = await provider.listUnits();
     unitId ??= found[0]?.id ?? null;
     return found.length
       ? found.map((u) => `${u.id}=${u.name}`).join(" · ")
-      : "nenhuma unidade retornada (verifique o Subscriber ID)";
+      : "nenhuma unidade retornada (confira o subscriber_id descoberto acima)";
   });
   results.push(units);
   print(units);
@@ -147,7 +178,15 @@ async function main(): Promise<void> {
   const to = new Date(from.getTime() + 7 * 24 * 3_600_000);
 
   const availability = await step("Consultar horários livres (7 dias)", async () => {
-    const slots = await provider.listAvailableSlots({ from, to, unitId, limit: 5 });
+    // A rota exige profissional; sem CLINICORP_PROFESSIONAL_ID o adapter
+    // consulta um a um e une os horários.
+    const slots = await provider.listAvailableSlots({
+      from,
+      to,
+      unitId,
+      professionalId: process.env.CLINICORP_PROFESSIONAL_ID ?? null,
+      limit: 5,
+    });
     return slots.length
       ? slots.map((s) => s.startsAt).join(" · ")
       : "nenhum horário livre (a rota respondeu, mas a agenda está cheia)";
@@ -223,8 +262,29 @@ async function writeCycle(
 ): Promise<string | null> {
   console.log("\n--- Ciclo de escrita (CLINICORP_WRITE_TEST=1) ---\n");
 
-  const startsAt = new Date(Date.now() + TEST_DAYS_AHEAD * 24 * 3_600_000);
-  startsAt.setUTCHours(6, 0, 0, 0); // ~03:00 em São Paulo — fora de qualquer expediente
+  // O Clinicorp recusa horário fora do expediente com "horário ocupado"
+  // (visto ao vivo), então o teste pede à própria agenda um horário livre do
+  // dia distante; só sem resposta cai na madrugada.
+  const testDay = new Date(Date.now() + TEST_DAYS_AHEAD * 24 * 3_600_000);
+  let startsAt = new Date(testDay);
+  startsAt.setUTCHours(6, 0, 0, 0); // ~03:00 em São Paulo
+  const professionalId = process.env.CLINICORP_PROFESSIONAL_ID ?? null;
+  const slot = await step("Escolher um horário livre no dia de teste", async () => {
+    const dayStart = new Date(testDay.getTime() - 24 * 3_600_000);
+    const dayEnd = new Date(testDay.getTime() + 24 * 3_600_000);
+    const free = await provider.listAvailableSlots({
+      from: dayStart,
+      to: dayEnd,
+      unitId,
+      professionalId,
+      limit: 1,
+    });
+    if (!free.length) return `nenhum horário livre; usando ${startsAt.toISOString()}`;
+    startsAt = new Date(free[0].startsAt);
+    return `${free[0].startsAt} (profissional ${free[0].professionalId ?? "?"})`;
+  });
+  results.push(slot);
+  print(slot);
   const endsAt = new Date(startsAt.getTime() + 30 * 60_000);
   let externalId: string | null = null;
 
@@ -249,7 +309,7 @@ async function writeCycle(
       startsAt,
       endsAt,
       unitId,
-      professionalId: process.env.CLINICORP_PROFESSIONAL_ID ?? "",
+      professionalId: professionalId ?? "",
       procedureName: null,
       notes: "Criado pelo clinicorp:smoke do DentalTrack. Pode cancelar.",
     });

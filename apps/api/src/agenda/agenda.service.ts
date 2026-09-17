@@ -257,7 +257,13 @@ export class AgendaService {
         }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
-        if (err instanceof SlotConflictError) {
+        // O provedor também pode recusar por conflito (o Clinicorp responde
+        // "horário ocupado" na própria criação): a conduta é a mesma da
+        // re-checagem — a linha não pode continuar `agendado`.
+        if (
+          err instanceof SlotConflictError ||
+          agendaErrorKind(err) === 'conflito'
+        ) {
           // O horário deixou de existir: a linha local não pode continuar
           // `agendado` (lembrete sairia para uma consulta que não há). Vira
           // `pedido`, com o horário desejado guardado, e o agente oferece outro.

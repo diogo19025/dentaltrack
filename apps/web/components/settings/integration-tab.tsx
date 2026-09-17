@@ -338,9 +338,11 @@ function ProviderPanel({
           {provider === "clinicorp" && mode === "live" && (
             <div className="grid gap-5 md:grid-cols-2">
               <Note>
-                A credencial da API <strong>não é o login do painel</strong>. O
-                assinante pede ao suporte do Clinicorp: usuário e token de acesso
-                à API REST e o Subscriber ID da conta.
+                A credencial da API <strong>não é o login do painel</strong>. Ela
+                fica em Gerenciar Assinatura → Acesso Externo e Integrações →
+                Integrações (Usuário API e Token API). O Subscriber ID é o id do
+                assinante — numa conta única é o próprio usuário da API, e pode
+                ficar em branco.
               </Note>
 
               <div className="flex flex-col gap-1.5">
@@ -368,7 +370,7 @@ function ProviderPanel({
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="int-sub">Subscriber ID</Label>
+                <Label htmlFor="int-sub">Subscriber ID (opcional)</Label>
                 <Input
                   id="int-sub"
                   value={subscriberId}

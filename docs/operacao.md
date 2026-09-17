@@ -2,7 +2,7 @@
 
 > Tudo o que é preciso para colocar e manter o produto no ar: topologia, variáveis, deploy, WhatsApp,
 > agenda (Google e Clinicorp), automações, arquivos, LGPD e o diagnóstico **por sintoma**.
-> Atualizado em 2026-09-17.
+> Atualizado em 2026-09-17 (Clinicorp validado ao vivo).
 
 ---
 
@@ -156,28 +156,38 @@ GOOGLE_CALENDAR_SA_EMAIL=... GOOGLE_CALENDAR_SA_KEY=... GOOGLE_CALENDAR_ID=... p
 
 Lê a agenda → horários livres → eventos da semana → **cria um evento de teste, confirma na leitura e apaga** (400 dias no futuro, ~3h da manhã, título `TESTE INTEGRACAO DENTALTRACK`; o id sai impresso se o apagar falhar). `--somente-leitura` pula a escrita.
 
-### Clinicorp (adapter pronto, não validado ao vivo)
+### Clinicorp (validado ao vivo em 2026-09-17, leitura e escrita)
 
-A credencial de API **não é o login do painel** e quem a pede ao suporte é o **dono da empresa**. Ela nunca chegou; por isso o Google é o caminho de validação. Guarde esta seção para o dia D.
+O adapter segue o **contrato oficial** (<https://api.clinicorp.com/api-docs/>); até 2026-09-17 seguia um inventário não-oficial e vários nomes de parâmetro eram palpite. Leitura e escrita passaram no smoke contra a conta real.
 
-**Pedido ao suporte (o dono encaminha):**
+**Credencial — o dono tira do próprio painel, sem suporte:** `Gerenciar Assinatura → Acesso Externo e Integrações → Integrações`, campos **Usuário API** e **Token API**. É o par do HTTP Basic (usuário = "ID de acesso ao Sistema", senha = token). **Não é o login do painel.**
 
-> Somos assinantes Clinicorp (empresa ____). Vamos integrar um assistente de atendimento por WhatsApp que consulta a agenda e cria agendamentos. Preciso de: (1) usuário e token de acesso à **API REST** (`https://api.clinicorp.com/rest/v1`, HTTP Basic); (2) o **Subscriber ID** da conta; (3) confirmação de que `/business/list_available_times`, `/appointment/create_appointment_by_api`, `/appointment/list`, `/appointment/status_list`, `/appointment/cancel_appointment` e `/patient/get` estão liberados no plano; (4) se existe sandbox; (5) se há rate limit; (6) se existe **webhook** de mudança de status de agendamento.
+**`subscriber_id`** é o id do assinante (a conta), não a unidade, o paciente nem o link de agendamento. As rotas recusam com 400 sem ele ("É necessário informar o id do assinante"). Numa **conta única** `GET /group/list_subscribers` responde `[]` e o valor aceito é o **próprio Usuário API** — por isso o campo é opcional na tela e no smoke, e vazio o produto envia o usuário. Numa **conta de grupo** a mesma rota lista as unidades com o `SubscriberBussinessUID` de cada uma; é esse o valor a informar.
 
-A pergunta 6 vale ouro: hoje a agenda é lida por varredura a cada 10 min; com webhook a detecção de falta e atraso vira instantânea e só o `AgendaSyncService` muda.
+O que ainda vale perguntar ao suporte (não bloqueia): sandbox, rate limit e **webhook** de mudança de status — com webhook a detecção de falta e atraso vira instantânea e só o `AgendaSyncService` muda.
 
-**Dia D:**
+**Smoke:**
 
 ```bash
-CLINICORP_USERNAME=... CLINICORP_TOKEN=... CLINICORP_SUBSCRIBER_ID=... pnpm --filter @dentaltrack/api clinicorp:smoke
-CLINICORP_WRITE_TEST=1 pnpm --filter @dentaltrack/api clinicorp:smoke -- --write   # opt-in duplo: cria paciente e agendamento de teste e cancela; o id sai impresso sempre
+CLINICORP_USERNAME=... CLINICORP_TOKEN=... pnpm --filter @dentaltrack/api clinicorp:smoke
+# opcionais: CLINICORP_SUBSCRIBER_ID (o smoke descobre) · CLINICORP_PROFESSIONAL_ID (sem ele, horários são consultados por profissional e unidos)
+CLINICORP_WRITE_TEST=1 pnpm --filter @dentaltrack/api clinicorp:smoke -- --write   # opt-in duplo: cria paciente e agendamento de teste num horário livre a 400 dias e cancela; o id sai impresso sempre
 ```
 
-Cada falha sai com a categoria entre colchetes. `[config]`/404 → `CLINICORP_ROUTES` em `clinicorp.client.ts`; `[resposta_invalida]`/campo com outro nome → candidatos em `clinicorp.provider.ts` (a leitura tenta várias grafias e desembrulha `{data}`, `{Result}`, `{records}` ou array); `[auth]` → credencial ou rota não liberada; `[indisponivel]` → do fornecedor.
+Cada falha sai com a categoria entre colchetes. `[config]`/404 → `CLINICORP_ROUTES` em `clinicorp.client.ts`; `[resposta_invalida]`/campo com outro nome → candidatos em `clinicorp.provider.ts`; `[auth]` → credencial ou rota não liberada; `[indisponivel]` → do fornecedor. O paciente de teste `TESTE INTEGRACAO DENTALTRACK` fica no Clinicorp (não há rota de exclusão) e é reaproveitado nas rodadas seguintes.
 
-Depois: `INTEGRATION_ENCRYPTION_KEY` no ambiente → modo Real → credencial → Verificar conexão → unidade e profissional padrão → **tradução dos status**. Esse passo ninguém pula: é o status que decide se uma automação dispara, e um status não reconhecido devolve "não mexe". Três traduções são obrigatórias e a tela avisa: **compareceu** (retorno de manutenção), **faltou** (remarcação), **cancelado** (senão lembrete sai para consulta desmarcada). "Não compareceu" contém "compareceu"; a heurística trata, confira na tela.
+Depois: `INTEGRATION_ENCRYPTION_KEY` no ambiente → modo Real → usuário e token (Subscriber ID em branco) → Verificar conexão → unidade e **profissional padrão** (sem ele cada consulta de horários faz um request por profissional: 10 profissionais levaram 16 s) → **tradução dos status**. Esse passo ninguém pula: é o status que decide se uma automação dispara, e um status não reconhecido devolve "não mexe". Três traduções são obrigatórias e a tela avisa: **compareceu** (retorno de manutenção), **faltou** (remarcação), **cancelado** (senão lembrete sai para consulta desmarcada). "Não compareceu" contém "compareceu"; a heurística trata, confira na tela.
 
-**Particularidades já tratadas no código:** HTTP 200 sem criar agendamento (`PatientNameAlreadyExists`) → sem id de volta o adapter lança; ids numéricos convertidos só nos campos conhecidos; datas sem offset são hora de parede da empresa; grafia `get_avaliable_days` é do fornecedor, corrigir dá 404; sem rota de reagendamento (remarcar = cancelar + recriar, e a varredura seguinte pode importar o antigo como linha `cancelado` separada); 404 ao cancelar conta como cancelado.
+**Particularidades da API, vistas ao vivo e tratadas no código:**
+
+- `list_available_times` exige `professionalId` e responde aninhado por dia (`[{date, slots:[{fromTime,toTime}]}]`).
+- `/appointment/list` manda `date` em UTC (meia-noite local) e a hora em `fromTime`/`toTime` no fuso da clínica; lido como instante, tudo cairia às 00:00. `AtomicDate` (AAAAMMDD) tem precedência quando vem.
+- **Desmarcado é bandeira, não status:** `cancel_appointment` marca `Canceled: X` **e** `Deleted: X`, e o agendamento só volta na listagem com `includeCanceled=X&includeDeleted=X`. A varredura pede os dois e qualquer bandeira vira "Desmarcado" **sem id** — se o `StatusId` antigo fosse traduzido, o mapeamento do operador ganharia e a desmarcação se perderia.
+- Horário fora do expediente ou ocupado → `400 "O horário solicitado encontra-se ocupado"` (não 409): categoria `conflito`, o agente oferece outro horário e a linha vira `pedido`.
+- Nome de paciente repetido → `400` pedindo `IgnoreSameName: "X"`: com telefone cria mesmo assim (telefone diferente é outra pessoa); sem telefone reaproveita o homônimo.
+- `create_appointment_by_api` responde uma lista `[{Status:"CREATED", id}]`; sem id ou com outro `Status` o adapter lança (é o que impede o bot de dizer "está marcado" para um horário que não existe). `patient/create` não devolve id documentado; o adapter relocaliza por telefone/nome.
+- Ids têm 16 dígitos; `normalizeEntityIds` converte para inteiro até o inteiro seguro do JS. `subscriber_id` fica texto.
+- Sem rota de reagendamento (remarcar = cancelar + recriar; a varredura seguinte pode importar o antigo como linha `cancelado` separada); 404 ao cancelar conta como cancelado; grafia `get_avaliable_days` é do fornecedor.
 
 ### Automações
 

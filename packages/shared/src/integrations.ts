@@ -102,8 +102,10 @@ export const clinicorpCredentialsSchema = z.object({
   /** Token da API (HTTP Basic). */
   token: z.string().trim().min(1, "Informe o token da API."),
   /**
-   * Contexto de conta exigido pela maior parte das rotas. Não é o id da
-   * unidade, do paciente nem o link público de agendamento.
+   * Id do assinante, exigido pela maior parte das rotas. Não é o id da
+   * unidade, do paciente nem o link público de agendamento. Vazio = usa o
+   * próprio usuário da API (é o valor aceito numa conta única; contas de grupo
+   * informam o id da unidade).
    */
   subscriberId: z.string().trim().min(1).nullable(),
   /** Sobrescreve a base da API (homologação). Vazio = produção. */
