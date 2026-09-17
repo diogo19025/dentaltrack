@@ -31,7 +31,7 @@ interface ClinicConnectionRecord {
 
 /**
  * Conexão do número de WhatsApp da empresa (F10) — o pareamento por QR que
- * antes era um procedimento de terminal (docs/WHATSAPP.md §3–5).
+ * antes era um procedimento de terminal (docs/operacao.md § WhatsApp).
  *
  * Três coisas que o procedimento manual fazia e agora acontecem sozinhas:
  * criar a instância **já com o webhook apontado para cá**, pedir o QR e gravar

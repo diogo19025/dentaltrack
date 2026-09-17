@@ -5,7 +5,7 @@ import { z } from "zod";
  *
  * Até aqui, ligar uma empresa ao WhatsApp era um procedimento de terminal:
  * criar a instância na Evolution por `curl`, ler o QR na resposta e gravar o
- * nome da instância no banco à mão (ver docs/WHATSAPP.md). Funcionava para uma
+ * nome da instância no banco à mão (ver docs/operacao.md). Funcionava para uma
  * clínica só — e travava o produto em "um número, uma clínica".
  *
  * Aqui isso vira um passo do primeiro acesso: o dono responde se já tem um

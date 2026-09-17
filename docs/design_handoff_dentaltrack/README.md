@@ -24,7 +24,7 @@ completa** e o único texto canônico do handoff.
 > — logo de dente, wordmark "DentalTrack" — e o produto virou **whitelabel**: a marca visível vem da
 > empresa (`settings.clinicName`) e a da plataforma de `apps/web/lib/brand.ts`. Tokens, layout,
 > espaçamento e motion continuam valendo 1:1; **identidade visual de marca, não**. Ver
-> [`../WHITELABEL.md`](../WHITELABEL.md).
+> [`../engenharia.md` § Whitelabel](../engenharia.md#-whitelabel).
 
 ## Stacks de preferência (MANTER — não substituir)
 | Camada | Stack | Como mapear o design |
