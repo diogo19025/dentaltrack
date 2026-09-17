@@ -53,7 +53,7 @@ export class HealthController {
  * investigação: `APP_VERSION=${{ RAILWAY_GIT_COMMIT_SHA }}` pode chegar ao
  * container vazio (a referência existe, o valor não), e com `??` o `/health`
  * respondia `"version": ""` — que parece configurado, some num log e não
- * responde a pergunta que a variável existe para responder (ARMADILHAS §7).
+ * responde a pergunta que a variável existe para responder (docs/engenharia.md, regra 7).
  * `null` é honesto: ninguém confunde com um SHA.
  */
 function appVersion(): string | null {

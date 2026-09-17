@@ -92,7 +92,7 @@ export class MediaStorageService {
 
     if (!this.isConfigured()) {
       throw new ServiceUnavailableException(
-        'O envio de arquivos não está configurado neste servidor. Defina SUPABASE_SERVICE_ROLE_KEY na API (ver docs/DEPLOY.md) — ou informe a URL da imagem no campo ao lado.',
+        'O envio de arquivos não está configurado neste servidor. Defina SUPABASE_SERVICE_ROLE_KEY na API (ver docs/operacao.md) — ou informe a URL da imagem no campo ao lado.',
       );
     }
 

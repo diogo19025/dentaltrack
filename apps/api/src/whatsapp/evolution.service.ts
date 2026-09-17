@@ -145,8 +145,8 @@ export class EvolutionService {
 
   // ─── Gestão de instâncias (F10 · pareamento por QR na tela) ───────────────
   //
-  // Automatiza o que antes era um procedimento de terminal (docs/WHATSAPP.md
-  // §3–4): criar a instância já apontando o webhook para cá e pedir o QR. É o
+  // Automatiza o que antes era um procedimento de terminal (docs/operacao.md
+  // § WhatsApp): criar a instância já apontando o webhook para cá e pedir o QR. É o
   // que tira o produto de "um número, uma clínica".
 
   /**

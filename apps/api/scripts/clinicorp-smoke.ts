@@ -84,7 +84,7 @@ async function main(): Promise<void> {
         "  CLINICORP_SUBSCRIBER_ID=contexto da conta (opcional em algumas rotas)",
         "",
         "Quem pede essas três informações ao suporte do Clinicorp é o assinante",
-        "— o dono da clínica. Ver docs/CLINICORP.md.",
+        "— o dono da clínica. Ver docs/operacao.md.",
       ].join("\n"),
     );
     process.exit(1);

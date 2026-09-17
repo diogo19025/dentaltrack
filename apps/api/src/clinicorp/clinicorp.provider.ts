@@ -317,7 +317,7 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
    * inteiro. Se o cancelamento passar e a criação falhar, o horário antigo já
    * foi liberado e o novo não existe: o erro sobe com essa informação para o
    * chamador não confirmar nada ao cliente. Limite documentado em
-   * docs/CLINICORP.md.
+   * docs/operacao.md.
    */
   async rescheduleAppointment(
     input: RescheduleAppointmentInput,

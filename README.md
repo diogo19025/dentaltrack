@@ -92,7 +92,7 @@ pnpm --filter @dentaltrack/api db:seed:demo   # opcional: dados de demonstraçã
 pnpm dev
 ```
 
-Crie uma conta em `/login` — o onboarding cria a clínica no primeiro acesso. Sem chave de IA, `LLM_PROVIDER=mock` responde de forma determinística. Para o WhatsApp em dev (Evolution em Docker + pareamento por QR), siga [`docs/WHATSAPP.md`](docs/WHATSAPP.md).
+Crie uma conta em `/login` — o onboarding cria a clínica no primeiro acesso. Sem chave de IA, `LLM_PROVIDER=mock` responde de forma determinística. Para o WhatsApp em dev (Evolution em Docker + pareamento por QR), siga [`docs/operacao.md` § WhatsApp](docs/operacao.md#-whatsapp).
 
 ### Qualidade
 
@@ -103,14 +103,10 @@ pnpm --filter @dentaltrack/web e2e   # Playwright, roda offline em modo mock
 
 ### Documentação
 
-- [`docs/produto.md`](docs/produto.md) — **documento único**: produto, arquitetura, modelo de dados, métricas, design e histórico
-- [`docs/maturity-plan.md`](docs/maturity-plan.md) — o que está sendo feito agora (confiabilidade e operação)
-- [`docs/maturity-audit.md`](docs/maturity-audit.md) — auditoria que originou esse plano
-- [`docs/DEPLOY.md`](docs/DEPLOY.md) — runbook de deploy (Vercel + Railway + Supabase)
-- [`docs/WHATSAPP.md`](docs/WHATSAPP.md) — runbook do canal WhatsApp
-- [`docs/CLINICORP.md`](docs/CLINICORP.md) · [`docs/GOOGLE_AGENDA.md`](docs/GOOGLE_AGENDA.md) — runbooks de agenda
-- [`docs/WHITELABEL.md`](docs/WHITELABEL.md) — modelo de marca e regras para código novo
-- [`docs/ARMADILHAS.md`](docs/ARMADILHAS.md) — o que já quebrou, por que passou pelos testes e a regra que ficou
+- [`docs/produto.md`](docs/produto.md) — produto, arquitetura, modelo de dados, métricas, design e decisões de desenho
+- [`docs/engenharia.md`](docs/engenharia.md) — rodar local, qualidade, whitelabel, regras aprendidas com defeitos de produção e checklist de PR
+- [`docs/operacao.md`](docs/operacao.md) — deploy, variáveis, WhatsApp, agenda (Google e Clinicorp), LGPD e diagnóstico por sintoma
+- [`docs/roadmap.md`](docs/roadmap.md) — placar da etapa de maturidade, o que falta, riscos e fora de escopo
 - [`docs/design_handoff_dentaltrack/`](docs/design_handoff_dentaltrack/) — design hi-fi (fonte de verdade visual)
 - [`CLAUDE.md`](CLAUDE.md) — guia canônico para agentes e devs
 
