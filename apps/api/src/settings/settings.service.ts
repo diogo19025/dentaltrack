@@ -2,6 +2,9 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import {
   type ClinicSettingsDto,
   DEFAULT_AVAILABILITY,
+  DEFAULT_PROFESSIONAL_POLICY,
+  PROFESSIONAL_POLICIES,
+  type ProfessionalPolicy,
   MEDIA_TYPES,
   type MediaType,
   TONES,
@@ -96,6 +99,11 @@ export class SettingsService {
       offerEndsOn: settings?.offerEndsOn ?? '',
       availability: this.normalizeAvailability(settings?.availability),
       whatsappInstance: settings?.whatsappInstance ?? '',
+      professionalPolicy: PROFESSIONAL_POLICIES.includes(
+        settings?.professionalPolicy as ProfessionalPolicy,
+      )
+        ? (settings?.professionalPolicy as ProfessionalPolicy)
+        : DEFAULT_PROFESSIONAL_POLICY,
     };
   }
 

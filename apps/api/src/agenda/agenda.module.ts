@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ClinicorpModule } from '../clinicorp/clinicorp.module';
+import { ProfessionalsModule } from '../professionals/professionals.module';
 import { AgendaController } from './agenda.controller';
 import { AgendaService } from './agenda.service';
 import { AgendaSyncService } from './agenda-sync.service';
@@ -11,7 +12,7 @@ import { AgendaSyncService } from './agenda-sync.service';
  * motor do agente (tools) e o cron dependem deles.
  */
 @Module({
-  imports: [ClinicorpModule],
+  imports: [ClinicorpModule, ProfessionalsModule],
   controllers: [AgendaController],
   providers: [AgendaService, AgendaSyncService],
   exports: [AgendaService, AgendaSyncService],

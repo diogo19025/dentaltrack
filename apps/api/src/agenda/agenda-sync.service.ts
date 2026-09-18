@@ -12,6 +12,7 @@ import { suggestStatus } from '../clinicorp/status-heuristics';
 import type { Env } from '../config/env.validation';
 import { OptOutService } from '../automations/opt-out.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProfessionalsService } from '../professionals/professionals.service';
 
 const DEFAULT_PAST_DAYS = 3;
 const DEFAULT_FUTURE_DAYS = 21;
@@ -43,6 +44,7 @@ export class AgendaSyncService {
     private readonly prisma: PrismaService,
     private readonly integrations: IntegrationService,
     private readonly config: ConfigService<Env, true>,
+    private readonly professionals: ProfessionalsService,
   ) {}
 
   /** Sincroniza todas as empresas com integração ligada. */
@@ -85,13 +87,27 @@ export class AgendaSyncService {
     const from = new Date(now.getTime() - this.pastDays() * 24 * 3_600_000);
     const to = new Date(now.getTime() + this.futureDays() * 24 * 3_600_000);
     const appointments = await provider.listAppointments({ from, to });
+
+    // Revalida o cadastro espelhado (F20) antes de gravar os agendamentos: é
+    // aqui que quem foi desligado no sistema de gestão vira `active = false`,
+    // e é daqui que sai a chave que amarra o agendamento ao profissional.
+    // Falhar nisto não pode derrubar a sincronização da agenda, que é o que
+    // alimenta os lembretes.
+    const byExternalId = await this.mirrorProfessionals(clinicId, provider);
+
     const mappings = await this.integrations.statusMappingsOf(clinicId);
     const source =
       (await this.integrations.activeProviderName(clinicId)) ?? 'clinicorp';
 
     for (const external of appointments) {
       try {
-        const outcome = await this.upsert(clinicId, external, mappings, source);
+        const outcome = await this.upsert(
+          clinicId,
+          external,
+          mappings,
+          source,
+          byExternalId,
+        );
         summary[outcome] += 1;
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -114,6 +130,7 @@ export class AgendaSyncService {
     external: ExternalAppointment,
     mappings: StatusMapping[],
     leadSource: string,
+    professionalsByExternalId: ReadonlyMap<string, string>,
   ): Promise<'criados' | 'atualizados' | 'ignorados'> {
     // A leitura só enriquece (status atual como fallback, contato já vinculado).
     // A escrita é um `upsert` único sobre `(clinicId, externalId)` — o Prisma o
@@ -148,6 +165,13 @@ export class AgendaSyncService {
       source: 'integracao' as const,
       professionalExternalId: external.professionalExternalId,
       professionalName: external.professionalName,
+      // A chave só é preenchida quando o profissional existe no cadastro; o
+      // texto acima continua sendo a verdade quando não existe (profissional
+      // apagado da conta do cliente, ou agenda que não informa quem atende).
+      professionalId: external.professionalExternalId
+        ? (professionalsByExternalId.get(external.professionalExternalId) ??
+          null)
+        : null,
       unitExternalId: external.unitExternalId,
       notes: external.procedureName,
       lastSyncedAt: now,
@@ -166,6 +190,38 @@ export class AgendaSyncService {
       update: data,
     });
     return existing ? 'atualizados' : 'criados';
+  }
+
+  /**
+   * Espelha os profissionais da conta e devolve `externalId -> id local`.
+   *
+   * Best-effort de propósito: uma falha aqui deixa o mapa vazio e os
+   * agendamentos entram só com o texto, exatamente como antes da F20. Derrubar
+   * a sincronização por causa do cadastro calaria os lembretes.
+   */
+  private async mirrorProfessionals(
+    clinicId: string,
+    provider: { listProfessionals(unitId?: string | null): Promise<unknown[]> },
+  ): Promise<ReadonlyMap<string, string>> {
+    try {
+      const external = (await provider.listProfessionals()) as Parameters<
+        typeof this.professionals.syncFromProvider
+      >[1];
+      await this.professionals.syncFromProvider(clinicId, external);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Cadastro de profissionais da empresa ${clinicId} não pôde ser revalidado: ${detail}`,
+      );
+    }
+
+    const rows = await this.prisma.professional.findMany({
+      where: { clinicId, externalId: { not: null } },
+      select: { id: true, externalId: true },
+    });
+    return new Map(
+      rows.flatMap((row) => (row.externalId ? [[row.externalId, row.id]] : [])),
+    );
   }
 
   /**

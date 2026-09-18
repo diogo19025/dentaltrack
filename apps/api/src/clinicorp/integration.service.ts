@@ -25,6 +25,7 @@ import type { Env } from '../config/env.validation';
 import { GoogleAgendaProvider } from '../google-agenda/google-agenda.provider';
 import { GoogleCalendarClient } from '../google-agenda/google-calendar.client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProfessionalsService } from '../professionals/professionals.service';
 import { agendaErrorKind, type AgendaProvider } from './agenda-provider';
 import { ClinicorpClient } from './clinicorp.client';
 import { ClinicorpAgendaProvider } from './clinicorp.provider';
@@ -79,6 +80,7 @@ export class IntegrationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<Env, true>,
+    private readonly professionals: ProfessionalsService,
   ) {}
 
   /**
@@ -361,7 +363,18 @@ export class IntegrationService {
         professionals = await provider.listProfessionals(
           status.unitId ?? units[0]?.id ?? null,
         );
-        return `${professionals.length} profissional(is).`;
+        // A verificação continua só-leitura **do lado do fornecedor**; o que
+        // ela passou a fazer é gravar o espelho aqui. Sem isto a equipe só
+        // existia no resultado desta chamada e sumia da tela a cada recarga.
+        const mirror = await this.professionals.syncFromProvider(
+          clinicId,
+          professionals,
+        );
+        const changed =
+          mirror.criados + mirror.atualizados + mirror.desativados > 0
+            ? ` (${mirror.criados} novo(s), ${mirror.atualizados} atualizado(s), ${mirror.desativados} desativado(s))`
+            : '';
+        return `${professionals.length} profissional(is)${changed}.`;
       })) &&
       (await run('status', 'Listar status de agendamento', async () => {
         statuses = await provider.listStatuses();
