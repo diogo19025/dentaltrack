@@ -477,6 +477,26 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       expect(result.steps[0].detail).toContain('GOOGLE_CALENDAR_SA_EMAIL');
     });
 
+    it('modo simulado do Google não espelha o profissional sintético', async () => {
+      prismaMock.clinicIntegration.findUnique.mockResolvedValue({
+        provider: 'google',
+        mode: 'mock',
+        credentials: null,
+        unitId: null,
+        professionalId: null,
+        statusMappings: [],
+        lastCheckedAt: null,
+        lastSyncedAt: null,
+        lastError: null,
+      });
+      prismaMock.clinicIntegration.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await integrations.check(CLINIC, 'google');
+
+      expect(result.steps.find((s) => s.key === 'profissionais')?.ok).toBe(true);
+      expect(professionalsMock.syncFromProvider).not.toHaveBeenCalled();
+    });
+
     it('modo simulado percorre a cadeia inteira e descobre unidades e status', async () => {
       prismaMock.clinicIntegration.findUnique.mockResolvedValue({
         provider: 'clinicorp',

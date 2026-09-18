@@ -11,6 +11,7 @@ import {
   type ExternalProfessional,
   type ExternalStatus,
   type ExternalUnit,
+  mirrorsProfessionals,
   type GoogleAgendaConfig,
   type IntegrationProvider,
   type IntegrationStatus,
@@ -366,11 +367,13 @@ export class IntegrationService {
         // A verificação continua só-leitura **do lado do fornecedor**; o que
         // ela passou a fazer é gravar o espelho aqui. Sem isto a equipe só
         // existia no resultado desta chamada e sumia da tela a cada recarga.
-        const mirror = await this.professionals.syncFromProvider(
-          clinicId,
-          professionals,
-        );
+        // O Google não tem profissionais — o único que devolve é a própria
+        // agenda, sintético — e espelhá-lo desativaria a equipe de verdade.
+        const mirror = mirrorsProfessionals(providerName)
+          ? await this.professionals.syncFromProvider(clinicId, professionals)
+          : null;
         const changed =
+          mirror &&
           mirror.criados + mirror.atualizados + mirror.desativados > 0
             ? ` (${mirror.criados} novo(s), ${mirror.atualizados} atualizado(s), ${mirror.desativados} desativado(s))`
             : '';

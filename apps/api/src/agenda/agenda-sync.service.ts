@@ -4,6 +4,7 @@ import {
   AGENDA_ERROR_LABELS,
   type AppointmentStatus,
   type StatusMapping,
+  mirrorsProfessionals,
 } from '@dentaltrack/shared';
 import { agendaErrorKind } from '../clinicorp/agenda-provider';
 import type { ExternalAppointment } from '../clinicorp/agenda-provider';
@@ -93,11 +94,13 @@ export class AgendaSyncService {
     // e é daqui que sai a chave que amarra o agendamento ao profissional.
     // Falhar nisto não pode derrubar a sincronização da agenda, que é o que
     // alimenta os lembretes.
-    const byExternalId = await this.mirrorProfessionals(clinicId, provider);
+    const providerName = await this.integrations.activeProviderName(clinicId);
+    const byExternalId = mirrorsProfessionals(providerName)
+      ? await this.mirrorProfessionals(clinicId, provider)
+      : new Map<string, string>();
 
     const mappings = await this.integrations.statusMappingsOf(clinicId);
-    const source =
-      (await this.integrations.activeProviderName(clinicId)) ?? 'clinicorp';
+    const source = providerName ?? 'clinicorp';
 
     for (const external of appointments) {
       try {
