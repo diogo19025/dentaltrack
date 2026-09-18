@@ -6,6 +6,8 @@ import {
   type ClinicorpCredentials,
   type ConnectionCheck,
   type ConnectionStep,
+  type ExternalCategory,
+  type ExternalProcedure,
   type ExternalProfessional,
   type ExternalStatus,
   type ExternalUnit,
@@ -42,6 +44,7 @@ interface IntegrationRow {
   credentials: string | null;
   unitId: string | null;
   professionalId: string | null;
+  categoryExternalId?: string | null;
   lastCheckedAt?: Date | null;
   lastError?: string | null;
 }
@@ -150,6 +153,7 @@ export class IntegrationService {
       serviceAccountEmail: this.serviceAccountEmail(),
       unitId: row?.unitId ?? null,
       professionalId: row?.professionalId ?? null,
+      categoryExternalId: row?.categoryExternalId ?? null,
       statusMappings: parseStatusMappings(row?.statusMappings),
       lastCheckedAt: row?.lastCheckedAt?.toISOString() ?? null,
       lastSyncedAt: row?.lastSyncedAt?.toISOString() ?? null,
@@ -211,6 +215,9 @@ export class IntegrationService {
       ...(input.professionalId !== undefined
         ? { professionalId: input.professionalId }
         : {}),
+      ...(input.categoryExternalId !== undefined
+        ? { categoryExternalId: input.categoryExternalId }
+        : {}),
       ...(input.statusMappings !== undefined
         ? { statusMappings: input.statusMappings }
         : {}),
@@ -255,6 +262,8 @@ export class IntegrationService {
     let units: ExternalUnit[] = [];
     let professionals: ExternalProfessional[] = [];
     let statuses: ExternalStatus[] = [];
+    let categories: ExternalCategory[] = [];
+    let procedures: ExternalProcedure[] = [];
 
     const row = await this.prisma.clinicIntegration.findUnique({
       where: { clinicId_provider: { clinicId, provider: providerName } },
@@ -290,6 +299,8 @@ export class IntegrationService {
         units,
         professionals,
         statuses,
+        categories,
+        procedures,
         suggestedMappings: status.statusMappings,
       };
     }
@@ -356,6 +367,16 @@ export class IntegrationService {
         statuses = await provider.listStatuses();
         return `${statuses.length} status: ${statuses.map((s) => s.name).join(', ') || '—'}`;
       })) &&
+      (await run('catalogo', 'Ler categorias e procedimentos', async () => {
+        // Juntos num passo só: são duas leituras auxiliares, e falhar em
+        // qualquer uma não impede a agenda de funcionar — só deixa a tela sem
+        // o que oferecer para importar.
+        [categories, procedures] = await Promise.all([
+          provider.listCategories(),
+          provider.listProcedures(),
+        ]);
+        return `${categories.length} categoria(s) e ${procedures.length} procedimento(s) na conta.`;
+      })) &&
       (await run('disponibilidade', 'Consultar horários livres', async () => {
         const from = new Date();
         const to = new Date(from.getTime() + 7 * 24 * 3_600_000);
@@ -400,6 +421,8 @@ export class IntegrationService {
       units,
       professionals,
       statuses,
+      categories,
+      procedures,
       // Sugestão para confirmar, não decisão tomada: o que o operador já
       // escolheu é preservado, e o irreconhecível fica em branco.
       suggestedMappings: suggestStatusMappings(statuses, status.statusMappings),
@@ -545,7 +568,11 @@ export class IntegrationService {
       provider: new ClinicorpAgendaProvider(
         new ClinicorpClient(credentials),
         timeZone,
-        { unitId: row.unitId, professionalId: row.professionalId },
+        {
+          unitId: row.unitId,
+          professionalId: row.professionalId,
+          categoryName: row.categoryExternalId ?? null,
+        },
       ),
     };
   }

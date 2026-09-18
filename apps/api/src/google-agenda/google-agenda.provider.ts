@@ -1,5 +1,7 @@
 import type {
   AvailableSlot,
+  ExternalCategory,
+  ExternalProcedure,
   ExternalProfessional,
   ExternalStatus,
   ExternalUnit,
@@ -97,6 +99,18 @@ export class GoogleAgendaProvider implements AgendaProvider {
         unitId: this.config.calendarId,
       },
     ];
+  }
+
+  /**
+   * O Google Agenda não tem categorias nem catálogo de procedimentos — um
+   * evento é um evento. Listas vazias, e a tela não oferece a escolha.
+   */
+  listCategories(): Promise<ExternalCategory[]> {
+    return Promise.resolve([]);
+  }
+
+  listProcedures(): Promise<ExternalProcedure[]> {
+    return Promise.resolve([]);
   }
 
   listStatuses(): Promise<ExternalStatus[]> {

@@ -1,6 +1,8 @@
 import type {
   AgendaErrorKind,
   AvailableSlot,
+  ExternalCategory,
+  ExternalProcedure,
   ExternalProfessional,
   ExternalStatus,
   ExternalUnit,
@@ -44,6 +46,21 @@ export interface AgendaProvider {
    * operador mapeia cada um para os seis status do nosso domínio.
    */
   listStatuses(): Promise<ExternalStatus[]>;
+
+  /**
+   * Categorias de agenda da conta (Consulta, Retorno, Avaliação…). Lista vazia
+   * quando o provedor não tem o conceito — é o caso do Google Agenda — ou
+   * quando a conta não as usa. Sem uma categoria escolhida, o agendamento que o
+   * agente cria entra sem categoria e aparece sem cor na agenda da empresa.
+   */
+  listCategories(): Promise<ExternalCategory[]>;
+
+  /**
+   * Catálogo de procedimentos da conta, para o dono importar em vez de digitar
+   * um a um. Nome e especialidade só: a API não devolve preço nem duração, e
+   * inventá-los seria pior do que deixar o campo vazio.
+   */
+  listProcedures(): Promise<ExternalProcedure[]>;
 
   /** Horários livres na janela pedida. */
   listAvailableSlots(query: AvailabilityQuery): Promise<AvailableSlot[]>;
@@ -132,6 +149,11 @@ export interface CreateAppointmentInput {
   professionalId: string;
   procedureName?: string | null;
   notes?: string | null;
+  /**
+   * Categoria de agenda escolhida em Configurações. Vazia = o agendamento
+   * entra sem categoria, que é como ele entrava antes de a escolha existir.
+   */
+  categoryName?: string | null;
 }
 
 export interface CancelAppointmentInput {

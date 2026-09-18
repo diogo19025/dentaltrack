@@ -9,12 +9,16 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import type { ProcedureDto } from '@dentaltrack/shared';
+import type { ImportProceduresResult, ProcedureDto } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { CreateProcedureDto, UpdateProcedureDto } from './dto';
+import {
+  CreateProcedureDto,
+  ImportProceduresDto,
+  UpdateProcedureDto,
+} from './dto';
 import { ProceduresService } from './procedures.service';
 
 /**
@@ -39,6 +43,15 @@ export class ProceduresController {
     @Body() body: CreateProcedureDto,
   ): Promise<ProcedureDto> {
     return this.procedures.create(clinicId, body);
+  }
+
+  /** Traz o catálogo do sistema de gestão, sem duplicar o que já existe. */
+  @Post('import')
+  importFromProvider(
+    @ClinicId() clinicId: string,
+    @Body() body: ImportProceduresDto,
+  ): Promise<ImportProceduresResult> {
+    return this.procedures.importNames(clinicId, body.names);
   }
 
   @Patch(':id')

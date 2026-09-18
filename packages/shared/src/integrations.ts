@@ -162,6 +162,28 @@ export const externalProfessionalSchema = z.object({
 });
 export type ExternalProfessional = z.infer<typeof externalProfessionalSchema>;
 
+/**
+ * Categoria de agenda da conta externa (Consulta, Retorno, Avaliação…). O
+ * agendamento criado pelo agente entra sem categoria enquanto o dono não
+ * escolher uma, e aparece sem cor na agenda dele.
+ */
+export const externalCategorySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+export type ExternalCategory = z.infer<typeof externalCategorySchema>;
+
+/**
+ * Procedimento do catálogo da conta externa. A API não devolve preço nem
+ * duração — só nome e especialidade —, então a importação preenche o que dá e
+ * o resto continua manual.
+ */
+export const externalProcedureSchema = z.object({
+  name: z.string(),
+  expertise: z.string().nullable(),
+});
+export type ExternalProcedure = z.infer<typeof externalProcedureSchema>;
+
 /** Status de agendamento como o sistema externo o nomeia. */
 export const externalStatusSchema = z.object({
   id: z.string(),
@@ -205,6 +227,8 @@ export const updateIntegrationSchema = z
     unitId: z.string().trim().min(1).nullable(),
     /** Profissional padrão ao agendar (vazio = qualquer um). */
     professionalId: z.string().trim().min(1).nullable(),
+    /** Categoria aplicada ao que o agente marca (vazio = sem categoria). */
+    categoryExternalId: z.string().trim().min(1).nullable(),
     statusMappings: z.array(statusMappingSchema).max(200),
   })
   .partial()
@@ -235,6 +259,7 @@ export const integrationStatusSchema = z.object({
   usernameHint: z.string().nullable(),
   unitId: z.string().nullable(),
   professionalId: z.string().nullable(),
+  categoryExternalId: z.string().nullable(),
   statusMappings: z.array(statusMappingSchema),
   /** Última verificação de conexão bem-sucedida (ISO 8601). */
   lastCheckedAt: z.string().nullable(),
@@ -284,6 +309,12 @@ export const connectionCheckSchema = z.object({
   units: z.array(externalUnitSchema),
   professionals: z.array(externalProfessionalSchema),
   statuses: z.array(externalStatusSchema),
+  /**
+   * Categorias de agenda e catálogo de procedimentos da conta. Vazios quando o
+   * provedor não tem o conceito (Google Agenda) ou a conta não os usa.
+   */
+  categories: z.array(externalCategorySchema).default([]),
+  procedures: z.array(externalProcedureSchema).default([]),
   /**
    * Mapeamento pré-preenchido para o operador **confirmar** — nunca aplicado
    * sozinho. Preserva o que ele já decidiu (inclusive a decisão de ignorar) e

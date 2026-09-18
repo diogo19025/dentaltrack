@@ -491,11 +491,14 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
         'unidades',
         'profissionais',
         'status',
+        'catalogo',
         'disponibilidade',
         'agenda',
       ]);
       expect(result.units.length).toBeGreaterThan(0);
       expect(result.statuses.length).toBeGreaterThan(0);
+      expect(result.categories.length).toBeGreaterThan(0);
+      expect(result.procedures.length).toBeGreaterThan(0);
       // O resultado é gravado para a tela mostrar a última verificação.
       expect(prismaMock.clinicIntegration.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({

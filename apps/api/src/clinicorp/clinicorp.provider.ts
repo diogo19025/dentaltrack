@@ -1,6 +1,8 @@
 import { Logger } from '@nestjs/common';
 import type {
   AvailableSlot,
+  ExternalCategory,
+  ExternalProcedure,
   ExternalProfessional,
   ExternalStatus,
   ExternalUnit,
@@ -72,6 +74,7 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
     private readonly defaults: {
       unitId?: string | null;
       professionalId?: string | null;
+      categoryName?: string | null;
     } = {},
   ) {}
 
@@ -169,6 +172,67 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
       if (usesActiveFlag && !isFlag(readString(row, 'Active'))) return [];
       return [{ id, name }];
     });
+  }
+
+  /**
+   * Categorias de agenda da conta. A conta real usa cinco (Cirurgia,
+   * Periódico, Avaliação, Retorno, Consulta); uma conta que não as use
+   * responde lista vazia, e a tela simplesmente não oferece a escolha.
+   */
+  async listCategories(): Promise<ExternalCategory[]> {
+    const payload = await this.client.get(
+      CLINICORP_ROUTES.appointmentCategories,
+    );
+    return readList(payload, 'categories', 'category').flatMap((row) => {
+      const name = readString(
+        row,
+        'CategoryDescription',
+        'Description',
+        'Name',
+        'Category',
+      );
+      if (!name) return [];
+      // A identidade é a **descrição**, não o id: `create_appointment_by_api`
+      // recebe `CategoryDescription`, então guardar o id obrigaria a uma
+      // segunda consulta na hora de agendar para descobrir o texto.
+      return [{ id: name, name }];
+    });
+  }
+
+  /**
+   * Catálogo de procedimentos. A resposta é um **mapa de tabelas de preço**
+   * para listas de itens, e o mesmo procedimento costuma aparecer em várias —
+   * daí a deduplicação por nome. `Type` separa procedimento de outros itens da
+   * tabela. A rota não devolve preço nem duração.
+   */
+  async listProcedures(): Promise<ExternalProcedure[]> {
+    const payload = await this.client.get(CLINICORP_ROUTES.procedures);
+    const rows =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? Object.values(payload as Record<string, unknown>).flatMap((value) =>
+            readList(value),
+          )
+        : readList(payload, 'procedures');
+
+    const seen = new Map<string, ExternalProcedure>();
+    for (const row of rows) {
+      const type = readString(row, 'Type');
+      if (type && type.toUpperCase() !== 'PROCEDURE') continue;
+      const name = readString(row, 'ProcedureName', 'Name', 'Description');
+      if (!name) continue;
+      const key = name.trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.set(key, {
+        name: name.trim(),
+        expertise: readString(
+          row,
+          'ProcedureExpertiseName',
+          'ExpertiseName',
+          'Expertise',
+        ),
+      });
+    }
+    return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async listAvailableSlots(query: AvailabilityQuery): Promise<AvailableSlot[]> {
@@ -398,6 +462,8 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
       Clinic_BusinessId: input.unitId,
       Dentist_PersonId: input.professionalId || undefined,
       Procedures: input.procedureName ?? undefined,
+      CategoryDescription:
+        input.categoryName || this.defaults.categoryName || undefined,
       Notes: input.notes ?? undefined,
     });
 
