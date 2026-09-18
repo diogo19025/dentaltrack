@@ -64,6 +64,11 @@ describe('ChatService.streamMessage', () => {
     timeZone: jest.fn().mockResolvedValue('America/Sao_Paulo'),
     getAvailability: jest.fn().mockResolvedValue({ slots: [], live: false }),
     book: jest.fn(),
+    professionalContext: jest.fn().mockResolvedValue({
+      policy: 'primeiro_livre',
+      professionals: [],
+      fixed: null,
+    }),
   };
   const conversationsMock = {
     createConversation: jest.fn(),

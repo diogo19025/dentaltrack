@@ -50,6 +50,49 @@ export class ProfessionalsService {
     return this.list(clinicId, { includeInactive: false });
   }
 
+  /** Profissional pelo id no sistema de gestão (ativo ou não). */
+  async findByExternalId(
+    clinicId: string,
+    externalId: string,
+  ): Promise<ProfessionalDto | null> {
+    const row = await this.prisma.professional.findFirst({
+      where: { clinicId, externalId },
+    });
+    return row ? toDto(row) : null;
+  }
+
+  /**
+   * Casa o que o cliente escreveu com um profissional **ativo**.
+   *
+   * Tolerante de propósito: "Dra. Ana" tem que achar "Ana Paula Souza", e
+   * "bruno lima" tem que achar "Dr. Bruno Lima". Cada palavra do pedido
+   * precisa ser prefixo de alguma palavra do nome, sem acento, caixa nem
+   * tratamento (dr., dra., doutor). O nome inteiro igual vence a lista.
+   * Mais de um candidato é ambíguo — quem decide é o cliente, não a heurística.
+   */
+  async match(clinicId: string, text: string): Promise<ProfessionalMatch> {
+    const wanted = nameTokens(text);
+    if (wanted.length === 0) return { kind: 'nenhum' };
+
+    const active = await this.listActive(clinicId);
+    const exact = active.filter(
+      (p) => nameTokens(p.name).join(' ') === wanted.join(' '),
+    );
+    if (exact.length === 1) return { kind: 'um', professional: exact[0] };
+
+    const candidates = active.filter((p) => {
+      const tokens = nameTokens(p.name);
+      return wanted.every((w) => tokens.some((t) => t.startsWith(w)));
+    });
+    if (candidates.length === 1) {
+      return { kind: 'um', professional: candidates[0] };
+    }
+    if (candidates.length > 1) {
+      return { kind: 'ambiguo', options: candidates };
+    }
+    return { kind: 'nenhum' };
+  }
+
   async create(
     clinicId: string,
     input: CreateProfessionalInput,
@@ -188,6 +231,25 @@ export class ProfessionalsService {
     if (!row) throw new NotFoundException('Profissional não encontrado.');
     return row;
   }
+}
+
+/** Resultado do casamento de nome (ver `match`). */
+export type ProfessionalMatch =
+  | { kind: 'um'; professional: ProfessionalDto }
+  | { kind: 'ambiguo'; options: ProfessionalDto[] }
+  | { kind: 'nenhum' };
+
+/** Tratamentos que não distinguem ninguém e que o cliente usa à vontade. */
+const HONORIFICS = new Set(['dr', 'dra', 'doutor', 'doutora', 'prof', 'profa']);
+
+/** Palavras comparáveis de um nome: sem acento, caixa, pontuação nem tratamento. */
+function nameTokens(value: string): string[] {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length > 0 && !HONORIFICS.has(token));
 }
 
 function toDto(row: Professional): ProfessionalDto {

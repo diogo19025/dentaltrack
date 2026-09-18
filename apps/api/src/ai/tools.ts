@@ -5,6 +5,7 @@ import {
   MEDIA_TYPES,
   type MediaAttachment,
   type MediaType,
+  type ProfessionalDto,
 } from '@dentaltrack/shared';
 import { bookingKey } from '../agenda/appointment-keys';
 import type { AgendaService } from '../agenda/agenda.service';
@@ -70,11 +71,17 @@ interface BookInput {
   preferencia?: string;
   /** Horário acordado, "AAAA-MM-DDTHH:mm" no fuso da empresa (F9). */
   dataHora?: string;
+  /** Id do profissional do horário escolhido, como veio de checkAvailability (F20). */
+  profissionalId?: string;
+  /** Nome do profissional que o cliente pediu, quando não veio de um horário. */
+  profissional?: string;
 }
 interface CheckAvailabilityInput {
   procedimento?: string;
   aPartirDe?: string;
   dias?: number;
+  /** O que o cliente escreveu sobre com quem quer marcar (F20). */
+  profissional?: string;
 }
 interface PresentOfferInput {
   procedimento?: string;
@@ -587,11 +594,16 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             type: 'number',
             description: 'Quantos dias buscar à frente (padrão 10, máximo 30).',
           },
+          profissional: {
+            type: 'string',
+            description:
+              'Profissional que o cliente pediu, exatamente como ele escreveu (ex.: "Dra. Ana"). Vazio = qualquer um.',
+          },
         },
         additionalProperties: false,
       }),
       execute: async (input) => {
-        const { procedimento, aPartirDe, dias } =
+        const { procedimento, aPartirDe, dias, profissional } =
           input as CheckAvailabilityInput;
         if (!agenda) {
           return {
@@ -610,6 +622,34 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             ? (parseLocalDateTime(`${aPartirDe}T00:00`, timeZone) ?? new Date())
             : new Date();
 
+          // Quem o cliente pediu (F20). Ambíguo ou desconhecido não vira
+          // chute: a ferramenta devolve as opções e o modelo pergunta.
+          let professionalId: string | null = null;
+          if (profissional?.trim()) {
+            const match = await agenda.resolveProfessional(
+              clinicId,
+              profissional,
+            );
+            if (match.kind === 'ambiguo') {
+              return {
+                agendaConectada: true,
+                horarios: [],
+                profissionalAmbiguo: match.options.map((p) => p.name),
+                orientacao:
+                  'Mais de um profissional corresponde ao nome. Pergunte ao cliente qual deles e consulte de novo com o nome completo.',
+              };
+            }
+            if (match.kind === 'nenhum') {
+              return {
+                agendaConectada: true,
+                horarios: [],
+                orientacao:
+                  'Nenhum profissional da equipe tem esse nome. Diga isso ao cliente com gentileza, liste os profissionais que atendem e pergunte com quem ele prefere — ou consulte sem `profissional` para oferecer o primeiro horário livre.',
+              };
+            }
+            professionalId = match.professional.externalId || null;
+          }
+
           const { slots, live } = await agenda.getAvailability(clinicId, {
             from,
             days: Math.min(Math.max(dias ?? 10, 1), 30),
@@ -617,6 +657,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             // 12 e não 6: com poucos horários o modelo lê a lista truncada como
             // "o resto está ocupado" e nega horários que existem.
             limit: 12,
+            professionalId,
           });
 
           if (!live || slots.length === 0) {
@@ -639,10 +680,14 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
                 dataHora: formatLocalDateTime(startsAt, timeZone),
                 rotulo: `${formatDatePtBr(startsAt, timeZone)} às ${formatTimePtBr(startsAt, timeZone)}`,
                 profissional: slot.professionalName,
+                // Volta em `profissionalId` no bookAppointment: é assim que o
+                // horário oferecido e o agendamento gravado ficam com a mesma
+                // pessoa quando a empresa tem vários profissionais.
+                profissionalId: slot.professionalId,
               };
             }),
             orientacao:
-              'Ofereça no máximo 3 destes horários por vez e use o campo dataHora exatamente como veio ao registrar o agendamento. Esta lista pode ser parcial: se o cliente pedir um dia ou horário que não aparece nela, consulte de novo com aPartirDe no dia pedido antes de dizer que não há vaga.',
+              'Ofereça no máximo 3 destes horários por vez e use os campos dataHora e profissionalId exatamente como vieram ao registrar o agendamento. Esta lista pode ser parcial: se o cliente pedir um dia ou horário que não aparece nela, consulte de novo com aPartirDe no dia pedido antes de dizer que não há vaga.',
           };
         } catch {
           return {
@@ -680,12 +725,29 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             description:
               'Horário escolhido, exatamente como veio de checkAvailability (AAAA-MM-DDTHH:mm).',
           },
+          profissionalId: {
+            type: 'string',
+            description:
+              'Profissional do horário escolhido, exatamente o profissionalId devolvido por checkAvailability.',
+          },
+          profissional: {
+            type: 'string',
+            description:
+              'Nome do profissional pedido pelo cliente, quando não há profissionalId (ex.: sem agenda conectada).',
+          },
         },
         additionalProperties: false,
       }),
       execute: async (input) => {
-        const { nome, telefone, procedimento, preferencia, dataHora } =
-          input as BookInput;
+        const {
+          nome,
+          telefone,
+          procedimento,
+          preferencia,
+          dataHora,
+          profissionalId,
+          profissional,
+        } = input as BookInput;
         try {
           const leadId = nome
             ? await upsertLead(prisma, {
@@ -718,6 +780,16 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
               })
             : null;
 
+          // Profissional (F20): o id do horário oferecido vale mais que o nome
+          // digitado, e um nome ambíguo ou desconhecido não decide nada — o
+          // agendamento segue pelo padrão da integração, como antes.
+          const professional = agenda
+            ? await resolveProfessional(agenda, clinicId, {
+                profissionalId,
+                profissional,
+              })
+            : null;
+
           // Com agenda conectada e horário definido, isto grava também na
           // agenda real da empresa; sem uma coisa ou outra, registra só aqui —
           // e `confirmed` diz qual dos dois aconteceu.
@@ -732,6 +804,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
                 preferredTime: preferencia ?? null,
                 patientName: nome ?? lead?.name ?? null,
                 patientPhone: telefone ?? lead?.phone ?? null,
+                professional,
               })
             : await bookWithoutAgenda(prisma, {
                 clinicId,
@@ -917,6 +990,41 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
  * caminho não é alcançável em produção — o `ChatService` sempre injeta a agenda
  * —, mas "inalcançável" é propriedade que se perde no primeiro chamador novo.
  */
+/**
+ * Profissional do agendamento (F20), na ordem em que a informação é confiável:
+ * o id que veio num horário oferecido, depois o nome que o cliente escreveu.
+ * Ambíguo ou desconhecido devolve `null` — o agendamento segue pelo padrão da
+ * integração, como antes do cadastro existir, em vez de cair em alguém errado.
+ */
+async function resolveProfessional(
+  agenda: AgendaService,
+  clinicId: string,
+  input: { profissionalId?: string; profissional?: string },
+): Promise<ProfessionalDto | null> {
+  try {
+    if (input.profissionalId?.trim()) {
+      const byId = await agenda.professionalByExternalId(
+        clinicId,
+        input.profissionalId.trim(),
+      );
+      if (byId) return byId;
+    }
+    if (input.profissional?.trim()) {
+      const match = await agenda.resolveProfessional(
+        clinicId,
+        input.profissional,
+      );
+      if (match.kind === 'um') return match.professional;
+    }
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      `Profissional não resolvido para a empresa ${clinicId}: ${detail}`,
+    );
+  }
+  return null;
+}
+
 async function bookWithoutAgenda(
   prisma: PrismaService,
   args: {

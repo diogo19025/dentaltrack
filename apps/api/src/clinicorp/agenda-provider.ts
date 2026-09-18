@@ -113,6 +113,12 @@ export interface AgendaWindow {
 
 export interface AvailabilityQuery extends AgendaWindow {
   professionalId?: string | null;
+  /**
+   * Sem `professionalId`, restringe o leque a estes profissionais (F20) em
+   * vez de consultar a conta inteira. Ignorado por quem não consulta por
+   * profissional (Google, simulado).
+   */
+  professionalIds?: readonly string[];
   /** Duração desejada em minutos (default do provedor quando ausente). */
   durationMinutes?: number | null;
   /** Teto de horários devolvidos — o agente só oferece um punhado por vez. */

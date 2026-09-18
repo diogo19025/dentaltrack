@@ -251,3 +251,62 @@ describe('buildSystemPrompt', () => {
     });
   });
 });
+
+describe('buildSystemPrompt — equipe e escolha do profissional (F20)', () => {
+  const base = { clinic: makeClinic(), procedures: [] };
+
+  it('sem equipe cadastrada, não fala em profissional', () => {
+    const prompt = buildSystemPrompt({ ...base, professionals: null });
+    expect(prompt).not.toContain('Profissionais que atendem');
+    expect(prompt).not.toContain('`profissional`');
+  });
+
+  it('com um profissional só, lista o nome e não instrui a escolher', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      professionals: { names: ['Dra. Ana'], policy: 'primeiro_livre' },
+    });
+    expect(prompt).toContain('Profissionais que atendem: Dra. Ana.');
+    expect(prompt).not.toContain('`profissionalId`');
+  });
+
+  it('primeiro_livre: consulta sem profissional e diz com quem é cada horário', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      professionals: {
+        names: ['Dra. Ana', 'Dr. Bruno'],
+        policy: 'primeiro_livre',
+      },
+    });
+    expect(prompt).toContain('Profissionais que atendem: Dra. Ana, Dr. Bruno.');
+    expect(prompt).toContain('consulte sem `profissional` e diga');
+    expect(prompt).toContain('`profissionalAmbiguo`');
+    expect(prompt).toContain('repasse o `profissionalId`');
+    expect(prompt).not.toContain('pergunte se prefere algum profissional');
+  });
+
+  it('perguntar: pergunta a preferência antes de consultar', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      professionals: { names: ['Dra. Ana', 'Dr. Bruno'], policy: 'perguntar' },
+    });
+    expect(prompt).toContain('pergunte se prefere algum profissional');
+    expect(prompt).not.toContain('consulte sem `profissional` e diga');
+  });
+
+  it('fixo: diz com quem é e proíbe oferecer escolha', () => {
+    const prompt = buildSystemPrompt({
+      ...base,
+      professionals: {
+        names: ['Dra. Ana', 'Dr. Bruno'],
+        policy: 'fixo',
+        fixedName: 'Dra. Ana',
+      },
+    });
+    expect(prompt).toContain(
+      'Profissional que atende os agendamentos feitos por você: Dra. Ana.',
+    );
+    expect(prompt).toContain('Não ofereça escolha de profissional');
+    expect(prompt).not.toContain('Profissionais que atendem:');
+  });
+});

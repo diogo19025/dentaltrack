@@ -281,3 +281,199 @@ describe('buildChatTools', () => {
     expect(res.ok).toBe(false);
   });
 });
+
+/**
+ * Profissional na conversa (F20): o que o cliente escreve chega às tools como
+ * texto, e a tool decide — ou devolve as opções para o modelo perguntar.
+ */
+describe('buildChatTools — profissional (F20)', () => {
+  const ana = {
+    id: '00000000-0000-0000-0000-00000000000a',
+    externalId: '10',
+    name: 'Dra. Ana Ribeiro',
+    active: true,
+    unitExternalId: '1',
+    createdAt: '2026-09-01T00:00:00.000Z',
+  };
+  const bruno = {
+    ...ana,
+    id: '00000000-0000-0000-0000-00000000000b',
+    externalId: '11',
+    name: 'Dr. Bruno Lima',
+  };
+
+  const prismaMock = {
+    procedure: { findMany: jest.fn(), findFirst: jest.fn() },
+    tag: { findMany: jest.fn().mockResolvedValue([]) },
+    clinicSettings: { findUnique: jest.fn().mockResolvedValue(null) },
+    conversation: { findFirst: jest.fn(), update: jest.fn() },
+    lead: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
+    appointment: { create: jest.fn() },
+  };
+  const conversationsMock = { markAsScheduled: jest.fn() };
+  const agendaMock = {
+    timeZone: jest.fn().mockResolvedValue('America/Sao_Paulo'),
+    getAvailability: jest.fn(),
+    book: jest.fn(),
+    resolveProfessional: jest.fn(),
+    professionalByExternalId: jest.fn(),
+  };
+
+  function tools() {
+    return buildChatTools({
+      prisma: prismaMock,
+      conversations: conversationsMock,
+      clinicId: CLINIC_ID,
+      conversationId: CONVERSATION_ID,
+      agenda: agendaMock,
+    } as unknown as ChatToolsContext);
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prismaMock.procedure.findFirst.mockResolvedValue(null);
+    prismaMock.conversation.findFirst.mockResolvedValue({ leadId: 'lead-1' });
+    prismaMock.lead.findFirst.mockResolvedValue({
+      name: 'Maria',
+      phone: '11999990000',
+    });
+    agendaMock.getAvailability.mockResolvedValue({
+      live: true,
+      slots: [
+        {
+          startsAt: '2026-10-01T13:00:00.000Z',
+          endsAt: '2026-10-01T13:30:00.000Z',
+          professionalId: '10',
+          professionalName: 'Dra. Ana Ribeiro',
+          unitId: '1',
+        },
+      ],
+    });
+    agendaMock.book.mockResolvedValue({
+      appointmentId: 'appt-1',
+      startsAt: new Date('2026-10-01T13:00:00.000Z'),
+      confirmed: true,
+      externalId: 'ext-1',
+      failureKind: null,
+    });
+  });
+
+  it('checkAvailability: nome do cliente vira o profissional da consulta e cada horário diz com quem é', async () => {
+    agendaMock.resolveProfessional.mockResolvedValueOnce({
+      kind: 'um',
+      professional: ana,
+    });
+
+    const res = await exec(tools().checkAvailability, {
+      profissional: 'dra ana',
+    });
+
+    expect(agendaMock.resolveProfessional).toHaveBeenCalledWith(
+      CLINIC_ID,
+      'dra ana',
+    );
+    expect(agendaMock.getAvailability).toHaveBeenCalledWith(
+      CLINIC_ID,
+      expect.objectContaining({ professionalId: '10' }),
+    );
+    expect(res.horarios[0]).toMatchObject({
+      profissional: 'Dra. Ana Ribeiro',
+      profissionalId: '10',
+    });
+  });
+
+  it('checkAvailability: nome ambíguo não consulta nada — devolve as opções para o modelo perguntar', async () => {
+    agendaMock.resolveProfessional.mockResolvedValueOnce({
+      kind: 'ambiguo',
+      options: [ana, { ...bruno, name: 'Ana Clara' }],
+    });
+
+    const res = await exec(tools().checkAvailability, { profissional: 'Ana' });
+
+    expect(agendaMock.getAvailability).not.toHaveBeenCalled();
+    expect(res).toMatchObject({
+      agendaConectada: true,
+      horarios: [],
+      profissionalAmbiguo: ['Dra. Ana Ribeiro', 'Ana Clara'],
+    });
+    expect(res.orientacao).toContain('Pergunte');
+  });
+
+  it('checkAvailability: nome desconhecido orienta a listar a equipe, sem inventar', async () => {
+    agendaMock.resolveProfessional.mockResolvedValueOnce({ kind: 'nenhum' });
+
+    const res = await exec(tools().checkAvailability, {
+      profissional: 'Dr. House',
+    });
+
+    expect(agendaMock.getAvailability).not.toHaveBeenCalled();
+    expect(res.horarios).toEqual([]);
+    expect(res.orientacao).toContain('Nenhum profissional');
+  });
+
+  it('checkAvailability: sem profissional, consulta sem restrição (política do dono decide o tom)', async () => {
+    await exec(tools().checkAvailability, {});
+
+    expect(agendaMock.resolveProfessional).not.toHaveBeenCalled();
+    expect(agendaMock.getAvailability).toHaveBeenCalledWith(
+      CLINIC_ID,
+      expect.objectContaining({ professionalId: null }),
+    );
+  });
+
+  it('bookAppointment: o profissionalId do horário escolhido vai para a agenda', async () => {
+    agendaMock.professionalByExternalId.mockResolvedValueOnce(bruno);
+
+    await exec(tools().bookAppointment, {
+      dataHora: '2026-10-01T10:00',
+      profissionalId: '11',
+    });
+
+    expect(agendaMock.professionalByExternalId).toHaveBeenCalledWith(
+      CLINIC_ID,
+      '11',
+    );
+    expect(agendaMock.book).toHaveBeenCalledWith(
+      CLINIC_ID,
+      expect.objectContaining({ professional: bruno }),
+    );
+  });
+
+  it('bookAppointment: sem id, o nome digitado casa com a equipe; ambíguo não decide nada', async () => {
+    agendaMock.resolveProfessional.mockResolvedValueOnce({
+      kind: 'um',
+      professional: ana,
+    });
+    await exec(tools().bookAppointment, { profissional: 'ana' });
+    expect(agendaMock.book).toHaveBeenLastCalledWith(
+      CLINIC_ID,
+      expect.objectContaining({ professional: ana }),
+    );
+
+    agendaMock.resolveProfessional.mockResolvedValueOnce({
+      kind: 'ambiguo',
+      options: [ana, bruno],
+    });
+    await exec(tools().bookAppointment, { profissional: 'dr' });
+    expect(agendaMock.book).toHaveBeenLastCalledWith(
+      CLINIC_ID,
+      expect.objectContaining({ professional: null }),
+    );
+  });
+
+  it('bookAppointment: falha ao resolver o profissional não derruba o agendamento', async () => {
+    agendaMock.professionalByExternalId.mockRejectedValueOnce(
+      new Error('banco fora'),
+    );
+
+    const res = await exec(tools().bookAppointment, {
+      profissionalId: '11',
+    });
+
+    expect(res.ok).toBe(true);
+    expect(agendaMock.book).toHaveBeenCalledWith(
+      CLINIC_ID,
+      expect.objectContaining({ professional: null }),
+    );
+  });
+});

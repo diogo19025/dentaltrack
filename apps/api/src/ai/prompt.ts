@@ -39,6 +39,57 @@ export interface BuildSystemPromptInput {
   timeZone?: string | null;
   /** Relógio injetável — mantém o prompt determinístico nos testes. */
   now?: Date;
+  /**
+   * Equipe e política de escolha (F20). Ausente ou sem profissionais = o
+   * agente não fala em profissional, como sempre fez.
+   */
+  professionals?: PromptProfessionals | null;
+}
+
+/** O que o prompt precisa saber da equipe (ver `AgendaService.professionalContext`). */
+export interface PromptProfessionals {
+  /** Nomes dos ativos, na ordem de entrada. */
+  names: string[];
+  /**
+   * `fixo`: tudo vai para um profissional padrão e o agente não oferece
+   * escolha; `primeiro_livre`: oferece os primeiros horários dizendo com quem;
+   * `perguntar`: pergunta a preferência antes de consultar.
+   */
+  policy: 'fixo' | 'primeiro_livre' | 'perguntar';
+  /** Nome do profissional padrão, quando `policy === 'fixo'`. */
+  fixedName?: string | null;
+}
+
+/**
+ * Regras de escolha do profissional (F20). Só existem quando há equipe
+ * cadastrada; com um profissional só, não há o que escolher e o agente não
+ * pergunta nada.
+ */
+function formatProfessionals(input: PromptProfessionals): string[] {
+  const lines: string[] = [];
+  if (input.policy === 'fixo' && input.fixedName) {
+    lines.push(
+      `Profissional que atende os agendamentos feitos por você: ${input.fixedName}. Não ofereça escolha de profissional; se o cliente perguntar, diga com quem será.`,
+    );
+    return lines;
+  }
+  if (input.names.length === 0) return lines;
+
+  lines.push(`Profissionais que atendem: ${input.names.join(', ')}.`);
+  if (input.names.length === 1) return lines;
+
+  lines.push(
+    '- Se o cliente citar um profissional (mesmo só o primeiro nome ou com "Dr./Dra."), passe o que ele escreveu no campo `profissional` de `checkAvailability`. Se a ferramenta devolver `profissionalAmbiguo`, pergunte qual deles antes de seguir.',
+  );
+  lines.push(
+    input.policy === 'perguntar'
+      ? '- Se ele não citar ninguém, ANTES de consultar horários pergunte se prefere algum profissional específico, listando os nomes. Se disser que tanto faz, consulte sem `profissional`.'
+      : '- Se ele não citar ninguém, consulte sem `profissional` e diga, em cada horário oferecido, com quem ele é.',
+  );
+  lines.push(
+    '- Ao registrar com `bookAppointment`, repasse o `profissionalId` do horário escolhido exatamente como veio de `checkAvailability`.',
+  );
+  return lines;
 }
 
 /** Formata centavos como BRL (ex.: 150000 → "R$ 1.500"). */
@@ -172,6 +223,7 @@ export function buildSystemPrompt({
   contact,
   timeZone,
   now,
+  professionals,
 }: BuildSystemPromptInput): string {
   const lines: string[] = [];
 
@@ -247,6 +299,11 @@ export function buildSystemPrompt({
   // Dados já conhecidos do cliente (memória do contato — não re-perguntar).
   if (contact) {
     lines.push(...formatKnownContact(contact));
+  }
+
+  // Equipe e como escolher o profissional (F20).
+  if (professionals) {
+    lines.push(...formatProfessionals(professionals));
   }
 
   // Catálogo de procedimentos.

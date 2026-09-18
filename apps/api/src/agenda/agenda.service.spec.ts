@@ -26,7 +26,9 @@ afterAll(() => {
 const p2002 = () =>
   Object.assign(new Error('Unique constraint'), { code: 'P2002' });
 
-function setup(options: { provider?: unknown } = {}) {
+function setup(
+  options: { provider?: unknown; professionals?: unknown[] } = {},
+) {
   const prisma = {
     appointment: {
       create: jest.fn().mockResolvedValue({ id: 'apt-1' }),
@@ -42,11 +44,21 @@ function setup(options: { provider?: unknown } = {}) {
       .mockResolvedValue({ unitId: 'u1', professionalId: 'p1' }),
     timeZoneOf: jest.fn().mockResolvedValue('America/Sao_Paulo'),
   };
-  const service = new AgendaService(prisma as never, integrations as never);
+  // Cadastro espelhado (F20): vazio por padrão — o mundo anterior ao cadastro.
+  const professionals = {
+    listActive: jest.fn().mockResolvedValue(options.professionals ?? []),
+    findByExternalId: jest.fn().mockResolvedValue(null),
+    match: jest.fn().mockResolvedValue({ kind: 'nenhum' }),
+  };
+  const service = new AgendaService(
+    prisma as never,
+    integrations as never,
+    professionals as never,
+  );
   // O logger grita nos caminhos de falha, que são exatamente os que testamos.
   jest.spyOn(service['logger'], 'error').mockImplementation(() => undefined);
   jest.spyOn(service['logger'], 'log').mockImplementation(() => undefined);
-  return { service, prisma, integrations };
+  return { service, prisma, integrations, professionals };
 }
 
 function providerMock(overrides: Record<string, unknown> = {}) {
@@ -162,11 +174,11 @@ describe('AgendaService.book', () => {
       expect(prisma.appointment.create).toHaveBeenCalledTimes(1);
       expect(prisma.appointment.update).toHaveBeenCalledWith({
         where: { id: 'apt-1' },
-        data: {
+        data: expect.objectContaining({
           externalId: 'ext-9',
           professionalName: 'Dra. Ana',
           source: 'integracao',
-        },
+        }),
       });
       expect(res).toMatchObject({ confirmed: true, externalId: 'ext-9' });
     });
@@ -686,5 +698,228 @@ describe('AgendaService.reschedule (P0.5)', () => {
     await expect(
       service.reschedule(CLINIC, 'apt-1', NEW),
     ).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+/** Profissional do cadastro espelhado (F20), como o `ProfessionalsService` o devolve. */
+function professionalDto(over: Record<string, unknown> = {}) {
+  return {
+    id: '00000000-0000-0000-0000-00000000000a',
+    externalId: '10',
+    name: 'Dra. Ana Ribeiro',
+    active: true,
+    unitExternalId: 'u1',
+    createdAt: '2026-09-01T00:00:00.000Z',
+    ...over,
+  };
+}
+
+describe('AgendaService — profissionais (F20)', () => {
+  describe('getAvailability', () => {
+    it('sem profissional pedido, restringe o leque aos ativos do cadastro', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockResolvedValue([]),
+      });
+      const { service } = setup({
+        provider,
+        professionals: [
+          professionalDto(),
+          professionalDto({ id: 'p-b', externalId: '11', name: 'Dr. Bruno' }),
+          // Cadastro manual: não existe no sistema de gestão, não entra no leque.
+          professionalDto({ id: 'p-c', externalId: '', name: 'Carla' }),
+        ],
+      });
+
+      await service.getAvailability(CLINIC, { from: NOW, days: 1 });
+
+      expect(provider.listAvailableSlots).toHaveBeenCalledWith(
+        expect.objectContaining({
+          professionalId: null,
+          professionalIds: ['10', '11'],
+        }),
+      );
+    });
+
+    it('com profissional pedido, consulta só ele', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockResolvedValue([]),
+      });
+      const { service } = setup({
+        provider,
+        professionals: [professionalDto()],
+      });
+
+      await service.getAvailability(CLINIC, {
+        from: NOW,
+        professionalId: '10',
+      });
+
+      const query = provider.listAvailableSlots.mock.calls[0][0];
+      expect(query.professionalId).toBe('10');
+      expect(query.professionalIds).toBeUndefined();
+    });
+
+    it('preenche o nome do profissional pelo cadastro quando a agenda só dá o id', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockResolvedValue([
+          {
+            startsAt: '2026-10-01T13:00:00.000Z',
+            endsAt: '2026-10-01T13:30:00.000Z',
+            professionalId: '10',
+            professionalName: null,
+            unitId: 'u1',
+          },
+          {
+            startsAt: '2026-10-01T14:00:00.000Z',
+            endsAt: null,
+            professionalId: '99',
+            professionalName: 'Vindo da agenda',
+            unitId: 'u1',
+          },
+        ]),
+      });
+      const { service } = setup({
+        provider,
+        professionals: [professionalDto()],
+      });
+
+      const { slots } = await service.getAvailability(CLINIC, { from: NOW });
+
+      expect(slots.map((s) => s.professionalName)).toEqual([
+        'Dra. Ana Ribeiro',
+        'Vindo da agenda',
+      ]);
+    });
+
+    it('a mesma pergunta em menos de um minuto não volta ao provedor; agendar invalida', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockResolvedValue([]),
+      });
+      const { service, prisma } = setup({ provider });
+      prisma.appointment.create.mockResolvedValue({ id: 'apt-1' });
+
+      await service.getAvailability(CLINIC, { from: NOW, days: 3 });
+      await service.getAvailability(CLINIC, { from: NOW, days: 3 });
+      expect(provider.listAvailableSlots).toHaveBeenCalledTimes(1);
+
+      // Pergunta diferente (outro profissional) é outra consulta.
+      await service.getAvailability(CLINIC, {
+        from: NOW,
+        days: 3,
+        professionalId: '10',
+      });
+      expect(provider.listAvailableSlots).toHaveBeenCalledTimes(2);
+
+      await service.book(CLINIC, { ...INPUT, startsAt: null });
+      await service.getAvailability(CLINIC, { from: NOW, days: 3 });
+      expect(provider.listAvailableSlots).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe('book', () => {
+    it('o profissional escolhido na conversa decide o id externo e já entra na linha local com nome', async () => {
+      const provider = providerMock({
+        createAppointment: jest.fn().mockResolvedValue({
+          externalId: 'ext-9',
+          professionalName: null,
+        }),
+      });
+      const { service, prisma } = setup({ provider });
+      const professional = professionalDto({
+        externalId: '11',
+        name: 'Dr. Bruno',
+      });
+
+      await service.book(CLINIC, { ...INPUT, professional });
+
+      expect(prisma.appointment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            professionalId: professional.id,
+            professionalExternalId: '11',
+            professionalName: 'Dr. Bruno',
+          }),
+        }),
+      );
+      expect(provider.createAppointment).toHaveBeenCalledWith(
+        expect.objectContaining({ professionalId: '11' }),
+      );
+      // A agenda não devolveu nome: fica o do cadastro, não fica vazio.
+      expect(prisma.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            professionalName: 'Dr. Bruno',
+            professionalId: professional.id,
+          }),
+        }),
+      );
+    });
+
+    it('sem escolha na conversa, o padrão da integração é resolvido no cadastro e gravado com nome', async () => {
+      const provider = providerMock({
+        createAppointment: jest.fn().mockResolvedValue({
+          externalId: 'ext-9',
+          professionalName: null,
+        }),
+      });
+      const { service, prisma, professionals } = setup({ provider });
+      professionals.findByExternalId.mockResolvedValueOnce(
+        professionalDto({ externalId: 'p1', name: 'Padrão da Casa' }),
+      );
+
+      await service.book(CLINIC, INPUT);
+
+      expect(professionals.findByExternalId).toHaveBeenCalledWith(CLINIC, 'p1');
+      expect(prisma.appointment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            professionalName: 'Padrão da Casa',
+            professionalExternalId: 'p1',
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('professionalContext', () => {
+    it('profissional padrão na integração = política fixa, sem escolha', async () => {
+      const { service, prisma } = setup({
+        professionals: [professionalDto({ externalId: 'p1', name: 'Fixo' })],
+      });
+      Object.assign(prisma, {
+        clinicSettings: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ professionalPolicy: 'perguntar' }),
+        },
+      });
+
+      const context = await service.professionalContext(CLINIC);
+
+      expect(context.policy).toBe('fixo');
+      expect(context.fixed?.name).toBe('Fixo');
+    });
+
+    it('sem padrão, vale a política das configurações do agente', async () => {
+      const { service, prisma, integrations } = setup({
+        professionals: [professionalDto()],
+      });
+      integrations.activeStatus.mockResolvedValue({
+        unitId: 'u1',
+        professionalId: null,
+      });
+      Object.assign(prisma, {
+        clinicSettings: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ professionalPolicy: 'perguntar' }),
+        },
+      });
+
+      const context = await service.professionalContext(CLINIC);
+
+      expect(context).toMatchObject({ policy: 'perguntar', fixed: null });
+      expect(context.professionals).toHaveLength(1);
+    });
   });
 });

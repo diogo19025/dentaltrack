@@ -805,3 +805,46 @@ describe('ClinicorpAgendaProvider (adapter da API real · F9)', () => {
     });
   });
 });
+
+describe('ClinicorpAgendaProvider — leque restrito (F20)', () => {
+  it('sem padrão mas com a lista do cadastro, consulta só os informados e não lista a conta', async () => {
+    const day = new Date(Date.now() + 2 * 24 * 3_600_000);
+    const fetchMock = jest.fn((input: URL | string) => {
+      const url = new URL(String(input));
+      let body: unknown = [];
+      if (url.pathname.endsWith('/business/list_available_times')) {
+        body = [
+          {
+            date: Number(compactDate(day)),
+            slots: [{ fromTime: '09:00', toTime: '09:30' }],
+          },
+        ];
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(body)),
+      });
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const p = new ClinicorpAgendaProvider(
+      new ClinicorpClient({ username: 'u', token: 't', subscriberId: 'sub-1' }),
+      SP,
+      { unitId: '1' },
+    );
+
+    const slots = await p.listAvailableSlots({
+      from: new Date(),
+      to: day,
+      professionalIds: ['11', '12'],
+    });
+
+    const paths = fetchMock.mock.calls.map(
+      ([u]) => new URL(String(u)).pathname,
+    );
+    expect(paths.some((path) => path.endsWith('/list_all_professionals'))).toBe(
+      false,
+    );
+    expect(slots.map((s) => s.professionalId).sort()).toEqual(['11', '12']);
+  });
+});

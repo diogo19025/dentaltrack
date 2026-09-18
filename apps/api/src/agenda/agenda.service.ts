@@ -11,7 +11,10 @@ import type {
   AgendaResponse,
   AppointmentSummary,
   Availability,
+  AvailableSlot,
+  ProfessionalDto,
 } from '@dentaltrack/shared';
+import { DEFAULT_PROFESSIONAL_POLICY } from '@dentaltrack/shared';
 import { dateKeyToUtc, DEFAULT_TIMEZONE } from '../common/time';
 import {
   agendaErrorKind,
@@ -20,6 +23,10 @@ import {
 } from '../clinicorp/agenda-provider';
 import { IntegrationService } from '../clinicorp/integration.service';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  type ProfessionalMatch,
+  ProfessionalsService,
+} from '../professionals/professionals.service';
 import { bookingKey } from './appointment-keys';
 
 /** Quantos dias à frente a consulta de disponibilidade varre por padrão. */
@@ -28,6 +35,14 @@ const DEFAULT_AVAILABILITY_DAYS = 10;
 const DEFAULT_SLOT_LIMIT = 6;
 /** Duração assumida quando o procedimento não declara a dele. */
 const DEFAULT_DURATION_MINUTES = 30;
+/**
+ * Por quanto tempo uma consulta de horários vale para a mesma pergunta. Numa
+ * conversa o modelo consulta a agenda mais de uma vez em poucos minutos, e
+ * sem profissional padrão cada consulta ao Clinicorp é um request por
+ * profissional (16 s medidos com dez). O agendamento invalida o cache da
+ * empresa, e a re-checagem do `book()` continua indo ao provedor.
+ */
+const AVAILABILITY_CACHE_MS = 60_000;
 
 /** Status iniciais do agendamento — literais para o Prisma inferir o enum. */
 const AGENDADO = 'agendado' as const;
@@ -44,8 +59,31 @@ export interface BookInput {
   preferredTime: string | null;
   patientName: string | null;
   patientPhone: string | null;
+  /** Id do profissional no sistema de gestão (F9). */
   professionalId?: string | null;
+  /**
+   * Profissional do cadastro espelhado escolhido na conversa (F20). Quando
+   * vem, decide o id externo e preenche a chave e o nome na linha local já no
+   * agendamento — antes o nome só chegava na sincronização seguinte.
+   */
+  professional?: ProfessionalDto | null;
   unitId?: string | null;
+}
+
+/**
+ * Como o agente decide com quem marcar (F20).
+ *
+ * - `fixo`: a integração tem profissional padrão; tudo vai para ele e o agente
+ *   não oferece escolha;
+ * - `primeiro_livre` / `perguntar`: política do dono em `ClinicSettings`, só
+ *   relevante quando há mais de um profissional ativo.
+ */
+export interface ProfessionalContext {
+  policy: 'fixo' | 'primeiro_livre' | 'perguntar';
+  /** Ativos, na ordem de entrada. Vazio quando não há cadastro. */
+  professionals: ProfessionalDto[];
+  /** O profissional padrão da integração, quando `policy === 'fixo'`. */
+  fixed: ProfessionalDto | null;
 }
 
 export interface BookResult {
@@ -83,10 +121,63 @@ export interface BookResult {
 export class AgendaService {
   private readonly logger = new Logger(AgendaService.name);
 
+  private readonly availabilityCache = new Map<
+    string,
+    { clinicId: string; expiresAt: number; value: Availability }
+  >();
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly integrations: IntegrationService,
+    private readonly professionals: ProfessionalsService,
   ) {}
+
+  /**
+   * O que o agente precisa saber sobre a equipe antes de conversar: quem
+   * atende e como escolher (ver `ProfessionalContext`).
+   */
+  async professionalContext(clinicId: string): Promise<ProfessionalContext> {
+    const [professionals, status, settings] = await Promise.all([
+      this.professionals.listActive(clinicId),
+      this.integrations.activeStatus(clinicId),
+      this.prisma.clinicSettings.findUnique({
+        where: { clinicId },
+        select: { professionalPolicy: true },
+      }),
+    ]);
+
+    if (status.professionalId) {
+      const fixed =
+        professionals.find((p) => p.externalId === status.professionalId) ??
+        (await this.professionals.findByExternalId(
+          clinicId,
+          status.professionalId,
+        ));
+      return { policy: 'fixo', professionals, fixed };
+    }
+
+    const policy =
+      settings?.professionalPolicy === 'perguntar'
+        ? 'perguntar'
+        : DEFAULT_PROFESSIONAL_POLICY;
+    return { policy, professionals, fixed: null };
+  }
+
+  /** Casa o nome que o cliente escreveu com a equipe (ver `ProfessionalsService.match`). */
+  resolveProfessional(
+    clinicId: string,
+    text: string,
+  ): Promise<ProfessionalMatch> {
+    return this.professionals.match(clinicId, text);
+  }
+
+  /** Profissional pelo id que veio num horário oferecido. */
+  professionalByExternalId(
+    clinicId: string,
+    externalId: string,
+  ): Promise<ProfessionalDto | null> {
+    return this.professionals.findByExternalId(clinicId, externalId);
+  }
 
   /**
    * Horários realmente livres. Sem integração devolve lista vazia com
@@ -102,6 +193,8 @@ export class AgendaService {
       days?: number;
       durationMinutes?: number | null;
       limit?: number;
+      /** Só os horários deste profissional (id no sistema de gestão). */
+      professionalId?: string | null;
     } = {},
   ): Promise<Availability> {
     const provider = await this.integrations.getProvider(clinicId);
@@ -112,22 +205,53 @@ export class AgendaService {
       from.getTime() +
         (options.days ?? DEFAULT_AVAILABILITY_DAYS) * 24 * 3_600_000,
     );
+    const limit = options.limit ?? DEFAULT_SLOT_LIMIT;
+
+    const cacheKey = [
+      clinicId,
+      from.toISOString().slice(0, 13),
+      to.toISOString().slice(0, 10),
+      options.durationMinutes ?? '',
+      limit,
+      options.professionalId ?? '',
+    ].join('|');
+    const cached = this.availabilityCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+    // Sem profissional pedido nem padrão, o Clinicorp consultaria a conta
+    // inteira; restringir aos ativos do cadastro é o que deixa o dono tirar
+    // do leque quem não recebe agendamento do agente.
+    const active = await this.professionals.listActive(clinicId);
+    const professionalIds = options.professionalId
+      ? undefined
+      : active.flatMap((p) => (p.externalId ? [p.externalId] : []));
 
     const startedAt = Date.now();
     try {
-      const slots = await provider.listAvailableSlots({
+      const raw = await provider.listAvailableSlots({
         from,
         to,
         durationMinutes: options.durationMinutes ?? null,
-        limit: options.limit ?? DEFAULT_SLOT_LIMIT,
+        limit,
+        professionalId: options.professionalId ?? null,
+        ...(professionalIds && professionalIds.length > 0
+          ? { professionalIds }
+          : {}),
       });
+      const slots = withProfessionalNames(raw, active);
       this.logger.log({
         event: 'agenda.availability',
         outcome: 'ok',
         durationMs: Date.now() - startedAt,
         horarios: slots.length,
       });
-      return { slots, live: provider.live };
+      const value = { slots, live: provider.live };
+      this.availabilityCache.set(cacheKey, {
+        clinicId,
+        expiresAt: Date.now() + AVAILABILITY_CACHE_MS,
+        value,
+      });
+      return value;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.warn({
@@ -165,6 +289,7 @@ export class AgendaService {
    */
   async book(clinicId: string, input: BookInput): Promise<BookResult> {
     const duration = input.durationMinutes ?? DEFAULT_DURATION_MINUTES;
+    this.forgetAvailability(clinicId);
     const key = bookingKey({
       conversationId: input.conversationId,
       leadId: input.leadId,
@@ -198,7 +323,8 @@ export class AgendaService {
     // 2. Agenda real da empresa.
     const provider = await this.integrations.getProvider(clinicId);
     let externalId: string | null = null;
-    let professionalName: string | null = null;
+    let professionalName: string | null = input.professional?.name ?? null;
+    let professional: ProfessionalDto | null = input.professional ?? null;
     let confirmed = false;
     let failureKind: AgendaErrorKind | null = null;
 
@@ -209,8 +335,17 @@ export class AgendaService {
         const unitId =
           input.unitId ?? (await this.defaultUnitId(clinicId, provider));
         const professionalId =
-          input.professionalId ??
+          input.professional?.externalId ||
+          input.professionalId ||
           (await this.defaultProfessionalId(clinicId, provider));
+        // Quem ficou decidido aqui (padrão da integração ou o primeiro da
+        // conta) também entra na linha local, com nome — o lembrete de hoje à
+        // noite não pode esperar a sincronização para saber com quem é.
+        professional ??= await this.professionals.findByExternalId(
+          clinicId,
+          professionalId,
+        );
+        professionalName ??= professional?.name ?? null;
 
         // Entre a oferta do horário e a escolha do cliente passam minutos; a
         // re-checagem estreita essa janela. Ela não a elimina — nenhum dos
@@ -249,7 +384,7 @@ export class AgendaService {
           procedureName: input.procedureName,
         });
         externalId = created.externalId;
-        professionalName = created.professionalName;
+        professionalName = created.professionalName ?? professionalName;
         confirmed = true;
 
         if (input.leadId && patient.id) {
@@ -292,7 +427,13 @@ export class AgendaService {
     if (confirmed) {
       await this.prisma.appointment.update({
         where: { id: local.id },
-        data: { externalId, professionalName, source: 'integracao' },
+        data: {
+          externalId,
+          professionalName,
+          professionalId: professional?.id ?? null,
+          professionalExternalId: professional?.externalId || undefined,
+          source: 'integracao',
+        },
       });
     }
 
@@ -332,6 +473,7 @@ export class AgendaService {
    * suprime o que aponta para agendamento `cancelado`.
    */
   async cancel(clinicId: string, id: string): Promise<AppointmentSummary> {
+    this.forgetAvailability(clinicId);
     const row = await this.requireAppointment(clinicId, id);
     if (row.status === 'cancelado') {
       this.logger.log({
@@ -389,6 +531,7 @@ export class AgendaService {
     if (Number.isNaN(startsAt.getTime())) {
       throw new BadRequestException('Horário inválido.');
     }
+    this.forgetAvailability(clinicId);
     if (startsAt.getTime() < Date.now() - 60_000) {
       throw new BadRequestException('O novo horário já passou.');
     }
@@ -665,7 +808,10 @@ export class AgendaService {
       status: input.startsAt ? AGENDADO : PEDIDO,
       source: 'bot' as const,
       unitExternalId: input.unitId ?? null,
-      professionalExternalId: input.professionalId ?? null,
+      professionalExternalId:
+        input.professional?.externalId || input.professionalId || null,
+      professionalId: input.professional?.id ?? null,
+      professionalName: input.professional?.name ?? null,
       notes: input.procedureName,
       bookingKey: bookingKeyValue,
     };
@@ -762,6 +908,13 @@ export class AgendaService {
     }
   }
 
+  /** Esquece as consultas de horários da empresa — algo mudou na agenda. */
+  private forgetAvailability(clinicId: string): void {
+    for (const [key, entry] of this.availabilityCache) {
+      if (entry.clinicId === clinicId) this.availabilityCache.delete(key);
+    }
+  }
+
   private async defaultUnitId(
     clinicId: string,
     provider: { listUnits(): Promise<{ id: string }[]> },
@@ -849,6 +1002,30 @@ function toSummary(row: SummaryRow): AppointmentSummary {
     canceledAt: row.canceledAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/**
+ * Preenche o nome do profissional pelo cadastro espelhado quando a agenda não
+ * o informa por horário — o Clinicorp devolve só o id na rota de horários, e
+ * o agente precisa dizer ao cliente com quem é cada um.
+ */
+function withProfessionalNames(
+  slots: AvailableSlot[],
+  professionals: ProfessionalDto[],
+): AvailableSlot[] {
+  const byExternalId = new Map(
+    professionals.flatMap((p) =>
+      p.externalId ? [[p.externalId, p.name] as const] : [],
+    ),
+  );
+  return slots.map((slot) =>
+    slot.professionalName || !slot.professionalId
+      ? slot
+      : {
+          ...slot,
+          professionalName: byExternalId.get(slot.professionalId) ?? null,
+        },
+  );
 }
 
 /** A re-checagem viu o horário ocupado antes da escrita (P0.5). */
