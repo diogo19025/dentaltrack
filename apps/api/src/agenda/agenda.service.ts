@@ -800,6 +800,7 @@ const SUMMARY_SELECT = {
   endsAt: true,
   preferredTime: true,
   professionalName: true,
+  professionalId: true,
   externalId: true,
   canceledAt: true,
   createdAt: true,
@@ -818,6 +819,7 @@ interface SummaryRow {
   endsAt: Date | null;
   preferredTime: string | null;
   professionalName: string | null;
+  professionalId?: string | null;
   externalId: string | null;
   canceledAt: Date | null;
   createdAt: Date;
@@ -838,6 +840,7 @@ function toSummary(row: SummaryRow): AppointmentSummary {
     preferredTime: row.preferredTime,
     procedureName: row.procedure?.name ?? row.notes ?? null,
     professionalName: row.professionalName,
+    professionalId: row.professionalId ?? null,
     leadId: row.leadId,
     leadName: row.lead?.name ?? null,
     leadPhone: row.lead?.phone ?? null,
