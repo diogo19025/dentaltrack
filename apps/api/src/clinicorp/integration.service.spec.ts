@@ -493,7 +493,9 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
 
       const result = await integrations.check(CLINIC, 'google');
 
-      expect(result.steps.find((s) => s.key === 'profissionais')?.ok).toBe(true);
+      expect(result.steps.find((s) => s.key === 'profissionais')?.ok).toBe(
+        true,
+      );
       expect(professionalsMock.syncFromProvider).not.toHaveBeenCalled();
     });
 

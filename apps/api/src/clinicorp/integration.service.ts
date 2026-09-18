@@ -373,8 +373,7 @@ export class IntegrationService {
           ? await this.professionals.syncFromProvider(clinicId, professionals)
           : null;
         const changed =
-          mirror &&
-          mirror.criados + mirror.atualizados + mirror.desativados > 0
+          mirror && mirror.criados + mirror.atualizados + mirror.desativados > 0
             ? ` (${mirror.criados} novo(s), ${mirror.atualizados} atualizado(s), ${mirror.desativados} desativado(s))`
             : '';
         return `${professionals.length} profissional(is)${changed}.`;
