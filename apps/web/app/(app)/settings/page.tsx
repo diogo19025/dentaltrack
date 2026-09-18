@@ -110,6 +110,15 @@ const BLANK: ClinicSettingsDto = {
   professionalPolicy: "primeiro_livre",
 };
 
+/** O formulário nunca envia a política (ver `onSubmit`). */
+function withoutProfessionalPolicy(
+  values: ClinicSettingsDto,
+): Omit<ClinicSettingsDto, "professionalPolicy"> {
+  const { professionalPolicy, ...rest } = values;
+  void professionalPolicy;
+  return rest;
+}
+
 export default function SettingsPage() {
   return (
     <OwnerOnly
@@ -169,8 +178,13 @@ function SettingsContent() {
     if (data && !formState.isDirty) reset(data);
   }, [data, formState.isDirty, reset]);
 
+  // A política de profissional é salva na hora pela aba Integração e não tem
+  // campo neste formulário; mandá-la aqui reenviaria o valor carregado antes
+  // da troca, desfazendo a escolha do dono junto com o "Salvar" da Identidade.
   const onSubmit = handleSubmit((values) =>
-    update.mutate(values, { onSuccess: (saved) => reset(saved) }),
+    update.mutate(withoutProfessionalPolicy(values), {
+      onSuccess: (saved) => reset(saved),
+    }),
   );
 
   if (isError && !data) {

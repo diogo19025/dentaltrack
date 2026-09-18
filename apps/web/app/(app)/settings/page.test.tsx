@@ -190,5 +190,8 @@ describe("SettingsPage — salvar com Selects preenchidos (bubble input do Radix
     expect(payload.clinicName).toBe("Clínica Renomeada");
     expect(payload.specialty).toBe("odontologia geral e estética");
     expect(payload.greetingMediaType).toBe("image");
+    // A política de profissional é salva na hora pela aba Integração; o
+    // formulário não pode reenviar o valor antigo por cima.
+    expect(payload).not.toHaveProperty("professionalPolicy");
   });
 });
