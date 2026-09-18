@@ -7,8 +7,8 @@
 > ⚠️ Nada daqui está na lista de 12 PRs da etapa de maturidade ([`roadmap.md`](roadmap.md)).
 > É a **primeira frente de produto depois da validação comercial**, e a ordem abaixo é por valor.
 >
-> **Estado em 2026-09-17:** o item 1 está **feito** (migration `f20_professionals`).
-> O item 5 já estava implementado e ninguém tinha percebido. Faltam os itens 2, 3 e 4.
+> **Estado em 2026-09-18:** itens 1, 2, 3 e 5 **feitos**. Falta só o item 4
+> (profissional por procedimento), que depende de configuração do dono e de migration.
 
 ---
 
@@ -62,14 +62,20 @@ Como ficou, e o que divergiu do proposto acima:
   **categorias de agenda** (escolha na aba Integração, enviada em `CategoryDescription`)
   e **catálogo de procedimentos** (`POST /procedures/import`).
 
-### 2. Agenda por profissional (só tela)
+### 2. Agenda por profissional (só tela) — ✅ feito em 2026-09-18
 
 O dado já chega na sincronização; falta a tela. Em `/agenda`: **filtro por profissional**
 (select no topo, "Todos" por padrão) e **cor ou coluna por profissional** na grade da
 semana. Detalhe do agendamento passa a mostrar o nome. Fora do handoff de design —
 seguir o design system como as seções do dashboard que nasceram depois.
 
-### 3. O bot pergunta ou deduz o profissional
+Como ficou: o contrato do agendamento ganhou `professionalId` (nulo no histórico
+anterior ao cadastro, que a tela resolve pelo nome). Cor **por profissional** é o padrão
+quando há dois ou mais ativos, com legenda e alternância para a cor por procedimento; a
+cor vem da posição na ordem de entrada, que a API devolve de propósito. Inativos seguem
+no filtro, marcados, porque o histórico aponta para eles.
+
+### 3. O bot pergunta ou deduz o profissional — ✅ feito em 2026-09-18
 
 `checkAvailability` e `bookAppointment` ganham `profissionalId` opcional. Regra proposta,
 nesta ordem:
@@ -84,6 +90,24 @@ nesta ordem:
 A escolha muda o tom do atendimento, por isso é configuração e não regra fixa. O prompt
 (`ai/prompt.ts`) recebe a lista de profissionais ativos e a política.
 
+Como ficou, e o que divergiu do proposto:
+
+- as tools recebem **texto**, não id: `checkAvailability` ganhou `profissional` (o que o
+  cliente escreveu) e casa com o cadastro sem acento, caixa nem tratamento
+  (`ProfessionalsService.match`); ambíguo devolve `profissionalAmbiguo` com as opções e
+  o modelo pergunta; desconhecido devolve a equipe. Cada horário sai com `profissionalId`,
+  que volta em `bookAppointment` — é assim que horário oferecido e agendamento gravado
+  ficam com a mesma pessoa;
+- há uma **quarta regra**, antes das três: profissional padrão configurado na integração
+  = política `fixo` — tudo vai para ele e o agente não oferece escolha
+  (`AgendaService.professionalContext`);
+- o **leque** do Clinicorp ficou restrito aos ativos do cadastro (desativar alguém na aba
+  Integração tira a pessoa da consulta), e a mesma consulta vale por um minuto
+  (`AVAILABILITY_CACHE_MS`; agendar, cancelar e remarcar invalidam). A re-checagem do
+  `book()` continua indo ao provedor;
+- a linha local nasce com chave e nome do profissional já no agendamento — o que fecha a
+  segunda metade do item 5.
+
 ### 4. Profissional por procedimento (quem faz o quê)
 
 A API do Clinicorp **não informa** quais procedimentos cada profissional faz. Fica para o
@@ -91,7 +115,7 @@ dono configurar na tela (Configurações → Procedimentos, ou no cadastro do pr
 N:N `Professional ↔ Procedure`. Com isso o bot **só oferece horários de quem atende** o
 procedimento pedido, e o item 3 fica mais preciso (menos perguntas).
 
-### 5. Nome do profissional nos lembretes — ✅ já estava pronto
+### 5. Nome do profissional nos lembretes — ✅ fechado em 2026-09-18
 
 O placeholder `{profissional}` **já existe de ponta a ponta** — declarado em
 `shared/automations.ts` (`TEMPLATE_PLACEHOLDERS`), renderizado em
@@ -101,6 +125,11 @@ O placeholder `{profissional}` **já existe de ponta a ponta** — declarado em
 agendamento**: hoje ele só chega na sincronização seguinte, até 10 minutos depois,
 porque Clinicorp, Google e o simulado devolvem `professionalName: null` na criação.
 Com o cadastro do item 1, dá para resolver o nome localmente.
+
+As duas pontas foram fechadas: os textos padrão dizem "com {profissional}" (o
+renderizador derruba a preposição junto com o marcador vazio, para não sair "seu horário
+com no dia 10"), e o `book()` grava o nome pelo cadastro na hora. Quem já salvou os
+próprios textos não é tocado.
 
 ---
 
