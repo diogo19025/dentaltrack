@@ -90,6 +90,7 @@ function makeSettings(
     offerEndsOn: "",
     availability: DEFAULT_AVAILABILITY,
     whatsappInstance: "",
+    professionalPolicy: "primeiro_livre",
     ...over,
   };
 }
