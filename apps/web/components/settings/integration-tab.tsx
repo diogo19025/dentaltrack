@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import {
   AGENDA_ERROR_MESSAGES,
   APPOINTMENT_STATUS_LABELS,
@@ -8,9 +8,12 @@ import {
   type AppointmentStatus,
   type ConnectionCheck,
   INTEGRATION_PROVIDER_LABELS,
+  type ImportProceduresResult,
   type IntegrationMode,
   type IntegrationProvider,
   type IntegrationStatus,
+  type ProfessionalDto,
+  type ProfessionalPolicy,
   REQUIRED_STATUS_MAPPINGS,
   type StatusMapping,
 } from "@dentaltrack/shared";
@@ -20,10 +23,13 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Download,
   Info,
   Link2,
   PlugZap,
+  Plus,
   RefreshCw,
+  UserRound,
   XCircle,
 } from "lucide-react";
 import { ApiError, errorMessage } from "@/lib/api-client";
@@ -41,12 +47,20 @@ import {
 } from "@/components/ui/select";
 import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { useSyncAgenda } from "@/hooks/use-agenda";
 import {
   useCheckIntegration,
   useIntegration,
   useUpdateIntegration,
 } from "@/hooks/use-integration";
+import {
+  useCreateProfessional,
+  useProfessionals,
+  useUpdateProfessional,
+} from "@/hooks/use-professionals";
+import { useSettings, useUpdateSettings } from "@/hooks/use-settings";
+import { apiFetch } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 
 const PROVIDER_OPTIONS = [
@@ -90,8 +104,19 @@ type Edits = {
   mode?: IntegrationMode;
   unitId?: string | null;
   professionalId?: string | null;
+  categoryExternalId?: string | null;
   statusMappings?: StatusMapping[];
 };
+
+/**
+ * As três formas do controle de profissional. É uma decisão só do ponto de
+ * vista do dono — "quem atende o que o agente marca" —, e por isso um controle
+ * só, ainda que por baixo sejam dois campos: o profissional padrão vive na
+ * integração (é por provedor) e a política vive nas configurações do agente
+ * (sobrevive à troca de agenda).
+ */
+const ANY_FIRST = "__qualquer_primeiro__";
+const ANY_ASK = "__qualquer_perguntar__";
 
 /** Chave "não mapear" do seletor — o Select não aceita valor vazio. */
 const IGNORE = "__ignorar__";
@@ -217,7 +242,13 @@ function ProviderPanel({
   const mappings =
     edits.statusMappings ?? result?.suggestedMappings ?? data.statusMappings;
   const units = result?.units ?? [];
-  const professionals = result?.professionals ?? [];
+  // As categorias só existem depois de verificar; o que já foi escolhido
+  // continua na lista para o select não perder o próprio valor.
+  const categories = result?.categories ?? [];
+  const categoryExternalId =
+    "categoryExternalId" in edits
+      ? (edits.categoryExternalId ?? null)
+      : data.categoryExternalId;
 
   const setMode = (value: IntegrationMode) =>
     setEdits((current) => ({ ...current, mode: value }));
@@ -225,6 +256,8 @@ function ProviderPanel({
     setEdits((current) => ({ ...current, unitId: value }));
   const setProfessionalId = (value: string | null) =>
     setEdits((current) => ({ ...current, professionalId: value }));
+  const setCategoryExternalId = (value: string | null) =>
+    setEdits((current) => ({ ...current, categoryExternalId: value }));
   const setMappings = (
     updater: (current: StatusMapping[]) => StatusMapping[],
   ) =>
@@ -272,6 +305,7 @@ function ProviderPanel({
         ...(googleConfig ? { google: googleConfig } : {}),
         unitId,
         professionalId,
+        categoryExternalId,
         statusMappings: mappings,
       },
       {
@@ -559,62 +593,18 @@ function ProviderPanel({
 
       {result && <CheckResult result={result} />}
 
-      {provider === "clinicorp" &&
-        (units.length > 0 || professionals.length > 0) && (
-          <Card className="gap-0 p-0">
-            <div className="border-b border-border px-6 py-[18px]">
-              <div className="text-base font-semibold tracking-[-0.01em]">
-                Unidade e profissional
-              </div>
-              <div className="mt-0.5 text-[13px] text-muted-foreground">
-                Onde o agente busca horários e grava os agendamentos.
-              </div>
-            </div>
-            <div className="grid gap-5 p-6 md:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="int-unit">Unidade</Label>
-                <Select
-                  value={unitId ?? IGNORE}
-                  onValueChange={(v) => setUnitId(v === IGNORE ? null : v)}
-                >
-                  <SelectTrigger id="int-unit">
-                    <SelectValue placeholder="Escolha a unidade" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={IGNORE}>Não definida</SelectItem>
-                    {units.map((unit) => (
-                      <SelectItem key={unit.id} value={unit.id}>
-                        {unit.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="int-prof">Profissional padrão</Label>
-                <Select
-                  value={professionalId ?? IGNORE}
-                  onValueChange={(v) =>
-                    setProfessionalId(v === IGNORE ? null : v)
-                  }
-                >
-                  <SelectTrigger id="int-prof">
-                    <SelectValue placeholder="Qualquer profissional" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={IGNORE}>Qualquer um</SelectItem>
-                    {professionals.map((professional) => (
-                      <SelectItem key={professional.id} value={professional.id}>
-                        {professional.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </Card>
-        )}
+      {provider === "clinicorp" && (
+        <TeamCard
+          units={units}
+          unitId={unitId}
+          onUnitId={setUnitId}
+          professionalId={professionalId}
+          onProfessionalId={setProfessionalId}
+          categories={categories}
+          categoryExternalId={categoryExternalId}
+          onCategoryExternalId={setCategoryExternalId}
+        />
+      )}
 
       {mappings.length > 0 && (
         <Card className="gap-0 p-0">
@@ -701,6 +691,312 @@ function ProviderPanel({
 }
 
 /** O passo a passo da verificação — o que respondeu e o que divergiu. */
+/**
+ * Equipe, unidade e categoria — tudo o que decide **quem** atende o que o
+ * agente marca.
+ *
+ * A lista vem do cadastro espelhado (`GET /professionals`) e não do resultado
+ * da verificação: antes da F20 a equipe só existia enquanto o resultado
+ * estivesse na tela, e recarregar a página fazia o cartão inteiro sumir.
+ */
+function TeamCard({
+  units,
+  unitId,
+  onUnitId,
+  professionalId,
+  onProfessionalId,
+  categories,
+  categoryExternalId,
+  onCategoryExternalId,
+}: {
+  units: { id: string; name: string }[];
+  unitId: string | null;
+  onUnitId: (value: string | null) => void;
+  professionalId: string | null;
+  onProfessionalId: (value: string | null) => void;
+  categories: { id: string; name: string }[];
+  categoryExternalId: string | null;
+  onCategoryExternalId: (value: string | null) => void;
+}) {
+  const { data: professionals = [], isLoading } = useProfessionals(true);
+  const { data: settings } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const createProfessional = useCreateProfessional();
+  const updateProfessional = useUpdateProfessional();
+  const [newName, setNewName] = useState("");
+
+  const policy: ProfessionalPolicy =
+    settings?.professionalPolicy ?? "primeiro_livre";
+  const active = professionals.filter((p) => p.active);
+
+  // As três formas do controle, achatadas num valor só: é uma decisão só do
+  // ponto de vista do dono, ainda que por baixo sejam dois campos.
+  const choice = professionalId
+    ? professionalId
+    : policy === "perguntar"
+      ? ANY_ASK
+      : ANY_FIRST;
+
+  function chooseProfessional(value: string) {
+    if (value === ANY_FIRST || value === ANY_ASK) {
+      onProfessionalId(null);
+      const next: ProfessionalPolicy =
+        value === ANY_ASK ? "perguntar" : "primeiro_livre";
+      if (next !== policy) updateSettings.mutate({ professionalPolicy: next });
+      return;
+    }
+    onProfessionalId(value);
+  }
+
+  function addProfessional(event: FormEvent) {
+    event.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    createProfessional.mutate({ name }, { onSuccess: () => setNewName("") });
+  }
+
+  return (
+    <Card className="gap-0 p-0">
+      <div className="border-b border-border px-6 py-[18px]">
+        <div className="text-base font-semibold tracking-[-0.01em]">
+          Equipe e agendamento
+        </div>
+        <div className="mt-0.5 text-[13px] text-muted-foreground">
+          Quem atende, onde o agente busca horários e como ele escolhe o
+          profissional.
+        </div>
+      </div>
+
+      <div className="grid gap-5 p-6 md:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="int-unit">Unidade</Label>
+          <Select
+            value={unitId ?? IGNORE}
+            onValueChange={(v) => onUnitId(v === IGNORE ? null : v)}
+          >
+            <SelectTrigger id="int-unit">
+              <SelectValue placeholder="Escolha a unidade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={IGNORE}>Não definida</SelectItem>
+              {units.map((unit) => (
+                <SelectItem key={unit.id} value={unit.id}>
+                  {unit.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {units.length === 0 && (
+            <p className="text-[12px] text-muted-foreground">
+              Verifique a conexão para listar as unidades da conta.
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="int-prof">Com quem o agente marca</Label>
+          <Select value={choice} onValueChange={chooseProfessional}>
+            <SelectTrigger id="int-prof">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY_FIRST}>
+                Qualquer um — ofereço o primeiro horário livre
+              </SelectItem>
+              <SelectItem value={ANY_ASK}>
+                Qualquer um — pergunto com quem prefere
+              </SelectItem>
+              {active.map((professional) => (
+                <SelectItem key={professional.id} value={professional.id}>
+                  Sempre com {professional.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[12px] text-muted-foreground">
+            {professionalId
+              ? "Todos os agendamentos do agente vão para esta pessoa."
+              : policy === "perguntar"
+                ? "O agente pergunta a preferência antes de oferecer horários."
+                : "O agente oferece os primeiros horários livres, dizendo com quem cada um é."}
+          </p>
+        </div>
+
+        {categories.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="int-category">Categoria do agendamento</Label>
+            <Select
+              value={categoryExternalId ?? IGNORE}
+              onValueChange={(v) =>
+                onCategoryExternalId(v === IGNORE ? null : v)
+              }
+            >
+              <SelectTrigger id="int-category">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={IGNORE}>Sem categoria</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[12px] text-muted-foreground">
+              Sem categoria, o agendamento aparece sem cor na agenda do
+              Clinicorp.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-border px-6 py-5">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="text-[13px] font-medium">
+            Profissionais {isLoading ? "" : `(${active.length} ativo(s))`}
+          </div>
+          <div className="text-[12px] text-muted-foreground">
+            Quem some da conta é desativado, nunca apagado.
+          </div>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="h-16 w-full rounded-[var(--radius-sm)]" />
+        ) : professionals.length === 0 ? (
+          <p className="text-[13px] text-muted-foreground">
+            Nenhum profissional ainda. Verifique a conexão para trazer a equipe
+            da conta, ou acrescente à mão abaixo.
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {professionals.map((professional) => (
+              <ProfessionalRow
+                key={professional.id}
+                professional={professional}
+                onToggle={(next) =>
+                  updateProfessional.mutate({
+                    id: professional.id,
+                    active: next,
+                  })
+                }
+              />
+            ))}
+          </ul>
+        )}
+
+        <form onSubmit={addProfessional} className="mt-4 flex gap-2">
+          <Input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Nome do profissional"
+            aria-label="Nome do profissional a acrescentar"
+            className="max-w-[280px]"
+          />
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={!newName.trim() || createProfessional.isPending}
+          >
+            <Plus className="size-4" />
+            Acrescentar
+          </Button>
+        </form>
+      </div>
+    </Card>
+  );
+}
+
+function ProfessionalRow({
+  professional,
+  onToggle,
+}: {
+  professional: ProfessionalDto;
+  onToggle: (active: boolean) => void;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <UserRound className="size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <div
+            className={cn(
+              "truncate text-[13.5px]",
+              !professional.active && "text-muted-foreground line-through",
+            )}
+          >
+            {professional.name}
+          </div>
+          <div className="text-[12px] text-muted-foreground">
+            {professional.externalId
+              ? `Vem do Clinicorp (${professional.externalId})`
+              : "Cadastrado aqui"}
+          </div>
+        </div>
+      </div>
+      <Switch
+        checked={professional.active}
+        onCheckedChange={onToggle}
+        aria-label={
+          professional.active
+            ? `Desativar ${professional.name}`
+            : `Ativar ${professional.name}`
+        }
+      />
+    </li>
+  );
+}
+
+/**
+ * Traz o catálogo da conta para a aba Procedimentos. O dono digitava um a um,
+ * e a conta real tem 22. Preço e duração continuam manuais porque a API do
+ * fornecedor não os devolve.
+ */
+function ImportProcedures({ names }: { names: string[] }) {
+  const [result, setResult] = useState<ImportProceduresResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function run() {
+    setPending(true);
+    setError(null);
+    try {
+      setResult(
+        await apiFetch<ImportProceduresResult>("/procedures/import", {
+          method: "POST",
+          body: JSON.stringify({ names }),
+        }),
+      );
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+      <Button type="button" variant="outline" onClick={run} disabled={pending}>
+        <Download className="size-4" />
+        {pending
+          ? "Importando…"
+          : `Importar ${names.length} procedimento(s) da conta`}
+      </Button>
+      {result && (
+        <span className="text-[13px] text-muted-foreground">
+          {result.importados} importado(s), {result.jaExistiam} já existiam.
+          Preço e duração continuam a preencher na aba Procedimentos.
+        </span>
+      )}
+      {error && (
+        <span role="alert" className="text-[13px] text-destructive">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function CheckResult({ result }: { result: ConnectionCheck }) {
   return (
     <Card className="gap-0 p-0">
@@ -746,6 +1042,11 @@ function CheckResult({ result }: { result: ConnectionCheck }) {
           </li>
         ))}
       </ul>
+      {result.procedures.length > 0 && (
+        <div className="px-6 pb-5">
+          <ImportProcedures names={result.procedures.map((p) => p.name)} />
+        </div>
+      )}
       {result.requestId && (
         <div className="border-t border-border px-6 py-3">
           <SupportCode requestId={result.requestId} />

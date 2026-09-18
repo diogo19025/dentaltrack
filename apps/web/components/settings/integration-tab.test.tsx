@@ -3,6 +3,8 @@ import type {
   ConnectionStep,
   IntegrationProvider,
   IntegrationStatus,
+  ProfessionalDto,
+  ProfessionalPolicy,
 } from "@dentaltrack/shared";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -47,11 +49,30 @@ const state = vi.hoisted(() => ({
     isError: false,
     error: null as unknown,
   },
+  professionals: [] as ProfessionalDto[],
+  createProfessional: { mutate: vi.fn(), isPending: false },
+  updateProfessional: { mutate: vi.fn(), isPending: false },
+  updateSettings: { mutate: vi.fn(), isPending: false },
+  professionalPolicy: "primeiro_livre" as ProfessionalPolicy,
 }));
 
 // A aba dispara uma sincronização depois de uma verificação bem-sucedida.
 vi.mock("@/hooks/use-agenda", () => ({
   useSyncAgenda: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
+// A equipe vem do cadastro espelhado (F20), não do resultado da verificação.
+vi.mock("@/hooks/use-professionals", () => ({
+  useProfessionals: () => ({ data: state.professionals, isLoading: false }),
+  useCreateProfessional: () => state.createProfessional,
+  useUpdateProfessional: () => state.updateProfessional,
+}));
+
+vi.mock("@/hooks/use-settings", () => ({
+  useSettings: () => ({
+    data: { professionalPolicy: state.professionalPolicy },
+  }),
+  useUpdateSettings: () => state.updateSettings,
 }));
 
 vi.mock("@/hooks/use-integration", () => ({
@@ -78,6 +99,7 @@ function status(over: Partial<IntegrationStatus> = {}): IntegrationStatus {
     serviceAccountEmail: null,
     unitId: null,
     professionalId: null,
+    categoryExternalId: null,
     statusMappings: [],
     lastCheckedAt: null,
     lastSyncedAt: null,
@@ -128,6 +150,8 @@ function check(over: Partial<ConnectionCheck> = {}): ConnectionCheck {
     units: [],
     professionals: [],
     statuses: [],
+    categories: [],
+    procedures: [],
     suggestedMappings: [],
     ...over,
   };
@@ -144,6 +168,8 @@ afterEach(() => {
   state.check.error = null;
   state.update.isError = false;
   state.update.error = null;
+  state.professionals = [];
+  state.professionalPolicy = "primeiro_livre";
 });
 
 describe("IntegrationTab", () => {
@@ -425,6 +451,144 @@ describe("IntegrationTab", () => {
 
       expect(
         screen.getByText(/desliga o Clinicorp/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe("Equipe e agendamento (F20)", () => {
+    const equipe: ProfessionalDto[] = [
+      {
+        id: "p1",
+        externalId: "10",
+        name: "Dra. Ana Ribeiro",
+        active: true,
+        unitExternalId: "1",
+        createdAt: "2026-09-17T12:00:00.000Z",
+      },
+      {
+        id: "p2",
+        externalId: "",
+        name: "Dr. Bruno Lima",
+        active: false,
+        unitExternalId: "",
+        createdAt: "2026-09-17T12:01:00.000Z",
+      },
+    ];
+
+    it("a equipe aparece sem depender de ter acabado de verificar a conexão", () => {
+      // Antes da F20 a lista vinha de `check.data.professionals`: recarregar a
+      // página fazia o cartão inteiro sumir da tela.
+      state.data.clinicorp = status();
+      state.professionals = equipe;
+      render(<IntegrationTab />);
+
+      expect(screen.getByText("Dra. Ana Ribeiro")).toBeInTheDocument();
+      expect(screen.getByText("Dr. Bruno Lima")).toBeInTheDocument();
+    });
+
+    it("distingue quem veio do Clinicorp de quem foi cadastrado aqui", () => {
+      state.data.clinicorp = status();
+      state.professionals = equipe;
+      render(<IntegrationTab />);
+
+      expect(screen.getByText(/Vem do Clinicorp \(10\)/)).toBeInTheDocument();
+      expect(screen.getByText("Cadastrado aqui")).toBeInTheDocument();
+    });
+
+    it("desativar é um interruptor por profissional, não uma exclusão", () => {
+      state.data.clinicorp = status();
+      state.professionals = equipe;
+      render(<IntegrationTab />);
+
+      fireEvent.click(
+        screen.getByRole("switch", { name: /Desativar Dra. Ana Ribeiro/i }),
+      );
+
+      expect(state.updateProfessional.mutate).toHaveBeenCalledWith({
+        id: "p1",
+        active: false,
+      });
+    });
+
+    it("escolher um profissional fixo não mexe na política", () => {
+      state.data.clinicorp = status();
+      state.professionals = equipe;
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByText(/oferece os primeiros horários livres/i),
+      ).toBeInTheDocument();
+      expect(state.updateSettings.mutate).not.toHaveBeenCalled();
+    });
+
+    it("com profissional fixo, a tela diz que tudo cai nele", () => {
+      state.data.clinicorp = status({ professionalId: "p1" });
+      state.professionals = equipe;
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByText(/Todos os agendamentos do agente vão para esta pessoa/i),
+      ).toBeInTheDocument();
+    });
+
+    it("a política escolhida pelo dono é o que a tela reflete", () => {
+      state.data.clinicorp = status();
+      state.professionals = equipe;
+      state.professionalPolicy = "perguntar";
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByText(/pergunta a preferência antes de oferecer/i),
+      ).toBeInTheDocument();
+    });
+
+    it("acrescentar à mão exige um nome", () => {
+      state.data.clinicorp = status();
+      render(<IntegrationTab />);
+
+      const botao = screen.getByRole("button", { name: /Acrescentar/i });
+      expect(botao).toBeDisabled();
+
+      fireEvent.change(
+        screen.getByLabelText(/Nome do profissional a acrescentar/i),
+        { target: { value: "Dra. Carla Souza" } },
+      );
+      fireEvent.click(botao);
+
+      expect(state.createProfessional.mutate).toHaveBeenCalledWith(
+        { name: "Dra. Carla Souza" },
+        expect.anything(),
+      );
+    });
+
+    it("a categoria só é oferecida depois de a conta devolver alguma", () => {
+      state.data.clinicorp = status();
+      render(<IntegrationTab />);
+      expect(
+        screen.queryByLabelText(/Categoria do agendamento/i),
+      ).not.toBeInTheDocument();
+
+      state.check.data = check({
+        categories: [{ id: "Consulta", name: "Consulta" }],
+      });
+      render(<IntegrationTab />);
+      expect(
+        screen.getAllByLabelText(/Categoria do agendamento/i).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("oferece importar o catálogo da conta, dizendo o que continua manual", () => {
+      state.data.clinicorp = status();
+      state.check.data = check({
+        procedures: [
+          { name: "Limpeza", expertise: "Periodontia" },
+          { name: "Clareamento", expertise: "Dentística" },
+        ],
+      });
+      render(<IntegrationTab />);
+
+      expect(
+        screen.getByRole("button", { name: /Importar 2 procedimento/i }),
       ).toBeInTheDocument();
     });
   });

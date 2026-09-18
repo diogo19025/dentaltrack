@@ -42,6 +42,7 @@ model Clinic {
   inboundMessages    InboundMessage[]
   optOuts            ContactOptOut[]
   holidays           Holiday[]
+  professionals      Professional[]
 
   @@map("clinic")
 }
@@ -111,6 +112,13 @@ model ClinicSettings {
   whatsappStateAt              DateTime? @map("whatsapp_state_at")
   /// Diagnóstico mais recente do transporte, sem credenciais nem PII.
   whatsappLastError            String?   @map("whatsapp_last_error")
+  /// O que o agente faz quando a empresa tem vários profissionais e o cliente
+  /// não pediu nenhum: `primeiro_livre` oferece os primeiros horários dizendo
+  /// com quem são; `perguntar` pergunta a preferência antes. Mora aqui, e não
+  /// na integração, porque é comportamento do agente — as linhas de
+  /// `clinic_integration` são por provedor e sumiriam ao trocar de agenda.
+  /// String, e não enum, para a migration continuar aditiva.
+  professionalPolicy           String    @default("primeiro_livre") @map("professional_policy")
   createdAt                    DateTime  @default(now()) @map("created_at")
   updatedAt                    DateTime  @updatedAt @map("updated_at")
 
@@ -224,22 +232,22 @@ model Message {
 
 /// Paciente em potencial capturado pela conversa (PII — ver LGPD no roadmap).
 model Lead {
-  id         String   @id @default(uuid()) @db.Uuid
-  clinicId   String   @map("clinic_id") @db.Uuid
-  name       String?
-  phone      String?
-  email      String?
-  source     String   @default("web")
+  id           String    @id @default(uuid()) @db.Uuid
+  clinicId     String    @map("clinic_id") @db.Uuid
+  name         String?
+  phone        String?
+  email        String?
+  source       String    @default("web")
   /// Id do paciente no sistema de gestão da empresa (F9). Preenchido pela
   /// sincronização da agenda; é o que evita criar um lead duplicado a cada
   /// consulta importada e o que permite achar o paciente antes de agendar.
-  externalId String?  @map("external_id")
+  externalId   String?   @map("external_id")
   /// Quando os dados pessoais foram anonimizados a pedido do titular (P1.5).
   /// NULL = lead normal. A linha **não** é apagada: o histórico de atendimento
   /// e as métricas diárias continuam valendo; o que sai é a identificação.
   anonymizedAt DateTime? @map("anonymized_at")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   clinic           Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   conversations    Conversation[]
@@ -278,6 +286,13 @@ model Appointment {
   /// contato para deduplicar — e nulo não colide com nulo em Postgres, então
   /// esses casos seguem criando linhas independentes.
   bookingKey             String?           @map("booking_key")
+  /// Profissional que atende (F20). FK **opcional** de propósito: os
+  /// agendamentos anteriores ao cadastro espelhado só têm o texto abaixo, e
+  /// reescrever o histórico para preencher a chave não acrescenta nada.
+  professionalId         String?           @map("professional_id") @db.Uuid
+  /// Id e nome do profissional no sistema de gestão. Continuam como texto
+  /// mesmo com a FK: é o que a sincronização recebe, e é o que sobra quando o
+  /// profissional é apagado da conta do cliente.
   professionalExternalId String?           @map("professional_external_id")
   professionalName       String?           @map("professional_name")
   unitExternalId         String?           @map("unit_external_id")
@@ -292,6 +307,7 @@ model Appointment {
   conversation     Conversation?     @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   lead             Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
   procedure        Procedure?        @relation(fields: [procedureId], references: [id], onDelete: SetNull)
+  professional     Professional?     @relation(fields: [professionalId], references: [id], onDelete: SetNull)
   outboundMessages OutboundMessage[]
 
   @@unique([clinicId, externalId])
@@ -301,6 +317,7 @@ model Appointment {
   @@index([leadId])
   @@index([clinicId, startsAt])
   @@index([clinicId, status, startsAt])
+  @@index([clinicId, professionalId, startsAt])
   @@map("appointment")
 }
 
@@ -402,31 +419,61 @@ model PipelineCard {
   @@map("pipeline_card")
 }
 
+/// Profissional que atende na empresa (F20) — o espelho local de quem existe
+/// no sistema de gestão, mais quem o dono cadastra à mão (empresa sem
+/// integração também tem equipe).
+///
+/// Espelho e não fonte: `externalId` amarra a linha ao provedor, e quem some da
+/// conta do cliente vira `active = false` em vez de ser apagado, porque os
+/// agendamentos passados apontam para ele. `externalId` nulo é o cadastro
+/// manual — e nulo não colide com nulo em Postgres, então vários convivem sob
+/// o mesmo índice único.
+model Professional {
+  id             String   @id @default(uuid()) @db.Uuid
+  clinicId       String   @map("clinic_id") @db.Uuid
+  externalId     String?  @map("external_id")
+  name           String
+  active         Boolean  @default(true)
+  unitExternalId String?  @map("unit_external_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([clinicId, externalId])
+  @@index([clinicId, active])
+  @@map("professional")
+}
+
 /// Integração com o sistema de gestão da empresa (F9 · hoje só Clinicorp).
 /// `mode` decide de onde vem a agenda: `desligado` mantém a disponibilidade
 /// declarada em `/settings`; `mock` usa dados sintéticos determinísticos (é o
 /// que permite construir e testar tudo antes de a credencial do cliente chegar,
 /// mesmo padrão do `LLM_PROVIDER=mock`); `live` chama a API real.
 model ClinicIntegration {
-  id             String              @id @default(uuid()) @db.Uuid
-  clinicId       String              @map("clinic_id") @db.Uuid
-  provider       IntegrationProvider @default(clinicorp)
-  mode           IntegrationMode     @default(desligado)
+  id                 String              @id @default(uuid()) @db.Uuid
+  clinicId           String              @map("clinic_id") @db.Uuid
+  provider           IntegrationProvider @default(clinicorp)
+  mode               IntegrationMode     @default(desligado)
   /// Credenciais cifradas (AES-256-GCM, chave em INTEGRATION_ENCRYPTION_KEY).
   /// Nunca em texto puro e nunca devolvidas por nenhum endpoint.
-  credentials    String?
+  credentials        String?
   /// Unidade e profissional padrão escolhidos no wizard de conexão.
-  unitId         String?             @map("unit_id")
-  professionalId String?             @map("professional_id")
+  unitId             String?             @map("unit_id")
+  professionalId     String?             @map("professional_id")
+  /// Categoria de agenda aplicada ao que o agente marca (F20). Sem ela o
+  /// agendamento entra sem categoria e aparece sem cor na agenda do cliente.
+  categoryExternalId String?             @map("category_external_id")
   /// Mapeamento `status externo -> status daqui`: [{ externalId, externalName,
   /// status }]. É Json porque a lista é da conta do cliente, não do domínio —
   /// cada empresa nomeia (e cria) os seus.
-  statusMappings Json                @default("[]") @map("status_mappings")
-  lastCheckedAt  DateTime?           @map("last_checked_at")
-  lastSyncedAt   DateTime?           @map("last_synced_at")
-  lastError      String?             @map("last_error")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
+  statusMappings     Json                @default("[]") @map("status_mappings")
+  lastCheckedAt      DateTime?           @map("last_checked_at")
+  lastSyncedAt       DateTime?           @map("last_synced_at")
+  lastError          String?             @map("last_error")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
 
   clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
 
@@ -479,8 +526,8 @@ model AutomationSettings {
   /// pelo planejador, portanto existência/updatedAt não provam que o dono
   /// abriu a aba e salvou as escolhas.
   reviewedAt DateTime? @map("reviewed_at")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
 
   clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
 

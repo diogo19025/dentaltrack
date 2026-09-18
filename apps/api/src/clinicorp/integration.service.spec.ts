@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { GoogleAgendaProvider } from '../google-agenda/google-agenda.provider';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProfessionalsService } from '../professionals/professionals.service';
 import { ClinicorpAgendaProvider } from './clinicorp.provider';
 import { encryptSecret } from './credentials-crypto';
 import { IntegrationService } from './integration.service';
@@ -23,6 +24,7 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
     },
     automationSettings: { findUnique: jest.fn() },
   };
+  const professionalsMock = { syncFromProvider: jest.fn() };
   /** Env simulada — os testes ligam/desligam a service account do Google aqui. */
   const env: Record<string, string | undefined> = {};
   const configMock = { get: jest.fn((key: string) => env[key]) };
@@ -49,12 +51,18 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
     prismaMock.automationSettings.findUnique.mockResolvedValue(null);
     prismaMock.clinicIntegration.findFirst.mockResolvedValue(null);
     prismaMock.clinicIntegration.findUnique.mockResolvedValue(null);
+    professionalsMock.syncFromProvider.mockResolvedValue({
+      criados: 0,
+      atualizados: 0,
+      desativados: 0,
+    });
 
     const moduleRef = await Test.createTestingModule({
       providers: [
         IntegrationService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: ConfigService, useValue: configMock },
+        { provide: ProfessionalsService, useValue: professionalsMock },
       ],
     }).compile();
     integrations = moduleRef.get(IntegrationService);
@@ -491,11 +499,22 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
         'unidades',
         'profissionais',
         'status',
+        'catalogo',
         'disponibilidade',
         'agenda',
       ]);
       expect(result.units.length).toBeGreaterThan(0);
       expect(result.statuses.length).toBeGreaterThan(0);
+      // O cadastro espelhado é gravado pela própria verificação: sem isto, a
+      // equipe só existiria no resultado desta chamada e sumiria ao recarregar.
+      expect(professionalsMock.syncFromProvider).toHaveBeenCalledWith(
+        CLINIC,
+        expect.arrayContaining([
+          expect.objectContaining({ name: expect.any(String) }),
+        ]),
+      );
+      expect(result.categories.length).toBeGreaterThan(0);
+      expect(result.procedures.length).toBeGreaterThan(0);
       // O resultado é gravado para a tela mostrar a última verificação.
       expect(prismaMock.clinicIntegration.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({

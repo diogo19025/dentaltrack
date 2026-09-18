@@ -1,5 +1,7 @@
 import type {
   AvailableSlot,
+  ExternalCategory,
+  ExternalProcedure,
   ExternalProfessional,
   ExternalStatus,
   ExternalUnit,
@@ -82,6 +84,22 @@ export class MockAgendaProvider implements AgendaProvider {
    * ambíguos ("Sala de espera", "Em atendimento"), que são justamente os que
    * obrigam o operador a decidir o mapeamento em vez de aceitar um palpite.
    */
+  listCategories(): Promise<ExternalCategory[]> {
+    return Promise.resolve([
+      { id: 'consulta', name: 'Consulta' },
+      { id: 'retorno', name: 'Retorno' },
+      { id: 'avaliacao', name: 'Avaliação' },
+    ]);
+  }
+
+  listProcedures(): Promise<ExternalProcedure[]> {
+    return Promise.resolve([
+      { name: 'Avaliação', expertise: 'Clínica Geral' },
+      { name: 'Limpeza', expertise: 'Periodontia' },
+      { name: 'Clareamento', expertise: 'Dentística' },
+    ]);
+  }
+
   listStatuses(): Promise<ExternalStatus[]> {
     return Promise.resolve([
       { id: '1', name: 'Agendado' },

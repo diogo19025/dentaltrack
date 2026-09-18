@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { mediaTypeSchema, mediaUrlFieldSchema } from "./media";
+import { professionalPolicySchema } from "./professionals";
 
 /**
  * Contrato de Configurações do bot (F2 · BE-2.1 / FE-2.1..2.5).
@@ -56,6 +57,11 @@ export const clinicSettingsSchema = z.object({
   availability: z.array(availabilitySlotSchema),
   /** Instância Evolution que atende a empresa no WhatsApp (WA-1). Vazio = sem WhatsApp. */
   whatsappInstance: z.string(),
+  /**
+   * O que o agente faz quando há vários profissionais e o cliente não pediu
+   * nenhum (F20). Só vale sem profissional padrão configurado na integração.
+   */
+  professionalPolicy: professionalPolicySchema,
 });
 export type ClinicSettingsDto = z.infer<typeof clinicSettingsSchema>;
 
@@ -82,5 +88,6 @@ export const updateSettingsSchema = z.object({
   offerEndsOn: z.string().trim().max(40).optional(),
   availability: z.array(availabilitySlotSchema).max(14).optional(),
   whatsappInstance: z.string().trim().max(120).optional(),
+  professionalPolicy: professionalPolicySchema.optional(),
 });
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;

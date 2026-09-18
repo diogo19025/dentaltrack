@@ -57,7 +57,11 @@ function mockFetch(routes: Routes): jest.Mock {
 
 function provider(
   routes: Routes,
-  defaults: { unitId?: string | null; professionalId?: string | null } = {
+  defaults: {
+    unitId?: string | null;
+    professionalId?: string | null;
+    categoryName?: string | null;
+  } = {
     unitId: '1',
     professionalId: '10',
   },
@@ -665,6 +669,139 @@ describe('ClinicorpAgendaProvider (adapter da API real · F9)', () => {
       await expect(p.rescheduleAppointment(rescheduleInput)).rejects.toThrow(
         /horário anterior foi cancelado.*PatientNameAlreadyExists/,
       );
+    });
+  });
+  describe('listCategories — categorias de agenda da conta (F20)', () => {
+    it('lê a descrição e usa o próprio texto como identidade', async () => {
+      // A identidade é a descrição, e não o id, porque
+      // `create_appointment_by_api` recebe `CategoryDescription`: guardar o id
+      // obrigaria a uma segunda consulta na hora de agendar.
+      const p = provider({
+        '/appointment/list_categories': {
+          body: [
+            { Id: 3, CategoryDescription: 'Consulta' },
+            { Id: 4, CategoryDescription: 'Retorno' },
+          ],
+        },
+      });
+
+      expect(await p.listCategories()).toEqual([
+        { id: 'Consulta', name: 'Consulta' },
+        { id: 'Retorno', name: 'Retorno' },
+      ]);
+    });
+
+    it('conta que não usa categorias devolve lista vazia, e não erro', async () => {
+      const p = provider({ '/appointment/list_categories': { body: [] } });
+      expect(await p.listCategories()).toEqual([]);
+    });
+  });
+
+  describe('listProcedures — catálogo da conta (F20)', () => {
+    // O formato real é um mapa de tabelas de preço para listas de itens, e o
+    // mesmo procedimento aparece em várias tabelas.
+    const catalogo = {
+      'Tabela Particular': [
+        {
+          ProcedureName: 'Limpeza',
+          ProcedureExpertiseName: 'Periodontia',
+          Type: 'PROCEDURE',
+        },
+        {
+          ProcedureName: 'Avaliação',
+          ProcedureExpertiseName: 'Clínica Geral',
+          Type: 'PROCEDURE',
+        },
+      ],
+      'Tabela Convênio': [
+        {
+          ProcedureName: 'Limpeza',
+          ProcedureExpertiseName: 'Periodontia',
+          Type: 'PROCEDURE',
+        },
+        {
+          ProcedureName: 'Desconto',
+          ProcedureExpertiseName: null,
+          Type: 'DISCOUNT',
+        },
+      ],
+    };
+
+    it('achata as tabelas, deduplica por nome e descarta o que não é procedimento', async () => {
+      const p = provider({ '/procedures/list': { body: catalogo } });
+
+      expect(await p.listProcedures()).toEqual([
+        { name: 'Avaliação', expertise: 'Clínica Geral' },
+        { name: 'Limpeza', expertise: 'Periodontia' },
+      ]);
+    });
+
+    it('aceita também a lista simples, para a conta que responder assim', async () => {
+      const p = provider({
+        '/procedures/list': {
+          body: [
+            {
+              ProcedureName: 'Clareamento',
+              ProcedureExpertiseName: 'Dentística',
+            },
+          ],
+        },
+      });
+
+      expect(await p.listProcedures()).toEqual([
+        { name: 'Clareamento', expertise: 'Dentística' },
+      ]);
+    });
+  });
+
+  describe('categoria no agendamento (F20)', () => {
+    it('manda a categoria configurada em CategoryDescription', async () => {
+      const p = provider(
+        {
+          '/appointment/create_appointment_by_api': {
+            body: [{ Status: 'CREATED', id: 99 }],
+          },
+        },
+        { unitId: '1', professionalId: '10', categoryName: 'Consulta' },
+      );
+      jest.spyOn(p['logger'], 'log').mockImplementation(() => undefined);
+
+      await p.createAppointment({
+        patientId: '501',
+        patientName: 'Marina Alves',
+        startsAt: new Date('2026-10-01T13:00:00.000Z'),
+        endsAt: new Date('2026-10-01T13:30:00.000Z'),
+        unitId: '1',
+        professionalId: '10',
+      });
+
+      const body = JSON.parse(
+        (global.fetch as jest.Mock).mock.calls[0][1].body as string,
+      );
+      expect(body.CategoryDescription).toBe('Consulta');
+    });
+
+    it('sem categoria escolhida, o campo não vai — é como era antes da escolha existir', async () => {
+      const p = provider({
+        '/appointment/create_appointment_by_api': {
+          body: [{ Status: 'CREATED', id: 99 }],
+        },
+      });
+      jest.spyOn(p['logger'], 'log').mockImplementation(() => undefined);
+
+      await p.createAppointment({
+        patientId: '501',
+        patientName: 'Marina Alves',
+        startsAt: new Date('2026-10-01T13:00:00.000Z'),
+        endsAt: new Date('2026-10-01T13:30:00.000Z'),
+        unitId: '1',
+        professionalId: '10',
+      });
+
+      const body = JSON.parse(
+        (global.fetch as jest.Mock).mock.calls[0][1].body as string,
+      );
+      expect(body.CategoryDescription).toBeUndefined();
     });
   });
 });

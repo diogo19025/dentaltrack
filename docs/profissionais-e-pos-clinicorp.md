@@ -6,6 +6,9 @@
 >
 > ⚠️ Nada daqui está na lista de 12 PRs da etapa de maturidade ([`roadmap.md`](roadmap.md)).
 > É a **primeira frente de produto depois da validação comercial**, e a ordem abaixo é por valor.
+>
+> **Estado em 2026-09-17:** o item 1 está **feito** (migration `f20_professionals`).
+> O item 5 já estava implementado e ninguém tinha percebido. Faltam os itens 2, 3 e 4.
 
 ---
 
@@ -30,7 +33,7 @@ profissional padrão**, e é o limite mais visível para uma clínica com 10.
 
 ## § O que implementar, em ordem de valor
 
-### 1. Cadastro espelhado de profissionais (alicerce)
+### 1. Cadastro espelhado de profissionais (alicerce) — ✅ feito em 2026-09-17
 
 Tabela `Professional` por clínica: `externalId`, `name`, `active`, e mais tarde os
 procedimentos que atende. Preenchida pela **Verificar conexão** (`GET
@@ -41,6 +44,23 @@ da conta vira `active=false`, nunca é apagado, porque agendamentos passados apo
   como está; a FK é opcional para não quebrar o histórico.
 - **API:** `GET /professionals` sob `TenantGuard`; o `IntegrationService.check` faz o upsert.
 - **Nada muda no bot ainda.** Este passo só cria a base que os demais consomem.
+
+Como ficou, e o que divergiu do proposto acima:
+
+- a reconciliação **recusa a lista vazia**. `readList` devolve lista vazia quando o
+  formato da resposta diverge — é a degradação que o adapter escolheu de propósito —,
+  então tratar vazio como "ninguém trabalha aqui" apagaria a equipe da tela e faria o
+  agente parar de oferecer qualquer profissional. Na dúvida, não mexe;
+- além da **Verificar conexão**, a **sincronização de 10 min** também revalida, e é ela
+  que enxerga a recepção mexendo no painel do Clinicorp. Falhar no espelho não derruba a
+  sincronização da agenda, que é o que alimenta os lembretes;
+- a **política** do item 3 já tem onde morar (`ClinicSettings.professionalPolicy`,
+  `primeiro_livre` por padrão) e já é configurável na tela, embora o agente ainda não a
+  leia. Ela ficou nas configurações do agente e não na integração: as linhas de
+  `ClinicIntegration` são por provedor, e a escolha sumiria ao trocar de agenda;
+- entraram junto as duas rotas do § "o que ficou de fora" que custavam trabalho ao dono:
+  **categorias de agenda** (escolha na aba Integração, enviada em `CategoryDescription`)
+  e **catálogo de procedimentos** (`POST /procedures/import`).
 
 ### 2. Agenda por profissional (só tela)
 
@@ -71,11 +91,16 @@ dono configurar na tela (Configurações → Procedimentos, ou no cadastro do pr
 N:N `Professional ↔ Procedure`. Com isso o bot **só oferece horários de quem atende** o
 procedimento pedido, e o item 3 fica mais preciso (menos perguntas).
 
-### 5. Nome do profissional nos lembretes
+### 5. Nome do profissional nos lembretes — ✅ já estava pronto
 
-Os textos das automações (`automations/`) não citam o profissional. Placeholder novo
-(`{profissional}`) nos lembretes 3d/1d/1h e na remarcação após falta, preenchido do
-cadastro do item 1. Vazio quando não há.
+O placeholder `{profissional}` **já existe de ponta a ponta** — declarado em
+`shared/automations.ts` (`TEMPLATE_PLACEHOLDERS`), renderizado em
+`automation-planner.service.ts` e alimentado por `Appointment.professionalName`, que
+`loadAppointments` já seleciona. O que falta é só usá-lo nos **textos padrão**
+(`DEFAULT_AUTOMATION_SETTINGS`) e garantir que o nome esteja preenchido **na hora do
+agendamento**: hoje ele só chega na sincronização seguinte, até 10 minutos depois,
+porque Clinicorp, Google e o simulado devolvem `professionalName: null` na criação.
+Com o cadastro do item 1, dá para resolver o nome localmente.
 
 ---
 
@@ -99,8 +124,8 @@ consulta de horários faz um request por profissional.
 
 | Item | Situação | Se quiser mudar |
 |---|---|---|
-| **Categorias de agenda** do Clinicorp (Cirurgia, Periódico, Avaliação, Retorno, Consulta) | Sem equivalente no produto; agendamentos do bot entram **sem categoria** (sem cor na agenda deles) | Ajuste pequeno no adapter: `CategoryDescription` fixa (ex. "Consulta") no `create_appointment_by_api`, ou uma escolha na aba Integração |
-| **Preço e duração** dos procedimentos | A API não os devolve; os 22 procedimentos entraram só com nome e especialidade | Preencher na aba Procedimentos para o bot falar valores; duração padrão continua 30 min |
+| ~~**Categorias de agenda** do Clinicorp~~ | ✅ **Feito em 2026-09-17**: `list_categories` alimenta a escolha na aba Integração e a categoria vai em `CategoryDescription` | — |
+| **Preço e duração** dos procedimentos | A API não os devolve. Os 22 procedimentos agora entram por `POST /procedures/import` (botão na Verificar conexão), só com o nome | Preencher na aba Procedimentos para o bot falar valores; duração padrão continua 30 min |
 | **Especialidades** da conta (15, 13 de fábrica) | Viraram as **10 tags** do bot, com palavras-chave em PT-BR; Emergência e Harmonização Orofacial sem procedimento ligado | Editar tags/keywords em Configurações → Tags |
 | **Cadeiras** e **campanhas do CRM** do Clinicorp | A conta não usa (listas vazias) | Nada |
 | **Webhook** de mudança de status | A API não expõe; a agenda é lida a cada 10 min | Perguntar ao suporte do Clinicorp; se existir, só o `AgendaSyncService` muda |

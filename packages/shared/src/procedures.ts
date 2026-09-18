@@ -26,6 +26,27 @@ export const procedureSchema = z.object({
 export type ProcedureDto = z.infer<typeof procedureSchema>;
 
 /** Corpo de POST /procedures. */
+/**
+ * POST /procedures/import — traz o catálogo do sistema de gestão (F20).
+ *
+ * O dono digitava os procedimentos um a um, e a conta real tem 22. A API do
+ * fornecedor devolve nome e especialidade; preço e duração continuam manuais,
+ * porque ela não os informa e inventá-los seria pior do que o campo vazio.
+ */
+export const importProceduresSchema = z.object({
+  names: z.array(z.string().trim().min(1).max(120)).min(1).max(300),
+});
+export type ImportProceduresInput = z.infer<typeof importProceduresSchema>;
+
+/** Resultado da importação — o que entrou e o que já existia. */
+export const importProceduresResultSchema = z.object({
+  importados: z.number().int().nonnegative(),
+  jaExistiam: z.number().int().nonnegative(),
+});
+export type ImportProceduresResult = z.infer<
+  typeof importProceduresResultSchema
+>;
+
 export const createProcedureSchema = z
   .object({
     name: z.string().trim().min(1, "Informe o nome do procedimento.").max(120),

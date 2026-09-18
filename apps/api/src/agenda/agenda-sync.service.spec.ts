@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { IntegrationService } from '../clinicorp/integration.service';
 import type { ExternalAppointment } from '../clinicorp/agenda-provider';
 import { PrismaService } from '../prisma/prisma.service';
+import { ProfessionalsService } from '../professionals/professionals.service';
 import { AgendaSyncService } from './agenda-sync.service';
 
 const CLINIC = '00000000-0000-0000-0000-0000000c1141';
@@ -31,7 +32,10 @@ function external(
 describe('AgendaSyncService (sincronização por varredura · F9)', () => {
   let sync: AgendaSyncService;
 
-  const providerMock = { listAppointments: jest.fn() };
+  const providerMock = {
+    listAppointments: jest.fn(),
+    listProfessionals: jest.fn(),
+  };
   const prismaMock = {
     appointment: {
       findUnique: jest.fn(),
@@ -45,7 +49,9 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     },
     conversation: { findFirst: jest.fn() },
     clinicIntegration: { findMany: jest.fn() },
+    professional: { findMany: jest.fn() },
   };
+  const professionalsMock = { syncFromProvider: jest.fn() };
   const integrationsMock = {
     getProvider: jest.fn(),
     statusMappingsOf: jest.fn(),
@@ -69,6 +75,17 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     prismaMock.lead.update.mockResolvedValue({ id: 'lead-whats' });
     prismaMock.conversation.findFirst.mockResolvedValue(null);
     providerMock.listAppointments.mockResolvedValue([external()]);
+    providerMock.listProfessionals.mockResolvedValue([
+      { id: '10', name: 'Dra. Ana', unitId: null },
+    ]);
+    professionalsMock.syncFromProvider.mockResolvedValue({
+      criados: 0,
+      atualizados: 0,
+      desativados: 0,
+    });
+    prismaMock.professional.findMany.mockResolvedValue([
+      { id: 'prof-ana', externalId: '10' },
+    ]);
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -76,6 +93,7 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: IntegrationService, useValue: integrationsMock },
         { provide: ConfigService, useValue: configMock },
+        { provide: ProfessionalsService, useValue: professionalsMock },
       ],
     }).compile();
     sync = moduleRef.get(AgendaSyncService);

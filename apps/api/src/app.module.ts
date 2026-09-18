@@ -18,6 +18,7 @@ import { OnboardingModule } from './onboarding/onboarding.module';
 import { PipelineModule } from './pipeline/pipeline.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProceduresModule } from './procedures/procedures.module';
+import { ProfessionalsModule } from './professionals/professionals.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { SettingsModule } from './settings/settings.module';
 import { TagsModule } from './tags/tags.module';
@@ -35,6 +36,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     OnboardingModule,
     SettingsModule,
     ProceduresModule,
+    ProfessionalsModule,
     TagsModule,
     MediaModule,
     MetricsModule,

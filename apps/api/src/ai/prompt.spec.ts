@@ -43,6 +43,7 @@ function makeSettings(over: Partial<ClinicSettings> = {}): ClinicSettings {
     whatsappState: null,
     whatsappStateAt: null,
     whatsappLastError: null,
+    professionalPolicy: 'primeiro_livre',
     createdAt: NOW,
     updatedAt: NOW,
     ...over,

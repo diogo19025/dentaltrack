@@ -107,6 +107,7 @@ const BLANK: ClinicSettingsDto = {
   offerEndsOn: "",
   availability: DEFAULT_AVAILABILITY,
   whatsappInstance: "",
+  professionalPolicy: "primeiro_livre",
 };
 
 export default function SettingsPage() {

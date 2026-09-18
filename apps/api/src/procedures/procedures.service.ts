@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import {
   type CreateProcedureInput,
+  type ImportProceduresResult,
   MEDIA_TYPES,
   type MediaType,
   type ProcedureDto,
@@ -54,6 +55,16 @@ function toDto(row: ProcedureRow): ProcedureDto {
   };
 }
 
+/** Nome comparável: sem caixa, sem acento e sem espaço repetido. */
+function normalizeName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
 /**
  * Catálogo de procedimentos (BE-2.2). CRUD sempre escopado por `clinicId`
  * (multi-tenant). Cada procedimento pode ter tags de interesse associadas
@@ -72,6 +83,43 @@ export class ProceduresService {
       include: WITH_TAGS,
     });
     return rows.map(toDto);
+  }
+
+  /**
+   * Traz o catálogo do sistema de gestão (F20).
+   *
+   * Só cria o que falta, comparando por nome sem caixa nem acento — rodar de
+   * novo depois de o dono renomear um procedimento não pode duplicá-lo. Preço
+   * e duração ficam vazios porque a API do fornecedor não os devolve.
+   */
+  async importNames(
+    clinicId: string,
+    names: readonly string[],
+  ): Promise<ImportProceduresResult> {
+    const existing = await this.prisma.procedure.findMany({
+      where: { clinicId },
+      select: { name: true },
+    });
+    const known = new Set(existing.map((row) => normalizeName(row.name)));
+
+    const missing: string[] = [];
+    for (const name of names) {
+      const key = normalizeName(name);
+      if (!key || known.has(key)) continue;
+      known.add(key);
+      missing.push(name.trim());
+    }
+
+    if (missing.length > 0) {
+      await this.prisma.procedure.createMany({
+        data: missing.map((name) => ({ clinicId, name })),
+      });
+    }
+
+    return {
+      importados: missing.length,
+      jaExistiam: names.length - missing.length,
+    };
   }
 
   /** Cria um procedimento na empresa, associando as tags informadas. */

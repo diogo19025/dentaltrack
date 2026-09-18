@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ProfessionalsModule } from '../professionals/professionals.module';
 import { IntegrationController } from './integration.controller';
 import { IntegrationService } from './integration.service';
 
@@ -10,6 +11,7 @@ import { IntegrationService } from './integration.service';
  * do PrismaModule global.
  */
 @Module({
+  imports: [ProfessionalsModule],
   controllers: [IntegrationController],
   providers: [IntegrationService],
   exports: [IntegrationService],
