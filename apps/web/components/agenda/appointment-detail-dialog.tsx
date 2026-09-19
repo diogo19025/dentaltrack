@@ -80,8 +80,8 @@ export function AppointmentDetailDialog({
       {appointment && (
         <DialogContent
           key={appointment.id}
-          className="gap-0 overflow-hidden p-0 sm:max-w-[520px]"
-          overlayClassName="bg-black/30 backdrop-blur-[6px]"
+          className="gap-0 overflow-hidden p-0 [animation-timing-function:cubic-bezier(0.23,1,0.32,1)] data-[state=closed]:duration-150 sm:max-w-[520px]"
+          overlayClassName="bg-black/30 backdrop-blur-[6px] duration-200 data-[state=closed]:duration-150"
         >
           <Details appointment={appointment} color={color} />
         </DialogContent>
