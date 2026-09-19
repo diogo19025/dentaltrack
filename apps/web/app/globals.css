@@ -390,8 +390,12 @@
 }
 /* Troca de valor no lugar (número de KPI ao mudar o período): só opacidade. */
 @keyframes swapIn {
-  from { opacity: 0.35; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .anim-swap {
   animation: swapIn 0.2s ease both;
