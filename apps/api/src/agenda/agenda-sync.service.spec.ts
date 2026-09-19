@@ -84,7 +84,7 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
       desativados: 0,
     });
     prismaMock.professional.findMany.mockResolvedValue([
-      { id: 'prof-ana', externalId: '10' },
+      { id: 'prof-ana', externalId: '10', name: 'Dra. Ana' },
     ]);
 
     const moduleRef = await Test.createTestingModule({
@@ -123,6 +123,20 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
       clinicId: CLINIC,
       externalId: 'ext-1',
       source: 'integracao',
+      professionalName: 'Dra. Ana',
+    });
+  });
+
+  it('sem nome na listagem, o nome vem do cadastro espelhado', async () => {
+    // O Clinicorp lista o agendamento só com o id do dentista.
+    providerMock.listAppointments.mockResolvedValueOnce([
+      external({ professionalName: null }),
+    ]);
+
+    await sync.syncClinic(CLINIC, NOW);
+
+    expect(createdData()).toMatchObject({
+      professionalId: 'prof-ana',
       professionalName: 'Dra. Ana',
     });
   });

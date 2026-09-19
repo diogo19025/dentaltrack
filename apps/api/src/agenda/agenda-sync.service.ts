@@ -37,6 +37,12 @@ export interface SyncSummary {
  * A janela cobre alguns dias para trás (para capturar faltas e atendimentos
  * concluídos) e algumas semanas para frente (para alimentar os lembretes).
  */
+/** O que o cadastro espelhado (F20) sabe de um profissional da integração. */
+interface MirroredProfessional {
+  id: string;
+  name: string;
+}
+
 @Injectable()
 export class AgendaSyncService {
   private readonly logger = new Logger(AgendaSyncService.name);
@@ -97,7 +103,7 @@ export class AgendaSyncService {
     const providerName = await this.integrations.activeProviderName(clinicId);
     const byExternalId = mirrorsProfessionals(providerName)
       ? await this.mirrorProfessionals(clinicId, provider)
-      : new Map<string, string>();
+      : new Map<string, MirroredProfessional>();
 
     const mappings = await this.integrations.statusMappingsOf(clinicId);
     const source = providerName ?? 'clinicorp';
@@ -133,7 +139,7 @@ export class AgendaSyncService {
     external: ExternalAppointment,
     mappings: StatusMapping[],
     leadSource: string,
-    professionalsByExternalId: ReadonlyMap<string, string>,
+    professionalsByExternalId: ReadonlyMap<string, MirroredProfessional>,
   ): Promise<'criados' | 'atualizados' | 'ignorados'> {
     // A leitura só enriquece (status atual como fallback, contato já vinculado).
     // A escrita é um `upsert` único sobre `(clinicId, externalId)` — o Prisma o
@@ -160,6 +166,13 @@ export class AgendaSyncService {
       existing?.conversationId ??
       (leadId ? await this.latestConversation(clinicId, leadId) : null);
 
+    // A chave só é preenchida quando o profissional existe no cadastro; o
+    // texto continua sendo a verdade quando não existe (profissional apagado
+    // da conta do cliente, ou agenda que não informa quem atende).
+    const mirrored = external.professionalExternalId
+      ? (professionalsByExternalId.get(external.professionalExternalId) ?? null)
+      : null;
+
     const now = new Date();
     const data = {
       startsAt: external.startsAt,
@@ -167,14 +180,12 @@ export class AgendaSyncService {
       status,
       source: 'integracao' as const,
       professionalExternalId: external.professionalExternalId,
-      professionalName: external.professionalName,
-      // A chave só é preenchida quando o profissional existe no cadastro; o
-      // texto acima continua sendo a verdade quando não existe (profissional
-      // apagado da conta do cliente, ou agenda que não informa quem atende).
-      professionalId: external.professionalExternalId
-        ? (professionalsByExternalId.get(external.professionalExternalId) ??
-          null)
-        : null,
+      // O Clinicorp lista o agendamento só com o id do dentista, sem nome; o
+      // nome vem do cadastro espelhado. Sem isso a tela dizia "Não definido"
+      // e o lembrete saía sem o "com {profissional}", com a chave certa no
+      // banco o tempo todo.
+      professionalName: external.professionalName ?? mirrored?.name ?? null,
+      professionalId: mirrored?.id ?? null,
       unitExternalId: external.unitExternalId,
       notes: external.procedureName,
       lastSyncedAt: now,
@@ -196,7 +207,7 @@ export class AgendaSyncService {
   }
 
   /**
-   * Espelha os profissionais da conta e devolve `externalId -> id local`.
+   * Espelha os profissionais da conta e devolve `externalId -> cadastro local`.
    *
    * Best-effort de propósito: uma falha aqui deixa o mapa vazio e os
    * agendamentos entram só com o texto, exatamente como antes da F20. Derrubar
@@ -205,7 +216,7 @@ export class AgendaSyncService {
   private async mirrorProfessionals(
     clinicId: string,
     provider: { listProfessionals(unitId?: string | null): Promise<unknown[]> },
-  ): Promise<ReadonlyMap<string, string>> {
+  ): Promise<ReadonlyMap<string, MirroredProfessional>> {
     try {
       const external = (await provider.listProfessionals()) as Parameters<
         typeof this.professionals.syncFromProvider
@@ -220,10 +231,14 @@ export class AgendaSyncService {
 
     const rows = await this.prisma.professional.findMany({
       where: { clinicId, externalId: { not: null } },
-      select: { id: true, externalId: true },
+      select: { id: true, externalId: true, name: true },
     });
     return new Map(
-      rows.flatMap((row) => (row.externalId ? [[row.externalId, row.id]] : [])),
+      rows.flatMap((row) =>
+        row.externalId
+          ? [[row.externalId, { id: row.id, name: row.name }] as const]
+          : [],
+      ),
     );
   }
 
