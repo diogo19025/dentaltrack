@@ -10,6 +10,7 @@ import {
   Inbox,
   MessageCircle,
   RefreshCw,
+  Tags,
   Target,
   Users,
 } from "lucide-react";
@@ -120,10 +121,10 @@ export default function DashboardPage() {
             />
             <KpiCard
               icon={MessageCircle}
-              label="Mensagens do bot (50d)"
+              label="Mensagens do bot"
               value={intFmt(data.kpis.botMessages.value)}
               kpi={data.kpis.botMessages}
-              hint="Respostas do agente · janela 50 dias"
+              hint="Respostas do agente no período"
             />
             <KpiCard
               icon={RefreshCw}
@@ -208,9 +209,24 @@ export default function DashboardPage() {
               {data.topTags.length > 0 ? (
                 <HBars data={data.topTags} />
               ) : (
-                <p className="py-6 text-center text-[13px] text-muted-foreground">
-                  Nenhuma tag detectada ainda.
-                </p>
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-primary-tint text-primary">
+                    <Tags className="size-4" />
+                  </span>
+                  <p className="text-[13px] font-medium">
+                    Nenhuma tag detectada ainda
+                  </p>
+                  <p className="max-w-[300px] text-[12.5px] text-muted-foreground">
+                    O assistente classifica cada conversa pelas tags de
+                    interesse que a empresa cadastrar.
+                  </p>
+                  <Button asChild variant="link" size="sm" className="group">
+                    <Link href="/settings?tab=tags">
+                      Definir tags{" "}
+                      <ChevronRight className="size-4 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
+                    </Link>
+                  </Button>
+                </div>
               )}
             </Card>
           </div>

@@ -11,7 +11,38 @@ import {
   YAxis,
 } from "recharts";
 
-const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" } as const;
+const AXIS_TICK = {
+  fontSize: 11,
+  letterSpacing: "0.01em",
+  fill: "var(--muted-foreground)",
+} as const;
+/**
+ * Marcador só onde há valor. Uma série no zero desenhada ponto a ponto vira um
+ * pontilhado denso colado no eixo, e o eixo parece sujo.
+ */
+function dotIfValue(color: string) {
+  return function Dot(props: {
+    cx?: number;
+    cy?: number;
+    value?: number;
+    index?: number;
+  }) {
+    if (!props.value || props.cx == null || props.cy == null) {
+      return <g key={props.index} />;
+    }
+    return (
+      <circle
+        key={props.index}
+        cx={props.cx}
+        cy={props.cy}
+        r={2.6}
+        fill={color}
+        stroke="var(--card)"
+        strokeWidth={1.4}
+      />
+    );
+  };
+}
 
 /**
  * Linha de 2 séries (bot × cliente) — FE-3.1, espelha `LineChart` do
@@ -77,12 +108,7 @@ export function LineChart({
           name="Bot"
           stroke="var(--chart-1)"
           strokeWidth={2.4}
-          dot={{
-            r: 2.6,
-            fill: "var(--chart-1)",
-            stroke: "var(--card)",
-            strokeWidth: 1.4,
-          }}
+          dot={dotIfValue("var(--chart-1)")}
           activeDot={{ r: 4 }}
           isAnimationActive={false}
         />
@@ -92,12 +118,7 @@ export function LineChart({
           name="Cliente"
           stroke="var(--chart-3)"
           strokeWidth={2.4}
-          dot={{
-            r: 2.6,
-            fill: "var(--chart-3)",
-            stroke: "var(--card)",
-            strokeWidth: 1.4,
-          }}
+          dot={dotIfValue("var(--chart-3)")}
           activeDot={{ r: 4 }}
           isAnimationActive={false}
         />

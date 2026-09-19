@@ -26,6 +26,9 @@ export function KpiCard({
   sparkColor?: string;
 }) {
   const up = kpi.deltaDir === "up";
+  // Uma série com um único dia com valor vira uma reta com um gancho no fim:
+  // ruído que diminui a confiança em vez de aumentar. Só desenha com 2+.
+  const showSpark = kpi.spark.filter((v) => v > 0).length >= 2;
 
   return (
     <Card className="flex flex-col gap-3.5 p-[22px_24px]">
@@ -56,7 +59,7 @@ export function KpiCard({
       </div>
 
       <div>
-        <div className="mb-[5px] text-[13px] text-muted-foreground">
+        <div className="mb-[5px] text-[13px] tracking-[0.005em] text-muted-foreground">
           {label}
         </div>
         {/* `key` remonta só o número quando ele muda (troca de período):
@@ -68,13 +71,13 @@ export function KpiCard({
           {value}
         </div>
         {hint && (
-          <div className="mt-[7px] text-[12px] text-muted-foreground">
+          <div className="mt-[7px] text-[12px] tracking-[0.01em] text-muted-foreground">
             {hint}
           </div>
         )}
       </div>
 
-      {kpi.spark.length > 0 && (
+      {showSpark && (
         <div className="-mt-0.5" aria-hidden="true">
           <Sparkline data={kpi.spark} color={sparkColor} />
         </div>

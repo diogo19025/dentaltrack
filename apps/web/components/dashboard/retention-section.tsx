@@ -126,7 +126,9 @@ function RetentionStat({
       <div className="tabular mt-1 text-[26px] font-semibold tracking-[-0.02em]">
         {value}
       </div>
-      <div className="mt-[2px] text-[12px] text-muted-foreground">{hint}</div>
+      <div className="mt-[2px] text-[12px] tracking-[0.01em] text-muted-foreground">
+        {hint}
+      </div>
     </div>
   );
 }

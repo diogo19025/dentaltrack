@@ -121,9 +121,11 @@ export function LeadTemperatureSection({
                               <div className="truncate text-[13.5px] font-medium">
                                 {lead.name ?? "Lead"}
                               </div>
-                              <div className="truncate text-[12px] text-muted-foreground">
-                                {lead.interest ?? "—"}
-                              </div>
+                              {lead.interest && (
+                                <div className="truncate text-[12px] tracking-[0.01em] text-muted-foreground">
+                                  {lead.interest}
+                                </div>
+                              )}
                             </div>
                             <span
                               className="tabular text-[13px] font-semibold"

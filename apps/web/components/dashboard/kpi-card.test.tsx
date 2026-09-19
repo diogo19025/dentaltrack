@@ -41,7 +41,9 @@ describe("KpiCard", () => {
       />,
     );
 
-    expect(screen.getByText("8%").getAttribute("style")).toContain("--destructive-tint");
+    expect(screen.getByText("8%").getAttribute("style")).toContain(
+      "--destructive-tint",
+    );
   });
 
   it("sem delta não há badge; sem spark não há sparkline", () => {
@@ -55,6 +57,19 @@ describe("KpiCard", () => {
     );
 
     expect(screen.queryByText(/%$/, { selector: "span.tabular" })).toBeNull();
+    expect(screen.queryByTestId("sparkline")).toBeNull();
+  });
+
+  it("série com um único dia com valor não desenha sparkline (seria uma reta com um gancho)", () => {
+    render(
+      <KpiCard
+        icon={Users}
+        label="Leads totais"
+        value="1"
+        kpi={{ value: 1, delta: null, deltaDir: null, spark: [0, 0, 0, 0, 1] }}
+      />,
+    );
+
     expect(screen.queryByTestId("sparkline")).toBeNull();
   });
 });
