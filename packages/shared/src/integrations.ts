@@ -30,6 +30,17 @@ export const INTEGRATION_PROVIDER_LABELS: Record<IntegrationProvider, string> =
   };
 
 /**
+ * Provedores cujos "profissionais" são pessoas de verdade e por isso alimentam
+ * o cadastro espelhado (F20). O Google Agenda devolve um único profissional
+ * sintético — a própria agenda — e espelhá-lo desativaria a equipe real.
+ */
+export function mirrorsProfessionals(
+  provider: IntegrationProvider | null | undefined,
+): boolean {
+  return provider === "clinicorp";
+}
+
+/**
  * `mock` — dados sintéticos determinísticos (desenvolvimento, testes e demo);
  * `live` — API real. `desligado` mantém a empresa no comportamento pré-F9
  * (disponibilidade declarada em `/settings`).

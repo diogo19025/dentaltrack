@@ -245,15 +245,19 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
     }
 
     // `professionalId` é obrigatório na rota. Sem um padrão, consulta-se cada
-    // profissional da conta; escolher o padrão em Configurações evita o leque.
+    // profissional em leque — os ativos do cadastro quando o chamador os
+    // informa (F20), senão a conta inteira. O padrão em Configurações evita o
+    // leque de vez.
     const professionalId =
       query.professionalId ?? this.defaults.professionalId ?? null;
     const professionalIds = professionalId
       ? [professionalId]
-      : (await this.listProfessionals(unitId)).map((p) => p.id);
+      : query.professionalIds !== undefined
+        ? [...query.professionalIds]
+        : (await this.listProfessionals(unitId)).map((p) => p.id);
     if (!professionalIds.length) {
       throw new AgendaProviderError(
-        'A conta não devolveu nenhum profissional — a consulta de horários exige um.',
+        'Nenhum profissional ativo está disponível nesta unidade — a consulta de horários exige um.',
         { kind: 'config' },
       );
     }

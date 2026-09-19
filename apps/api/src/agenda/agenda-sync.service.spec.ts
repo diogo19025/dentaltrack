@@ -305,6 +305,17 @@ describe('AgendaSyncService (sincronização por varredura · F9)', () => {
     });
   });
 
+  it('com o Google como provedor, o espelho de profissionais não é tocado', async () => {
+    // O Google devolve um único profissional sintético (a própria agenda);
+    // espelhá-lo criaria "Agenda Google" na equipe e desativaria o resto.
+    integrationsMock.activeProviderName.mockResolvedValue('google');
+
+    await sync.syncClinic(CLINIC, NOW);
+
+    expect(professionalsMock.syncFromProvider).not.toHaveBeenCalled();
+    expect(prismaMock.appointment.upsert).toHaveBeenCalled();
+  });
+
   it('um agendamento problemático não derruba a rodada', async () => {
     providerMock.listAppointments.mockResolvedValueOnce([
       external({ externalId: 'ruim' }),

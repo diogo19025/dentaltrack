@@ -85,6 +85,14 @@ const templateSchema = z
   );
 
 /**
+ * Preposição que só faz sentido junto do marcador seguinte ("com {profissional}",
+ * "de {procedimento}"). Quando o marcador vem vazio, a preposição sai junto —
+ * sem isso o texto padrão viraria "seu horário com no dia 10".
+ */
+const PREPOSITION_BEFORE_PLACEHOLDER =
+  /(\s*)\b(com|de|da|do|na|no|para)\s+\{(\w+)\}/g;
+
+/**
  * Substitui os marcadores pelo valor do contexto. Determinístico e sem IA: o
  * texto do lembrete é do dono da empresa, não do modelo — ele precisa saber
  * exatamente o que sai no nome dele.
@@ -93,11 +101,17 @@ export function renderTemplate(
   template: string,
   context: TemplateContext,
 ): string {
+  const valueOf = (key: string) =>
+    context[key as TemplatePlaceholder]?.trim() ?? "";
   return template
-    .replace(/\{(\w+)\}/g, (_match, key: string) => {
-      const value = context[key as TemplatePlaceholder];
-      return value?.trim() ?? "";
-    })
+    .replace(
+      PREPOSITION_BEFORE_PLACEHOLDER,
+      (_match, space: string, preposition: string, key: string) => {
+        const value = valueOf(key);
+        return value ? `${space}${preposition} ${value}` : "";
+      },
+    )
+    .replace(/\{(\w+)\}/g, (_match, key: string) => valueOf(key))
     .replace(/[ \t]{2,}/g, " ")
     .replace(/ ([,.!?])/g, "$1")
     .trim();
@@ -187,17 +201,17 @@ export const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
   lembrete3d: {
     enabled: true,
     template:
-      "Olá, {nome}! Aqui é da {empresa}. Passando para lembrar do seu horário {procedimento} no dia {data} às {hora}. Está tudo certo para você?",
+      "Olá, {nome}! Aqui é da {empresa}. Passando para lembrar do seu horário {procedimento} com {profissional} no dia {data} às {hora}. Está tudo certo para você?",
   },
   lembrete1d: {
     enabled: true,
     template:
-      "Olá, {nome}! Seu horário na {empresa} é amanhã, {data}, às {hora}. Posso confirmar sua presença?",
+      "Olá, {nome}! Seu horário na {empresa} com {profissional} é amanhã, {data}, às {hora}. Posso confirmar sua presença?",
   },
   lembrete1h: {
     enabled: true,
     template:
-      "Olá, {nome}! Seu horário na {empresa} é hoje às {hora}. Estamos te esperando!",
+      "Olá, {nome}! Seu horário na {empresa} com {profissional} é hoje às {hora}. Estamos te esperando!",
   },
   atraso: {
     enabled: false,
@@ -210,7 +224,7 @@ export const DEFAULT_AUTOMATION_SETTINGS: AutomationSettings = {
     attempts: 2,
     intervalHours: 48,
     template:
-      "Olá, {nome}! Sentimos sua falta no horário de {data}. Acontece! Quer que eu procure um novo horário para você?",
+      "Olá, {nome}! Sentimos sua falta no horário de {data} com {profissional}. Acontece! Quer que eu procure um novo horário para você?",
   },
   retorno: {
     enabled: true,

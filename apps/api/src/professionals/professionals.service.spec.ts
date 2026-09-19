@@ -37,6 +37,7 @@ describe('ProfessionalsService (cadastro espelhado · F20)', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
       delete: jest.fn(),
+      count: jest.fn(),
     },
     appointment: { count: jest.fn() },
   };
@@ -44,6 +45,7 @@ describe('ProfessionalsService (cadastro espelhado · F20)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     prismaMock.professional.findMany.mockResolvedValue([]);
+    prismaMock.professional.count.mockResolvedValue(0);
     prismaMock.appointment.count.mockResolvedValue(0);
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -90,6 +92,49 @@ describe('ProfessionalsService (cadastro espelhado · F20)', () => {
       expect(dto.externalId).toBe('');
       expect(dto.unitExternalId).toBe('');
       expect(dto.createdAt).toBe(NOW.toISOString());
+    });
+  });
+
+  describe('resolveExternalId', () => {
+    it('converte o UUID local no id que o Clinicorp entende', async () => {
+      prismaMock.professional.findFirst.mockResolvedValueOnce(row());
+
+      await expect(
+        service.resolveExternalId(CLINIC, 'p-local-1', {
+          unitExternalId: '1',
+        }),
+      ).resolves.toBe('10');
+    });
+
+    it('recusa manual, inativo e profissional de outra unidade', async () => {
+      for (const invalid of [
+        row({ externalId: null }),
+        row({ active: false }),
+        row({ unitExternalId: '2' }),
+      ]) {
+        prismaMock.professional.findFirst.mockResolvedValueOnce(invalid);
+        await expect(
+          service.resolveExternalId(CLINIC, invalid.id, {
+            unitExternalId: '1',
+          }),
+        ).resolves.toBeNull();
+      }
+    });
+
+    it('preserva id externo legado somente antes de existir um espelho validável', async () => {
+      prismaMock.professional.findFirst.mockResolvedValue(null);
+      prismaMock.professional.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(2);
+
+      await expect(
+        service.resolveExternalId(CLINIC, '10', { unitExternalId: '1' }),
+      ).resolves.toBe('10');
+      await expect(
+        service.resolveExternalId(CLINIC, 'desconhecido', {
+          unitExternalId: '1',
+        }),
+      ).resolves.toBeNull();
     });
   });
 
@@ -238,6 +283,96 @@ describe('ProfessionalsService (cadastro espelhado · F20)', () => {
       await expect(service.remove(CLINIC, 'p-de-outra')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('match — o nome que o cliente escreveu', () => {
+    const team = () => [
+      row({ id: 'p-ana', externalId: '10', name: 'Dra. Ana Paula Souza' }),
+      row({ id: 'p-ana2', externalId: '11', name: 'Ana Clara Lima' }),
+      row({ id: 'p-bruno', externalId: '12', name: 'Dr. Bruno Lima' }),
+      row({ id: 'p-jose', externalId: '13', name: 'José Antônio' }),
+    ];
+
+    beforeEach(() => {
+      prismaMock.professional.findMany.mockResolvedValue(team());
+    });
+
+    it('"Dra. Ana" é ambíguo quando há duas Anas — quem decide é o cliente', async () => {
+      const result = await service.match(CLINIC, 'Dra. Ana');
+      expect(result.kind).toBe('ambiguo');
+      if (result.kind === 'ambiguo') {
+        expect(result.options.map((p) => p.id)).toEqual(['p-ana', 'p-ana2']);
+      }
+    });
+
+    it('"ana paula" desambigua pelo segundo nome', async () => {
+      const result = await service.match(CLINIC, 'ana paula');
+      expect(result).toMatchObject({
+        kind: 'um',
+        professional: { id: 'p-ana' },
+      });
+    });
+
+    it('ignora acento, caixa e tratamento ("doutor bruno" ≈ "Dr. Bruno Lima")', async () => {
+      const result = await service.match(CLINIC, 'doutor BRUNO');
+      expect(result).toMatchObject({
+        kind: 'um',
+        professional: { id: 'p-bruno' },
+      });
+      const semAcento = await service.match(CLINIC, 'jose antonio');
+      expect(semAcento).toMatchObject({
+        kind: 'um',
+        professional: { id: 'p-jose' },
+      });
+    });
+
+    it('prefixo basta ("bru"), mas sobrenome que não existe não casa', async () => {
+      expect(await service.match(CLINIC, 'bru')).toMatchObject({
+        kind: 'um',
+        professional: { id: 'p-bruno' },
+      });
+      expect(await service.match(CLINIC, 'Bruno Ferreira')).toEqual({
+        kind: 'nenhum',
+      });
+    });
+
+    it('nome inteiro igual vence mesmo quando o prefixo casaria com outro', async () => {
+      prismaMock.professional.findMany.mockResolvedValue([
+        row({ id: 'p-ana', externalId: '10', name: 'Ana' }),
+        row({ id: 'p-anab', externalId: '11', name: 'Anabela' }),
+      ]);
+      expect(await service.match(CLINIC, 'ana')).toMatchObject({
+        kind: 'um',
+        professional: { id: 'p-ana' },
+      });
+    });
+
+    it('texto vazio ou só tratamento não casa ninguém', async () => {
+      expect(await service.match(CLINIC, '  ')).toEqual({ kind: 'nenhum' });
+      expect(await service.match(CLINIC, 'Dra.')).toEqual({ kind: 'nenhum' });
+    });
+
+    it('só considera os ativos', async () => {
+      await service.match(CLINIC, 'bruno');
+      expect(prismaMock.professional.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ active: true }),
+        }),
+      );
+    });
+  });
+
+  describe('findByExternalId', () => {
+    it('devolve o profissional pelo id do sistema de gestão, ativo ou não', async () => {
+      prismaMock.professional.findFirst.mockResolvedValueOnce(
+        row({ active: false }),
+      );
+      const found = await service.findByExternalId(CLINIC, '10');
+      expect(found).toMatchObject({ id: 'p-local-1', active: false });
+      expect(prismaMock.professional.findFirst).toHaveBeenCalledWith({
+        where: { clinicId: CLINIC, externalId: '10' },
+      });
     });
   });
 });

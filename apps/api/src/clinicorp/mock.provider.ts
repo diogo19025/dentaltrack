@@ -79,11 +79,6 @@ export class MockAgendaProvider implements AgendaProvider {
     );
   }
 
-  /**
-   * Nomes propositalmente parecidos com os de uma conta real — inclusive os
-   * ambíguos ("Sala de espera", "Em atendimento"), que são justamente os que
-   * obrigam o operador a decidir o mapeamento em vez de aceitar um palpite.
-   */
   listCategories(): Promise<ExternalCategory[]> {
     return Promise.resolve([
       { id: 'consulta', name: 'Consulta' },
@@ -100,6 +95,11 @@ export class MockAgendaProvider implements AgendaProvider {
     ]);
   }
 
+  /**
+   * Nomes propositalmente parecidos com os de uma conta real — inclusive os
+   * ambíguos ("Sala de espera", "Em atendimento"), que são justamente os que
+   * obrigam o operador a decidir o mapeamento em vez de aceitar um palpite.
+   */
   listStatuses(): Promise<ExternalStatus[]> {
     return Promise.resolve([
       { id: '1', name: 'Agendado' },

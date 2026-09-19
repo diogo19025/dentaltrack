@@ -20,7 +20,11 @@ import {
   type ReplyMessage,
   streamAssistantReply,
 } from '../ai/generate-reply';
-import { buildSystemPrompt, type KnownContact } from '../ai/prompt';
+import {
+  buildSystemPrompt,
+  type KnownContact,
+  type PromptProfessionals,
+} from '../ai/prompt';
 import { detectFunnelStage } from '../ai/stage-detection';
 import { tagConversation } from '../ai/tagging';
 import { buildChatTools } from '../ai/tools';
@@ -348,6 +352,30 @@ export class ChatService {
    * últimos agendamentos do lead (sinal de recorrência). Best-effort — qualquer
    * falha vira "nenhum dado conhecido" e o turno segue normal.
    */
+  /**
+   * Equipe e política de escolha para o prompt (F20). Best-effort: sem
+   * cadastro, ou com a agenda indisponível, o agente atende como sempre.
+   */
+  private async loadProfessionals(
+    clinicId: string,
+  ): Promise<PromptProfessionals | null> {
+    try {
+      const context = await this.agenda.professionalContext(clinicId);
+      if (context.professionals.length === 0 && !context.fixed) return null;
+      return {
+        names: context.professionals.map((p) => p.name),
+        policy: context.policy,
+        fixedName: context.fixed?.name ?? null,
+      };
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Equipe da empresa ${clinicId} não pôde ser carregada para o prompt: ${detail}`,
+      );
+      return null;
+    }
+  }
+
   private async loadKnownContact(
     conversationId: string,
     clinicId: string,
@@ -491,15 +519,17 @@ export class ChatService {
     clinicId: string,
     contact?: KnownContact | null,
   ): Promise<string> {
-    const [clinic, settings, procedures, timeZone] = await Promise.all([
-      this.prisma.clinic.findUnique({ where: { id: clinicId } }),
-      this.prisma.clinicSettings.findUnique({ where: { clinicId } }),
-      this.prisma.procedure.findMany({
-        where: { clinicId, active: true },
-        orderBy: { name: 'asc' },
-      }),
-      this.agenda.timeZone(clinicId),
-    ]);
+    const [clinic, settings, procedures, timeZone, professionals] =
+      await Promise.all([
+        this.prisma.clinic.findUnique({ where: { id: clinicId } }),
+        this.prisma.clinicSettings.findUnique({ where: { clinicId } }),
+        this.prisma.procedure.findMany({
+          where: { clinicId, active: true },
+          orderBy: { name: 'asc' },
+        }),
+        this.agenda.timeZone(clinicId),
+        this.loadProfessionals(clinicId),
+      ]);
     if (!clinic)
       throw new NotFoundException(`Empresa ${clinicId} não encontrada.`);
     return buildSystemPrompt({
@@ -508,6 +538,7 @@ export class ChatService {
       procedures,
       contact,
       timeZone,
+      professionals,
     });
   }
 

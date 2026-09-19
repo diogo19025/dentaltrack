@@ -728,6 +728,11 @@ function TeamCard({
   const policy: ProfessionalPolicy =
     settings?.professionalPolicy ?? "primeiro_livre";
   const active = professionals.filter((p) => p.active);
+  const schedulable = active.filter(
+    (professional) =>
+      Boolean(professional.externalId) &&
+      (!unitId || professional.unitExternalId === unitId),
+  );
 
   // As três formas do controle, achatadas num valor só: é uma decisão só do
   // ponto de vista do dono, ainda que por baixo sejam dois campos.
@@ -806,8 +811,11 @@ function TeamCard({
               <SelectItem value={ANY_ASK}>
                 Qualquer um — pergunto com quem prefere
               </SelectItem>
-              {active.map((professional) => (
-                <SelectItem key={professional.id} value={professional.id}>
+              {schedulable.map((professional) => (
+                <SelectItem
+                  key={professional.id}
+                  value={professional.externalId}
+                >
                   Sempre com {professional.name}
                 </SelectItem>
               ))}

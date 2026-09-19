@@ -40,6 +40,7 @@ const appointment = (
   preferredTime: null,
   procedureName: "Implante",
   professionalName: "Dra. Ana",
+  professionalId: null,
   leadId: null,
   leadName: "Ana Silva",
   leadPhone: null,

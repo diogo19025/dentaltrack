@@ -104,6 +104,12 @@ export const appointmentSummarySchema = z.object({
   preferredTime: z.string().nullable(),
   procedureName: z.string().nullable(),
   professionalName: z.string().nullable(),
+  /**
+   * Profissional do cadastro espelhado (F20), quando o agendamento aponta
+   * para um. Nulo no histórico anterior ao cadastro, que só tem o nome acima —
+   * a tela filtra e colore por este id e cai para o nome quando ele falta.
+   */
+  professionalId: z.string().uuid().nullable(),
   leadId: z.string().uuid().nullable(),
   leadName: z.string().nullable(),
   leadPhone: z.string().nullable(),

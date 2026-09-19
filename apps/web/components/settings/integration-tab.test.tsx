@@ -11,6 +11,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api-client";
 import { IntegrationTab } from "./integration-tab";
 
+// O Radix posiciona a opção ativa; o jsdom não implementa esta API visual.
+Element.prototype.scrollIntoView = vi.fn();
+
 /**
  * A aba de integração guarda a credencial que dá acesso à agenda e ao cadastro
  * de pacientes reais. O que estes testes protegem: o segredo nunca aparece na
@@ -510,7 +513,7 @@ describe("IntegrationTab", () => {
       });
     });
 
-    it("escolher um profissional fixo não mexe na política", () => {
+    it("escolher um profissional fixo salva o id externo e não mexe na política", async () => {
       state.data.clinicorp = status();
       state.professionals = equipe;
       render(<IntegrationTab />);
@@ -518,16 +521,38 @@ describe("IntegrationTab", () => {
       expect(
         screen.getByText(/oferece os primeiros horários livres/i),
       ).toBeInTheDocument();
+
+      fireEvent.keyDown(
+        screen.getByRole("combobox", { name: /Com quem o agente marca/i }),
+        { key: "ArrowDown" },
+      );
+      fireEvent.keyDown(
+        await screen.findByRole("option", {
+          name: /Sempre com Dra\. Ana Ribeiro/i,
+        }),
+        { key: "Enter" },
+      );
+      fireEvent.click(screen.getByRole("button", { name: /^Salvar$/i }));
+
+      expect(state.update.mutate).toHaveBeenCalledWith(
+        expect.objectContaining({ professionalId: "10" }),
+        expect.anything(),
+      );
       expect(state.updateSettings.mutate).not.toHaveBeenCalled();
     });
 
     it("com profissional fixo, a tela diz que tudo cai nele", () => {
-      state.data.clinicorp = status({ professionalId: "p1" });
+      state.data.clinicorp = status({ professionalId: "10" });
       state.professionals = equipe;
       render(<IntegrationTab />);
 
       expect(
-        screen.getByText(/Todos os agendamentos do agente vão para esta pessoa/i),
+        screen.getByText("Sempre com Dra. Ana Ribeiro"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /Todos os agendamentos do agente vão para esta pessoa/i,
+        ),
       ).toBeInTheDocument();
     });
 
