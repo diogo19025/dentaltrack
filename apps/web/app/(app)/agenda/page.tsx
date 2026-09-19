@@ -27,11 +27,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Segmented } from "@/components/ui/segmented";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { AppointmentActions } from "@/components/agenda/appointment-actions";
 import { ScheduledMessagesCard } from "@/components/agenda/scheduled-messages";
+import {
+  professionalColor,
+  professionalResolver,
+} from "@/components/agenda/professional-color";
 import { useAgenda, useSyncAgenda } from "@/hooks/use-agenda";
 import { useAutomationHistory } from "@/hooks/use-automations";
 import { useIntegration } from "@/hooks/use-integration";
@@ -44,23 +47,19 @@ const HOUR_PX = 48;
 const DAYS_IN_GRID = 7;
 const UPCOMING_LIMIT = 4;
 
-/** O que decide a cor de cada agendamento na grade e nos cards. */
-type ColorBy = "procedimento" | "profissional";
-const COLOR_BY_OPTIONS = [
-  { value: "profissional", label: "Por profissional" },
-  { value: "procedimento", label: "Por procedimento" },
-] as const satisfies readonly { value: ColorBy; label: string }[];
+/** Quantos profissionais a legenda mostra antes de resumir em "+N". */
+const LEGEND_LIMIT = 6;
 
-/** Cor de um agendamento — derivada do modo escolhido. */
+/** Cor de um agendamento — sempre a do profissional que atende. */
 type ColorOf = (appointment: AppointmentSummary) => string;
 
 /**
  * /agenda (F9) — o que está marcado e o que o sistema mandou.
  *
  * Duas vistas complementares: os **próximos agendamentos** (o que vem aí, em
- * cards) e a **grade da semana** ao estilo Google Agenda — faixas de horário
- * livres (tint) × atendimentos marcados (blocos sólidos), o mesmo dado que o
- * assistente oferece aos clientes. Abaixo, o histórico das mensagens
+ * cards) e a **grade da semana** ao estilo Google Agenda — atendimentos
+ * marcados como blocos sólidos, coloridos **pelo profissional** que atende,
+ * o mesmo dado que o assistente oferece aos clientes. Abaixo, o histórico das mensagens
  * automáticas — o que saiu e o que foi suprimido, com o motivo.
  *
  * Fora do handoff de design; segue o design system existente (produto.md § Design).
@@ -111,6 +110,10 @@ export default function AgendaPage() {
     () => professionalResolver(professionals),
     [professionals],
   );
+  const colorOf = useMemo<ColorOf>(
+    () => (a) => professionalColor(professionalOf(a), professionals),
+    [professionalOf, professionals],
+  );
 
   // Busca + filtros (situação, procedimento, cliente) — valem para a grade
   // e para a lista de próximos, como num calendário de verdade.
@@ -148,20 +151,6 @@ export default function AgendaPage() {
     professionalFilter,
     professionalOf,
   ]);
-
-  // Cor por profissional quando há equipe de verdade (2+ ativos) — é o que a
-  // recepção precisa ver de relance; com um só, a cor por procedimento diz mais.
-  const [colorByChoice, setColorByChoice] = useState<ColorBy | null>(null);
-  const colorBy: ColorBy =
-    colorByChoice ??
-    (activeProfessionals.length > 1 ? "profissional" : "procedimento");
-  const colorOf = useMemo<ColorOf>(
-    () =>
-      colorBy === "profissional"
-        ? (a) => professionalColor(professionalOf(a), professionals)
-        : (a) => procedureColor(a.procedureName),
-    [colorBy, professionalOf, professionals],
-  );
 
   // Opções dos filtros, tiradas do que existe de fato nas janelas carregadas.
   const { procedureOptions, clientOptions } = useMemo(() => {
@@ -273,13 +262,7 @@ export default function AgendaPage() {
               <SelectItem value="todos">Todos os procedimentos</SelectItem>
               {procedureOptions.map((name) => (
                 <SelectItem key={name} value={name}>
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="size-2.5 flex-none rounded-[3px]"
-                      style={{ background: procedureColor(name) }}
-                    />
-                    {name}
-                  </span>
+                  {name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -354,41 +337,15 @@ export default function AgendaPage() {
             Limpar filtros
           </Button>
         )}
-        {activeProfessionals.length > 1 && (
-          <Segmented
-            className="ml-auto"
-            aria-label="Cor dos agendamentos"
-            options={COLOR_BY_OPTIONS}
-            value={colorBy}
-            onChange={setColorByChoice}
-          />
-        )}
       </div>
-
-      {colorBy === "profissional" && activeProfessionals.length > 1 && (
-        <ul
-          className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground"
-          aria-label="Legenda de profissionais"
-        >
-          {activeProfessionals.map((professional) => (
-            <li key={professional.id} className="flex items-center gap-1.5">
-              <span
-                className="size-2.5 rounded-full"
-                style={{
-                  background: professionalColor(professional, professionals),
-                }}
-              />
-              {professional.name}
-            </li>
-          ))}
-        </ul>
-      )}
 
       <WeekGrid
         weekStart={weekStart}
         appointments={weekAppointments}
         loading={weekLoading}
         colorOf={colorOf}
+        legend={activeProfessionals.length > 1 ? activeProfessionals : []}
+        allProfessionals={professionals}
         onPrev={() => setWeekOffset((v) => v - 1)}
         onNext={() => setWeekOffset((v) => v + 1)}
         onToday={() => setWeekOffset(0)}
@@ -491,6 +448,8 @@ function WeekGrid({
   appointments,
   loading,
   colorOf,
+  legend,
+  allProfessionals,
   onPrev,
   onNext,
   onToday,
@@ -500,6 +459,9 @@ function WeekGrid({
   appointments: AppointmentSummary[];
   loading: boolean;
   colorOf: ColorOf;
+  /** Profissionais da legenda (vazio = sem legenda, equipe de um só). */
+  legend: ProfessionalDto[];
+  allProfessionals: ProfessionalDto[];
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -553,13 +515,10 @@ function WeekGrid({
             {rangeLabel(days[0], days[days.length - 1])}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-3">
-          <Legend
-            procedures={[...new Set(timed.map((a) => a.procedureName))].slice(
-              0,
-              5,
-            )}
-          />
+        <div className="ml-auto flex flex-wrap items-center gap-3">
+          {legend.length > 0 && (
+            <Legend professionals={legend} all={allProfessionals} />
+          )}
           <div className="flex items-center gap-1">
             <Button
               type="button"
@@ -726,74 +685,34 @@ function WeekGrid({
   );
 }
 
-function Legend({ procedures }: { procedures: (string | null)[] }) {
+/** Legenda de cores por profissional (só com equipe de 2+). */
+function Legend({
+  professionals,
+  all,
+}: {
+  professionals: ProfessionalDto[];
+  all: ProfessionalDto[];
+}) {
+  const shown = professionals.slice(0, LEGEND_LIMIT);
+  const rest = professionals.length - shown.length;
   return (
-    <div className="hidden flex-wrap items-center gap-3 text-[11px] text-muted-foreground sm:flex">
-      {procedures.length === 0 ? (
-        <span className="flex items-center gap-1.5">
-          <span className="size-2.5 rounded-[3px] bg-primary" />
-          atendimento
-        </span>
-      ) : (
-        procedures.map((name) => (
-          <span key={name ?? "consulta"} className="flex items-center gap-1.5">
-            <span
-              className="size-2.5 rounded-[3px]"
-              style={{ background: procedureColor(name) }}
-            />
-            {name ?? "Consulta"}
-          </span>
-        ))
-      )}
-    </div>
+    <ul
+      aria-label="Legenda de profissionais"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground"
+    >
+      {shown.map((professional) => (
+        <li key={professional.id} className="flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="size-2.5 flex-none rounded-full"
+            style={{ background: professionalColor(professional, all) }}
+          />
+          {professional.name}
+        </li>
+      ))}
+      {rest > 0 && <li>+{rest}</li>}
+    </ul>
   );
-}
-
-/**
- * Cor estável por procedimento (paleta de charts do design system) — o mesmo
- * procedimento tem sempre a mesma cor na grade, na legenda e no filtro.
- */
-function procedureColor(name: string | null): string {
-  if (!name) return "var(--primary)";
-  let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  }
-  return `var(--chart-${(Math.abs(hash) % 5) + 1})`;
-}
-
-/**
- * Cor estável por profissional: a posição na lista (ordem de entrada, que a
- * API devolve de propósito) escolhe a cor da paleta, então ninguém muda de cor
- * quando alguém entra ou sai da equipe. Sem profissional, cai na cor neutra.
- */
-function professionalColor(
-  professional: ProfessionalDto | null,
-  all: ProfessionalDto[],
-): string {
-  if (!professional) return "var(--primary)";
-  const index = all.findIndex((p) => p.id === professional.id);
-  if (index < 0) return "var(--primary)";
-  return `var(--chart-${(index % 5) + 1})`;
-}
-
-/**
- * Resolve o profissional de um agendamento: pela chave (F20) e, no histórico
- * anterior ao cadastro, pelo nome que a sincronização gravou.
- */
-function professionalResolver(
-  professionals: ProfessionalDto[],
-): (appointment: AppointmentSummary) => ProfessionalDto | null {
-  const byId = new Map(professionals.map((p) => [p.id, p]));
-  const byName = new Map(professionals.map((p) => [p.name, p]));
-  return (appointment) =>
-    (appointment.professionalId
-      ? byId.get(appointment.professionalId)
-      : null) ??
-    (appointment.professionalName
-      ? byName.get(appointment.professionalName)
-      : null) ??
-    null;
 }
 
 /** Blocos de atendimento do dia, posicionados na grade. */

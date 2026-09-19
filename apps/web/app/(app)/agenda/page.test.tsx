@@ -87,6 +87,30 @@ function appointment(over: Partial<AppointmentSummary>): AppointmentSummary {
 }
 
 describe("AgendaPage — profissionais", () => {
+  it("a cor é sempre do profissional: sem escolha de modo, e o bloco leva a cor dele", () => {
+    state.professionals = [
+      professional({}),
+      professional({
+        id: "00000000-0000-0000-0000-00000000000b",
+        externalId: "11",
+        name: "Dr. Bruno Lima",
+      }),
+    ];
+    state.appointments = [appointment({})];
+
+    render(<AgendaPage />);
+
+    expect(
+      screen.queryByRole("tablist", { name: "Cor dos agendamentos" }),
+    ).not.toBeInTheDocument();
+    // 1º da lista → chart-1 no bloco da grade.
+    expect(
+      screen.getByTitle(
+        /14:00 – 14:30 · Maria Souza · Limpeza · Dra\. Ana Ribeiro/,
+      ),
+    ).toHaveStyle({ background: "var(--chart-1)" });
+  });
+
   it("com equipe de 2+, oferece filtro, legenda por cor e o nome no card", () => {
     state.professionals = [
       professional({}),
@@ -103,17 +127,18 @@ describe("AgendaPage — profissionais", () => {
     expect(
       screen.getByRole("combobox", { name: "Filtrar por profissional" }),
     ).toBeInTheDocument();
-    const legend = screen.getByRole("list", { name: "Legenda de profissionais" });
+    const legend = screen.getByRole("list", {
+      name: "Legenda de profissionais",
+    });
     expect(legend).toHaveTextContent("Dra. Ana Ribeiro");
     expect(legend).toHaveTextContent("Dr. Bruno Lima");
-    expect(
-      screen.getByRole("tablist", { name: "Cor dos agendamentos" }),
-    ).toBeInTheDocument();
     // O nome aparece no card do próximo agendamento.
-    expect(screen.getAllByText(/· Dra\. Ana Ribeiro/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/· Dra\. Ana Ribeiro/).length).toBeGreaterThan(
+      0,
+    );
   });
 
-  it("com um profissional só, não há legenda nem escolha de cor", () => {
+  it("com um profissional só, não há legenda", () => {
     state.professionals = [professional({})];
     state.appointments = [appointment({})];
 
@@ -124,9 +149,6 @@ describe("AgendaPage — profissionais", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("list", { name: "Legenda de profissionais" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("tablist", { name: "Cor dos agendamentos" }),
     ).not.toBeInTheDocument();
   });
 
