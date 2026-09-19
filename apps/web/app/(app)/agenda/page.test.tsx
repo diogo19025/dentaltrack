@@ -1,12 +1,12 @@
 import type { AppointmentSummary, ProfessionalDto } from "@dentaltrack/shared";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import AgendaPage from "./page";
 
 /**
- * Agenda por profissional (F20): a tela precisa mostrar **quem** atende cada
- * horário — filtro, legenda e nome no card — a partir do cadastro espelhado,
- * não do texto solto que a sincronização gravava antes.
+ * Agenda por profissional (F20): a tela mostra **quem** atende cada horário —
+ * filtro, legenda e nome no card — a partir do cadastro espelhado. A cor é
+ * sempre a do profissional; clicar num agendamento abre o painel de detalhe.
  */
 
 const state = vi.hoisted(() => ({
@@ -24,6 +24,20 @@ vi.mock("@/hooks/use-agenda", () => ({
     isLoading: false,
   }),
   useSyncAgenda: () => ({ mutate: vi.fn(), isPending: false }),
+  useCancelAppointment: () => ({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+  useRescheduleAppointment: () => ({
+    mutate: vi.fn(),
+    reset: vi.fn(),
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
 }));
 
 vi.mock("@/hooks/use-automations", () => ({
@@ -37,12 +51,6 @@ vi.mock("@/hooks/use-integration", () => ({
 vi.mock("@/components/auth/role-context", () => ({
   OwnerOnly: ({ children }: { children: React.ReactNode }) => children,
   useRole: () => ({ isOwner: true, role: "owner" }),
-}));
-
-// As ações por agendamento usam mutações (QueryClientProvider); têm testes
-// próprios em `components/agenda/appointment-actions.test.tsx`.
-vi.mock("@/components/agenda/appointment-actions", () => ({
-  AppointmentActions: () => null,
 }));
 
 vi.mock("@/components/agenda/scheduled-messages", () => ({
@@ -87,30 +95,6 @@ function appointment(over: Partial<AppointmentSummary>): AppointmentSummary {
 }
 
 describe("AgendaPage — profissionais", () => {
-  it("a cor é sempre do profissional: sem escolha de modo, e o bloco leva a cor dele", () => {
-    state.professionals = [
-      professional({}),
-      professional({
-        id: "00000000-0000-0000-0000-00000000000b",
-        externalId: "11",
-        name: "Dr. Bruno Lima",
-      }),
-    ];
-    state.appointments = [appointment({})];
-
-    render(<AgendaPage />);
-
-    expect(
-      screen.queryByRole("tablist", { name: "Cor dos agendamentos" }),
-    ).not.toBeInTheDocument();
-    // 1º da lista → chart-1 no bloco da grade.
-    expect(
-      screen.getByTitle(
-        /14:00 – 14:30 · Maria Souza · Limpeza · Dra\. Ana Ribeiro/,
-      ),
-    ).toHaveStyle({ background: "var(--chart-1)" });
-  });
-
   it("com equipe de 2+, oferece filtro, legenda por cor e o nome no card", () => {
     state.professionals = [
       professional({}),
@@ -138,6 +122,29 @@ describe("AgendaPage — profissionais", () => {
     );
   });
 
+  it("a cor é sempre do profissional: não há escolha de modo de cor", () => {
+    state.professionals = [
+      professional({}),
+      professional({
+        id: "00000000-0000-0000-0000-00000000000b",
+        externalId: "11",
+        name: "Dr. Bruno Lima",
+      }),
+    ];
+    state.appointments = [appointment({})];
+
+    render(<AgendaPage />);
+
+    expect(
+      screen.queryByRole("tablist", { name: "Cor dos agendamentos" }),
+    ).not.toBeInTheDocument();
+    // O bloco na grade leva a cor do profissional (1º da lista → chart-1).
+    const block = screen.getByRole("button", {
+      name: /14:00 – 14:30 · Maria Souza · Limpeza · Dra\. Ana Ribeiro/,
+    });
+    expect(block).toHaveStyle({ background: "var(--chart-1)" });
+  });
+
   it("com um profissional só, não há legenda", () => {
     state.professionals = [professional({})];
     state.appointments = [appointment({})];
@@ -161,5 +168,50 @@ describe("AgendaPage — profissionais", () => {
     expect(
       screen.queryByRole("combobox", { name: "Filtrar por profissional" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("AgendaPage — filtros e detalhe", () => {
+  it("oferece o filtro por procedimento junto de situação, profissional e cliente", () => {
+    state.professionals = [professional({})];
+    state.appointments = [appointment({})];
+
+    render(<AgendaPage />);
+
+    const filters = screen.getByRole("search", { name: "Filtros da agenda" });
+    for (const name of [
+      "Filtrar por situação",
+      "Filtrar por profissional",
+      "Filtrar por procedimento",
+      "Filtrar por cliente",
+    ]) {
+      expect(
+        within(filters).getByRole("combobox", { name }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("clicar num agendamento da grade abre o painel com os detalhes", () => {
+    state.professionals = [professional({})];
+    state.appointments = [appointment({ leadPhone: "(11) 99999-0000" })];
+
+    render(<AgendaPage />);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /14:00 – 14:30 · Maria Souza · Limpeza/,
+      }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", { name: "Limpeza" }),
+    ).toBeInTheDocument();
+    expect(dialog).toHaveTextContent("Maria Souza");
+    expect(dialog).toHaveTextContent("Dra. Ana Ribeiro");
+    expect(dialog).toHaveTextContent("(11) 99999-0000");
+    expect(
+      within(dialog).getByRole("link", { name: /Conversar no WhatsApp/ }),
+    ).toHaveAttribute("href", "https://wa.me/5511999990000");
   });
 });

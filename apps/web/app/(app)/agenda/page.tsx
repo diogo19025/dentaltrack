@@ -29,8 +29,19 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/shell/page-header";
-import { AppointmentActions } from "@/components/agenda/appointment-actions";
+import { AppointmentBadge } from "@/components/agenda/appointment-badge";
+import { AppointmentDetailDialog } from "@/components/agenda/appointment-detail-dialog";
 import { ScheduledMessagesCard } from "@/components/agenda/scheduled-messages";
+import {
+  DAY_MS,
+  appointmentRange,
+  dateKey,
+  dateKeyPlus,
+  formatHm,
+  formatWhen,
+  pad2,
+  startOfDay,
+} from "@/components/agenda/format";
 import {
   professionalColor,
   professionalResolver,
@@ -46,7 +57,6 @@ import { OwnerOnly, useRole } from "@/components/auth/role-context";
 const HOUR_PX = 48;
 const DAYS_IN_GRID = 7;
 const UPCOMING_LIMIT = 4;
-
 /** Quantos profissionais a legenda mostra antes de resumir em "+N". */
 const LEGEND_LIMIT = 6;
 
@@ -59,8 +69,10 @@ type ColorOf = (appointment: AppointmentSummary) => string;
  * Duas vistas complementares: os **próximos agendamentos** (o que vem aí, em
  * cards) e a **grade da semana** ao estilo Google Agenda — atendimentos
  * marcados como blocos sólidos, coloridos **pelo profissional** que atende,
- * o mesmo dado que o assistente oferece aos clientes. Abaixo, o histórico das mensagens
- * automáticas — o que saiu e o que foi suprimido, com o motivo.
+ * o mesmo dado que o assistente oferece aos clientes. Clicar num bloco ou num
+ * card abre o painel do agendamento (detalhes, WhatsApp, lembrete, remarcar,
+ * cancelar). Abaixo, o histórico das mensagens automáticas — o que saiu e o
+ * que foi suprimido, com o motivo.
  *
  * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
@@ -115,8 +127,8 @@ export default function AgendaPage() {
     [professionalOf, professionals],
   );
 
-  // Busca + filtros (situação, procedimento, cliente) — valem para a grade
-  // e para a lista de próximos, como num calendário de verdade.
+  // Busca + filtros (situação, profissional, procedimento, cliente) — valem
+  // para a grade e para a lista de próximos, como num calendário de verdade.
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<AppointmentStatus | "todos">(
     "todos",
@@ -184,6 +196,11 @@ export default function AgendaPage() {
     [weekData, matches],
   );
 
+  // Agendamento aberto no painel de detalhe. Guardamos o objeto (não só o id)
+  // para o painel abrir na hora, sem esperar rede; o próprio painel dispara as
+  // mutações que invalidam a agenda.
+  const [selected, setSelected] = useState<AppointmentSummary | null>(null);
+
   return (
     <>
       <PageHeader
@@ -216,9 +233,14 @@ export default function AgendaPage() {
         appointments={upcoming}
         loading={weekLoading}
         colorOf={colorOf}
+        onSelect={setSelected}
       />
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div
+        role="search"
+        aria-label="Filtros da agenda"
+        className="mb-3 flex flex-wrap items-center gap-2"
+      >
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -250,24 +272,6 @@ export default function AgendaPage() {
             ))}
           </SelectContent>
         </Select>
-        {procedureOptions.length > 0 && (
-          <Select value={procedureFilter} onValueChange={setProcedureFilter}>
-            <SelectTrigger
-              className="h-9 w-[190px]"
-              aria-label="Filtrar por procedimento"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os procedimentos</SelectItem>
-              {procedureOptions.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
         {professionals.length > 0 && (
           <Select
             value={professionalFilter}
@@ -284,20 +288,32 @@ export default function AgendaPage() {
               {professionals.map((professional) => (
                 <SelectItem key={professional.id} value={professional.id}>
                   <span className="flex items-center gap-2">
-                    <span
-                      className="size-2.5 flex-none rounded-full"
-                      style={{
-                        background: professionalColor(
-                          professional,
-                          professionals,
-                        ),
-                      }}
+                    <ColorDot
+                      color={professionalColor(professional, professionals)}
                     />
                     {professional.name}
                     {!professional.active && (
                       <span className="text-muted-foreground">(inativo)</span>
                     )}
                   </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {procedureOptions.length > 0 && (
+          <Select value={procedureFilter} onValueChange={setProcedureFilter}>
+            <SelectTrigger
+              className="h-9 w-[190px]"
+              aria-label="Filtrar por procedimento"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os procedimentos</SelectItem>
+              {procedureOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -346,6 +362,7 @@ export default function AgendaPage() {
         colorOf={colorOf}
         legend={activeProfessionals.length > 1 ? activeProfessionals : []}
         allProfessionals={professionals}
+        onSelect={setSelected}
         onPrev={() => setWeekOffset((v) => v - 1)}
         onNext={() => setWeekOffset((v) => v + 1)}
         onToday={() => setWeekOffset(0)}
@@ -355,6 +372,14 @@ export default function AgendaPage() {
       <OwnerOnly>
         <ScheduledMessagesCard history={history} />
       </OwnerOnly>
+
+      <AppointmentDetailDialog
+        appointment={selected}
+        color={selected ? colorOf(selected) : "var(--primary)"}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+      />
     </>
   );
 }
@@ -365,10 +390,12 @@ function UpcomingSection({
   appointments,
   loading,
   colorOf,
+  onSelect,
 }: {
   appointments: AppointmentSummary[];
   loading: boolean;
   colorOf: ColorOf;
+  onSelect: (appointment: AppointmentSummary) => void;
 }) {
   return (
     <section className="mb-5">
@@ -382,7 +409,7 @@ function UpcomingSection({
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: UPCOMING_LIMIT }).map((_, i) => (
-            <Skeleton key={i} className="h-[92px] rounded-[var(--radius-sm)]" />
+            <Skeleton key={i} className="h-[92px] rounded-lg" />
           ))}
         </div>
       ) : appointments.length === 0 ? (
@@ -394,40 +421,55 @@ function UpcomingSection({
           />
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {appointments.map((appointment) => (
-            <Card key={appointment.id} className="gap-1.5 p-4">
-              <div className="flex items-center justify-between gap-2">
-                <span className="tabular text-[13px] font-semibold text-primary">
-                  {appointment.startsAt
-                    ? formatWhen(appointment.startsAt)
-                    : (appointment.preferredTime ?? "A combinar")}
-                </span>
-                <div className="flex items-center gap-1">
-                  <AppointmentBadge status={appointment.status} />
-                  <AppointmentActions appointment={appointment} />
-                </div>
-              </div>
-              <div className="truncate text-sm font-medium">
-                {appointment.leadName ?? "Sem nome"}
-              </div>
-              <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
-                <span
-                  className="size-2 flex-none rounded-full"
-                  style={{ background: colorOf(appointment) }}
-                />
-                <span className="truncate font-medium">
-                  {appointment.procedureName ?? "Consulta"}
-                </span>
-                {appointment.professionalName && (
-                  <span className="truncate text-muted-foreground">
-                    · {appointment.professionalName}
-                  </span>
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
+        <ul role="list" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {appointments.map((appointment) => {
+            const color = colorOf(appointment);
+            return (
+              <li key={appointment.id} className="min-w-0">
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  onClick={() => onSelect(appointment)}
+                  className={cn(
+                    "relative flex w-full flex-col gap-1.5 overflow-hidden rounded-lg border border-border bg-card p-4 pl-5 text-left shadow-sm outline-none",
+                    "transition-[box-shadow,border-color] duration-150 ease-out",
+                    "hover:border-border-strong hover:shadow-[var(--shadow-md)]",
+                    "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                    "active:translate-y-[0.5px]",
+                  )}
+                >
+                  {/* Filete do profissional — a mesma cor do bloco na grade. */}
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-3 left-0 w-[3px] rounded-r-full"
+                    style={{ background: color }}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="tabular text-[13px] font-semibold text-primary">
+                      {appointment.startsAt
+                        ? formatWhen(appointment.startsAt)
+                        : (appointment.preferredTime ?? "A combinar")}
+                    </span>
+                    <AppointmentBadge status={appointment.status} />
+                  </div>
+                  <div className="truncate text-sm font-medium">
+                    {appointment.leadName ?? "Sem nome"}
+                  </div>
+                  <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+                    <span className="truncate font-medium">
+                      {appointment.procedureName ?? "Consulta"}
+                    </span>
+                    {appointment.professionalName && (
+                      <span className="truncate text-muted-foreground">
+                        · {appointment.professionalName}
+                      </span>
+                    )}
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </section>
   );
@@ -450,6 +492,7 @@ function WeekGrid({
   colorOf,
   legend,
   allProfessionals,
+  onSelect,
   onPrev,
   onNext,
   onToday,
@@ -462,6 +505,7 @@ function WeekGrid({
   /** Profissionais da legenda (vazio = sem legenda, equipe de um só). */
   legend: ProfessionalDto[];
   allProfessionals: ProfessionalDto[];
+  onSelect: (appointment: AppointmentSummary) => void;
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
@@ -484,10 +528,9 @@ function WeekGrid({
     let start = 8;
     let end = 18;
     for (const a of timed) {
-      const s = new Date(a.startsAt as string);
-      const e = a.endsAt
-        ? new Date(a.endsAt)
-        : new Date(s.getTime() + 30 * 60_000);
+      const range = appointmentRange(a);
+      if (!range) continue;
+      const { startsAt: s, endsAt: e } = range;
       start = Math.min(start, s.getHours());
       end = Math.max(end, e.getMinutes() > 0 ? e.getHours() + 1 : e.getHours());
     }
@@ -523,21 +566,26 @@ function WeekGrid({
             <Button
               type="button"
               variant="outline"
-              size="icon"
+              size="icon-sm"
               aria-label="Semana anterior"
               onClick={onPrev}
             >
               <ChevronLeft className="size-4" />
             </Button>
             {!isCurrentWeek && (
-              <Button type="button" variant="outline" onClick={onToday}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onToday}
+              >
                 Hoje
               </Button>
             )}
             <Button
               type="button"
               variant="outline"
-              size="icon"
+              size="icon-sm"
               aria-label="Próxima semana"
               onClick={onNext}
             >
@@ -586,7 +634,7 @@ function WeekGrid({
                 {hours.map((hour) => (
                   <div
                     key={hour}
-                    className="absolute right-1.5 -translate-y-1/2 text-[11px] text-muted-foreground"
+                    className="tabular absolute right-1.5 -translate-y-1/2 text-[11px] text-muted-foreground"
                     style={{ top: (hour - hourStart) * HOUR_PX }}
                   >
                     {hour > hourStart ? `${pad2(hour)}:00` : ""}
@@ -600,7 +648,10 @@ function WeekGrid({
                 return (
                   <div
                     key={day.toISOString()}
-                    className="relative border-l border-border"
+                    className={cn(
+                      "relative border-l border-border",
+                      isToday && "bg-primary-tint/40",
+                    )}
                     style={{ height: bodyHeight }}
                   >
                     {hours.map((hour) => (
@@ -613,16 +664,24 @@ function WeekGrid({
 
                     {blocks.map(
                       ({ appointment, top, height, startsAt, endsAt }) => {
-                        const missed =
-                          appointment.status === "faltou" ||
-                          appointment.status === "cancelado";
+                        const missed = appointment.status === "faltou";
                         const range = `${formatHm(startsAt)} – ${formatHm(endsAt)}`;
                         const color = colorOf(appointment);
+                        const label = `${range} · ${appointment.leadName ?? "Sem nome"}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""}${appointment.professionalName ? ` · ${appointment.professionalName}` : ""} (${APPOINTMENT_STATUS_LABELS[appointment.status]})`;
                         return (
-                          <div
+                          <button
                             key={appointment.id}
+                            type="button"
+                            aria-label={label}
+                            aria-haspopup="dialog"
+                            title={label}
+                            onClick={() => onSelect(appointment)}
                             className={cn(
-                              "absolute inset-x-1 overflow-hidden rounded-[var(--radius-sm)] px-1.5 py-1 text-left",
+                              "absolute inset-x-1 block overflow-hidden rounded-[6px] px-1.5 py-1 text-left outline-none",
+                              "transition-[box-shadow,filter,opacity] duration-150 ease-out",
+                              "hover:z-10 hover:shadow-[var(--shadow-md)] hover:brightness-[1.05]",
+                              "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                              "active:brightness-[0.97]",
                               missed
                                 ? "status-abandonada"
                                 : "text-primary-foreground",
@@ -632,11 +691,10 @@ function WeekGrid({
                               height,
                               ...(missed ? {} : { background: color }),
                             }}
-                            title={`${range} · ${appointment.leadName ?? "Sem nome"}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""}${appointment.professionalName ? ` · ${appointment.professionalName}` : ""} (${APPOINTMENT_STATUS_LABELS[appointment.status]})`}
                           >
                             {height >= 40 ? (
                               <>
-                                <div className="truncate text-[10px] leading-tight opacity-90">
+                                <div className="tabular truncate text-[10px] leading-tight opacity-90">
                                   {range}
                                 </div>
                                 <div className="truncate text-[11px] font-semibold leading-tight">
@@ -653,14 +711,16 @@ function WeekGrid({
                               </>
                             ) : (
                               <div className="truncate text-[11px] font-semibold leading-tight">
-                                {formatHm(startsAt)} ·{" "}
-                                {appointment.leadName ?? "Sem nome"}
+                                <span className="tabular">
+                                  {formatHm(startsAt)}
+                                </span>{" "}
+                                · {appointment.leadName ?? "Sem nome"}
                                 {appointment.procedureName
                                   ? ` · ${appointment.procedureName}`
                                   : ""}
                               </div>
                             )}
-                          </div>
+                          </button>
                         );
                       },
                     )}
@@ -702,16 +762,22 @@ function Legend({
     >
       {shown.map((professional) => (
         <li key={professional.id} className="flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className="size-2.5 flex-none rounded-full"
-            style={{ background: professionalColor(professional, all) }}
-          />
+          <ColorDot color={professionalColor(professional, all)} />
           {professional.name}
         </li>
       ))}
       {rest > 0 && <li>+{rest}</li>}
     </ul>
+  );
+}
+
+function ColorDot({ color }: { color: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="size-2.5 flex-none rounded-full"
+      style={{ background: color }}
+    />
   );
 }
 
@@ -729,10 +795,10 @@ function appointmentBlocksFor(
       return t >= dayStart && t < dayEnd;
     })
     .map((appointment) => {
-      const startsAt = new Date(appointment.startsAt as string);
-      const endsAt = appointment.endsAt
-        ? new Date(appointment.endsAt)
-        : new Date(startsAt.getTime() + 30 * 60_000);
+      const { startsAt, endsAt } = appointmentRange(appointment) as {
+        startsAt: Date;
+        endsAt: Date;
+      };
       return {
         appointment,
         startsAt,
@@ -790,28 +856,6 @@ function IntegrationStrip({
   );
 }
 
-/** Situação do agendamento, com as cores já existentes de status. */
-function AppointmentBadge({ status }: { status: AppointmentStatus }) {
-  const tone =
-    status === "faltou" || status === "cancelado"
-      ? "status-abandonada"
-      : status === "compareceu" || status === "confirmado"
-        ? "status-agendada"
-        : "status-em_andamento";
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-[5px] text-[12px] font-medium",
-        tone,
-      )}
-    >
-      <span className="size-1.5 rounded-full bg-current" />
-      {APPOINTMENT_STATUS_LABELS[status]}
-    </span>
-  );
-}
-
 function Empty({
   icon,
   title,
@@ -830,9 +874,7 @@ function Empty({
   );
 }
 
-/* ─────────────────────────── Datas & formatação ─────────────────────────── */
-
-const DAY_MS = 24 * 3_600_000;
+/* ─────────────────────────── Datas ─────────────────────────── */
 
 /** Os próximos que ainda vão acontecer (ou pedidos sem horário), mais cedo primeiro. */
 function pickUpcoming(
@@ -855,46 +897,13 @@ function pickUpcoming(
     .slice(0, UPCOMING_LIMIT);
 }
 
-function startOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 /** Minutos desde o início da grade (hora local do navegador). */
 function minutesFrom(date: Date, hourStart: number): number {
   return (date.getHours() - hourStart) * 60 + date.getMinutes();
-}
-
-/** "sexta, 12/09 às 14:30" no fuso do navegador. */
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  const day = date.toLocaleDateString("pt-BR", {
-    weekday: "short",
-    day: "2-digit",
-    month: "2-digit",
-  });
-  return `${day} às ${formatHm(date)}`;
-}
-
-function formatHm(date: Date): string {
-  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
 function rangeLabel(first: Date, last: Date): string {
   const fmt = (d: Date) =>
     d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
   return `${fmt(first)} – ${fmt(last)}`;
-}
-
-function dateKey(date: Date): string {
-  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-}
-
-function dateKeyPlus(days: number): string {
-  return dateKey(new Date(Date.now() + days * DAY_MS));
-}
-
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
 }
