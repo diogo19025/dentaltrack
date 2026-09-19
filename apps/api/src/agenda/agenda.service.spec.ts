@@ -39,6 +39,7 @@ function setup(
   };
   const integrations = {
     getProvider: jest.fn().mockResolvedValue(options.provider ?? null),
+    activeProviderName: jest.fn().mockResolvedValue('clinicorp'),
     activeStatus: jest
       .fn()
       .mockResolvedValue({ unitId: 'u1', professionalId: 'p1' }),
@@ -46,9 +47,11 @@ function setup(
   };
   // Cadastro espelhado (F20): vazio por padrão — o mundo anterior ao cadastro.
   const professionals = {
+    list: jest.fn().mockResolvedValue(options.professionals ?? []),
     listActive: jest.fn().mockResolvedValue(options.professionals ?? []),
     findByExternalId: jest.fn().mockResolvedValue(null),
     match: jest.fn().mockResolvedValue({ kind: 'nenhum' }),
+    matchCandidates: jest.fn().mockReturnValue({ kind: 'nenhum' }),
   };
   const service = new AgendaService(
     prisma as never,
@@ -740,6 +743,45 @@ describe('AgendaService — profissionais (F20)', () => {
       );
     });
 
+    it('não mistura profissionais de outra unidade no leque', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockResolvedValue([]),
+      });
+      const { service } = setup({
+        provider,
+        professionals: [
+          professionalDto(),
+          professionalDto({
+            id: 'p-outra',
+            externalId: '99',
+            unitExternalId: 'u2',
+          }),
+        ],
+      });
+
+      await service.getAvailability(CLINIC, { from: NOW, days: 1 });
+
+      expect(provider.listAvailableSlots).toHaveBeenCalledWith(
+        expect.objectContaining({ professionalIds: ['10'] }),
+      );
+    });
+
+    it('espelho sem ninguém ativo envia leque vazio em vez de reativar a conta inteira', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockResolvedValue([]),
+      });
+      const { service } = setup({
+        provider,
+        professionals: [professionalDto({ active: false })],
+      });
+
+      await service.getAvailability(CLINIC, { from: NOW, days: 1 });
+
+      expect(provider.listAvailableSlots).toHaveBeenCalledWith(
+        expect.objectContaining({ professionalIds: [] }),
+      );
+    });
+
     it('com profissional pedido, consulta só ele', async () => {
       const provider = providerMock({
         listAvailableSlots: jest.fn().mockResolvedValue([]),
@@ -813,6 +855,24 @@ describe('AgendaService — profissionais (F20)', () => {
       await service.book(CLINIC, { ...INPUT, startsAt: null });
       await service.getAvailability(CLINIC, { from: NOW, days: 3 });
       expect(provider.listAvailableSlots).toHaveBeenCalledTimes(3);
+    });
+
+    it('remove entradas vencidas antes de criar uma nova chave de cache', async () => {
+      const provider = providerMock({
+        listAvailableSlots: jest.fn().mockResolvedValue([]),
+      });
+      const { service } = setup({ provider });
+
+      await service.getAvailability(CLINIC, { from: NOW, days: 1 });
+      expect(service['availabilityCache']).toHaveProperty('size', 1);
+
+      jest.mocked(Date.now).mockReturnValue(NOW.getTime() + 61_000);
+      try {
+        await service.getAvailability(CLINIC, { from: NOW, days: 2 });
+        expect(service['availabilityCache']).toHaveProperty('size', 1);
+      } finally {
+        jest.mocked(Date.now).mockReturnValue(NOW.getTime());
+      }
     });
   });
 
@@ -920,6 +980,28 @@ describe('AgendaService — profissionais (F20)', () => {
 
       expect(context).toMatchObject({ policy: 'perguntar', fixed: null });
       expect(context.professionals).toHaveLength(1);
+    });
+
+    it('integração desligada ignora o profissional antigo e não mantém política fixa', async () => {
+      const { service, prisma, integrations } = setup({
+        professionals: [professionalDto({ externalId: 'p1', name: 'Antigo' })],
+      });
+      integrations.activeProviderName.mockResolvedValue(null);
+      Object.assign(prisma, {
+        clinicSettings: {
+          findUnique: jest
+            .fn()
+            .mockResolvedValue({ professionalPolicy: 'perguntar' }),
+        },
+      });
+
+      const context = await service.professionalContext(CLINIC);
+
+      expect(context).toEqual({
+        policy: 'perguntar',
+        professionals: [],
+        fixed: null,
+      });
     });
   });
 });

@@ -144,6 +144,14 @@ export class IntegrationService {
       provider === 'clinicorp'
         ? this.readClinicorpCredentials(row?.credentials ?? null)
         : null;
+    const professionalId =
+      provider === 'clinicorp'
+        ? await this.professionals.resolveExternalId(
+            clinicId,
+            row?.professionalId,
+            { unitExternalId: row?.unitId },
+          )
+        : (row?.professionalId ?? null);
 
     return {
       provider,
@@ -155,7 +163,7 @@ export class IntegrationService {
       google,
       serviceAccountEmail: this.serviceAccountEmail(),
       unitId: row?.unitId ?? null,
-      professionalId: row?.professionalId ?? null,
+      professionalId,
       categoryExternalId: row?.categoryExternalId ?? null,
       statusMappings: parseStatusMappings(row?.statusMappings),
       lastCheckedAt: row?.lastCheckedAt?.toISOString() ?? null,
@@ -210,14 +218,23 @@ export class IntegrationService {
         input.mode !== (current?.mode ?? 'desligado')) ||
       (provider === 'clinicorp' && input.credentials != null) ||
       googleConfigChanged;
+    const professionalId =
+      provider === 'clinicorp' && input.professionalId !== undefined
+        ? await this.professionals.resolveExternalId(
+            clinicId,
+            input.professionalId,
+            {
+              unitExternalId:
+                input.unitId !== undefined ? input.unitId : current?.unitId,
+            },
+          )
+        : input.professionalId;
 
     const data = {
       ...(input.mode !== undefined ? { mode: input.mode } : {}),
       ...(encrypted !== undefined ? { credentials: encrypted } : {}),
       ...(input.unitId !== undefined ? { unitId: input.unitId } : {}),
-      ...(input.professionalId !== undefined
-        ? { professionalId: input.professionalId }
-        : {}),
+      ...(input.professionalId !== undefined ? { professionalId } : {}),
       ...(input.categoryExternalId !== undefined
         ? { categoryExternalId: input.categoryExternalId }
         : {}),
@@ -579,13 +596,18 @@ export class IntegrationService {
           'Modo real sem credenciais salvas. Informe usuário, token e Subscriber ID.',
       };
     }
+    const professionalId = await this.professionals.resolveExternalId(
+      clinicId,
+      row.professionalId,
+      { unitExternalId: row.unitId },
+    );
     return {
       provider: new ClinicorpAgendaProvider(
         new ClinicorpClient(credentials),
         timeZone,
         {
           unitId: row.unitId,
-          professionalId: row.professionalId,
+          professionalId,
           categoryName: row.categoryExternalId ?? null,
         },
       ),

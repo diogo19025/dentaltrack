@@ -62,6 +62,54 @@ export class ProfessionalsService {
   }
 
   /**
+   * Normaliza o valor persistido em `ClinicIntegration.professionalId` para o
+   * identificador que o provedor entende.
+   *
+   * A tela do primeiro PR da F20 chegou a salvar o UUID local (`Professional.id`)
+   * neste campo, que historicamente guarda o id externo do Clinicorp. Aceitar os
+   * dois formatos aqui mantém as escolhas já salvas funcionando, sem mandar um
+   * UUID nosso para a API do fornecedor. Profissional manual, inativo ou de
+   * outra unidade não pode virar padrão de uma agenda externa.
+   */
+  async resolveExternalId(
+    clinicId: string,
+    value: string | null | undefined,
+    options: { unitExternalId?: string | null } = {},
+  ): Promise<string | null> {
+    if (!value) return null;
+
+    const row = await this.prisma.professional.findFirst({
+      where: {
+        clinicId,
+        OR: [{ id: value }, { externalId: value }],
+      },
+    });
+    if (row) {
+      if (!row.active || !row.externalId) return null;
+      if (
+        options.unitExternalId &&
+        row.unitExternalId !== options.unitExternalId
+      ) {
+        return null;
+      }
+      return row.externalId;
+    }
+
+    // Antes de o espelho existir, o campo já guardava o id externo. Só o
+    // preservamos quando ainda não há cadastro capaz de validar a escolha.
+    const mirrored = await this.prisma.professional.count({
+      where: {
+        clinicId,
+        externalId: { not: null },
+        ...(options.unitExternalId
+          ? { unitExternalId: options.unitExternalId }
+          : {}),
+      },
+    });
+    return mirrored === 0 ? value : null;
+  }
+
+  /**
    * Casa o que o cliente escreveu com um profissional **ativo**.
    *
    * Tolerante de propósito: "Dra. Ana" tem que achar "Ana Paula Souza", e
@@ -71,24 +119,32 @@ export class ProfessionalsService {
    * Mais de um candidato é ambíguo — quem decide é o cliente, não a heurística.
    */
   async match(clinicId: string, text: string): Promise<ProfessionalMatch> {
+    const active = await this.listActive(clinicId);
+    return this.matchCandidates(text, active);
+  }
+
+  /** Mesmo casamento de `match`, restrito a uma lista já escopada. */
+  matchCandidates(
+    text: string,
+    candidates: readonly ProfessionalDto[],
+  ): ProfessionalMatch {
     const wanted = nameTokens(text);
     if (wanted.length === 0) return { kind: 'nenhum' };
 
-    const active = await this.listActive(clinicId);
-    const exact = active.filter(
+    const exact = candidates.filter(
       (p) => nameTokens(p.name).join(' ') === wanted.join(' '),
     );
     if (exact.length === 1) return { kind: 'um', professional: exact[0] };
 
-    const candidates = active.filter((p) => {
+    const matches = candidates.filter((p) => {
       const tokens = nameTokens(p.name);
       return wanted.every((w) => tokens.some((t) => t.startsWith(w)));
     });
-    if (candidates.length === 1) {
-      return { kind: 'um', professional: candidates[0] };
+    if (matches.length === 1) {
+      return { kind: 'um', professional: matches[0] };
     }
-    if (candidates.length > 1) {
-      return { kind: 'ambiguo', options: candidates };
+    if (matches.length > 1) {
+      return { kind: 'ambiguo', options: matches };
     }
     return { kind: 'nenhum' };
   }

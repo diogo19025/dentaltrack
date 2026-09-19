@@ -24,7 +24,10 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
     },
     automationSettings: { findUnique: jest.fn() },
   };
-  const professionalsMock = { syncFromProvider: jest.fn() };
+  const professionalsMock = {
+    syncFromProvider: jest.fn(),
+    resolveExternalId: jest.fn(),
+  };
   /** Env simulada — os testes ligam/desligam a service account do Google aqui. */
   const env: Record<string, string | undefined> = {};
   const configMock = { get: jest.fn((key: string) => env[key]) };
@@ -56,6 +59,10 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       atualizados: 0,
       desativados: 0,
     });
+    professionalsMock.resolveExternalId.mockImplementation(
+      (_clinicId: string, value: string | null | undefined) =>
+        Promise.resolve(value ?? null),
+    );
 
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -290,6 +297,27 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       expect(JSON.stringify(status)).not.toContain('api-clinicorp');
     });
 
+    it('devolve o id externo quando uma configuração antiga guardou o UUID local', async () => {
+      prismaMock.clinicIntegration.findUnique.mockResolvedValueOnce({
+        provider: 'clinicorp',
+        mode: 'live',
+        credentials: null,
+        unitId: '1',
+        professionalId: 'uuid-local',
+        statusMappings: [],
+      });
+      professionalsMock.resolveExternalId.mockResolvedValueOnce('10');
+
+      const status = await integrations.getStatus(CLINIC, 'clinicorp');
+
+      expect(status.professionalId).toBe('10');
+      expect(professionalsMock.resolveExternalId).toHaveBeenCalledWith(
+        CLINIC,
+        'uuid-local',
+        { unitExternalId: '1' },
+      );
+    });
+
     it('provider google devolve a configuração (não é segredo) e o e-mail da service account', async () => {
       env.GOOGLE_CALENDAR_SA_EMAIL = 'agenda@projeto.iam.gserviceaccount.com';
       env.GOOGLE_CALENDAR_SA_KEY = 'chave-pem';
@@ -368,6 +396,23 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       const data = prismaMock.clinicIntegration.upsert.mock.calls[0][0].update;
       expect(data).toEqual({ unitId: '2' });
       expect(data.credentials).toBeUndefined();
+    });
+
+    it('normaliza o UUID local antes de salvar o profissional padrão', async () => {
+      professionalsMock.resolveExternalId.mockResolvedValueOnce('10');
+
+      await integrations.update(CLINIC, 'clinicorp', {
+        unitId: '1',
+        professionalId: 'uuid-local',
+      });
+
+      const data = prismaMock.clinicIntegration.upsert.mock.calls[0][0].update;
+      expect(data).toMatchObject({ unitId: '1', professionalId: '10' });
+      expect(professionalsMock.resolveExternalId).toHaveBeenCalledWith(
+        CLINIC,
+        'uuid-local',
+        { unitExternalId: '1' },
+      );
     });
 
     it('trocar credencial invalida a verificação anterior', async () => {

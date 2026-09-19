@@ -86,6 +86,19 @@ export interface ProfessionalContext {
   fixed: ProfessionalDto | null;
 }
 
+interface ProfessionalScope {
+  /** Provedor ativo, usado também para separar as entradas do cache. */
+  providerName: string | null;
+  /** Unidade efetiva do Clinicorp. */
+  unitId: string | null;
+  /** Ativos que o provedor atual consegue realmente agendar. */
+  professionals: ProfessionalDto[];
+  /** Padrão válido e ativo da unidade configurada. */
+  fixed: ProfessionalDto | null;
+  /** Há espelho nesta unidade, mesmo que todos tenham sido desativados. */
+  hasMirror: boolean;
+}
+
 export interface BookResult {
   appointmentId: string;
   startsAt: Date | null;
@@ -137,46 +150,45 @@ export class AgendaService {
    * atende e como escolher (ver `ProfessionalContext`).
    */
   async professionalContext(clinicId: string): Promise<ProfessionalContext> {
-    const [professionals, status, settings] = await Promise.all([
-      this.professionals.listActive(clinicId),
-      this.integrations.activeStatus(clinicId),
+    const [scope, settings] = await Promise.all([
+      this.professionalScope(clinicId),
       this.prisma.clinicSettings.findUnique({
         where: { clinicId },
         select: { professionalPolicy: true },
       }),
     ]);
 
-    if (status.professionalId) {
-      const fixed =
-        professionals.find((p) => p.externalId === status.professionalId) ??
-        (await this.professionals.findByExternalId(
-          clinicId,
-          status.professionalId,
-        ));
-      return { policy: 'fixo', professionals, fixed };
+    if (scope.fixed) {
+      return {
+        policy: 'fixo',
+        professionals: scope.professionals,
+        fixed: scope.fixed,
+      };
     }
 
     const policy =
       settings?.professionalPolicy === 'perguntar'
         ? 'perguntar'
         : DEFAULT_PROFESSIONAL_POLICY;
-    return { policy, professionals, fixed: null };
+    return { policy, professionals: scope.professionals, fixed: null };
   }
 
   /** Casa o nome que o cliente escreveu com a equipe (ver `ProfessionalsService.match`). */
-  resolveProfessional(
+  async resolveProfessional(
     clinicId: string,
     text: string,
   ): Promise<ProfessionalMatch> {
-    return this.professionals.match(clinicId, text);
+    const scope = await this.professionalScope(clinicId);
+    return this.professionals.matchCandidates(text, scope.professionals);
   }
 
   /** Profissional pelo id que veio num horário oferecido. */
-  professionalByExternalId(
+  async professionalByExternalId(
     clinicId: string,
     externalId: string,
   ): Promise<ProfessionalDto | null> {
-    return this.professionals.findByExternalId(clinicId, externalId);
+    const scope = await this.professionalScope(clinicId);
+    return scope.professionals.find((p) => p.externalId === externalId) ?? null;
   }
 
   /**
@@ -206,6 +218,9 @@ export class AgendaService {
         (options.days ?? DEFAULT_AVAILABILITY_DAYS) * 24 * 3_600_000,
     );
     const limit = options.limit ?? DEFAULT_SLOT_LIMIT;
+    const scope = await this.professionalScope(clinicId);
+    const effectiveProfessionalId =
+      options.professionalId ?? scope.fixed?.externalId ?? null;
 
     const cacheKey = [
       clinicId,
@@ -213,18 +228,25 @@ export class AgendaService {
       to.toISOString().slice(0, 10),
       options.durationMinutes ?? '',
       limit,
-      options.professionalId ?? '',
+      scope.providerName ?? '',
+      scope.unitId ?? '',
+      scope.professionals
+        .map((professional) => professional.externalId)
+        .join(','),
+      effectiveProfessionalId ?? '',
     ].join('|');
+    this.pruneAvailabilityCache();
     const cached = this.availabilityCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
 
     // Sem profissional pedido nem padrão, o Clinicorp consultaria a conta
     // inteira; restringir aos ativos do cadastro é o que deixa o dono tirar
     // do leque quem não recebe agendamento do agente.
-    const active = await this.professionals.listActive(clinicId);
-    const professionalIds = options.professionalId
+    const professionalIds = effectiveProfessionalId
       ? undefined
-      : active.flatMap((p) => (p.externalId ? [p.externalId] : []));
+      : scope.hasMirror
+        ? scope.professionals.map((p) => p.externalId)
+        : undefined;
 
     const startedAt = Date.now();
     try {
@@ -233,12 +255,10 @@ export class AgendaService {
         to,
         durationMinutes: options.durationMinutes ?? null,
         limit,
-        professionalId: options.professionalId ?? null,
-        ...(professionalIds && professionalIds.length > 0
-          ? { professionalIds }
-          : {}),
+        professionalId: effectiveProfessionalId,
+        ...(professionalIds === undefined ? {} : { professionalIds }),
       });
-      const slots = withProfessionalNames(raw, active);
+      const slots = withProfessionalNames(raw, scope.professionals);
       this.logger.log({
         event: 'agenda.availability',
         outcome: 'ok',
@@ -913,6 +933,60 @@ export class AgendaService {
     for (const [key, entry] of this.availabilityCache) {
       if (entry.clinicId === clinicId) this.availabilityCache.delete(key);
     }
+  }
+
+  /** Remove expirados para o cache de um minuto não crescer por toda a vida da API. */
+  private pruneAvailabilityCache(now = Date.now()): void {
+    for (const [key, entry] of this.availabilityCache) {
+      if (entry.expiresAt <= now) this.availabilityCache.delete(key);
+    }
+  }
+
+  /**
+   * Equipe que a integração ativa consegue honrar.
+   *
+   * O Google usa uma agenda única e ignora profissional; cadastro manual não
+   * tem id no fornecedor. Nenhum dos dois pode ser prometido ao cliente como
+   * escolha real. No Clinicorp, a unidade faz parte da identidade da consulta.
+   */
+  private async professionalScope(
+    clinicId: string,
+  ): Promise<ProfessionalScope> {
+    const providerName = await this.integrations.activeProviderName(clinicId);
+    if (providerName !== 'clinicorp') {
+      return {
+        providerName,
+        unitId: null,
+        professionals: [],
+        fixed: null,
+        hasMirror: false,
+      };
+    }
+
+    const [all, status] = await Promise.all([
+      this.professionals.list(clinicId, { includeInactive: true }),
+      this.integrations.activeStatus(clinicId),
+    ]);
+    const mirrored = all.filter(
+      (professional) =>
+        Boolean(professional.externalId) &&
+        (!status.unitId || professional.unitExternalId === status.unitId),
+    );
+    const professionals = mirrored.filter(
+      (professional) => professional.active,
+    );
+    const fixed = status.professionalId
+      ? (professionals.find(
+          (professional) => professional.externalId === status.professionalId,
+        ) ?? null)
+      : null;
+    return {
+      providerName,
+      unitId: status.unitId,
+      professionals,
+      fixed,
+      hasMirror: mirrored.length > 0,
+    };
   }
 
   private async defaultUnitId(

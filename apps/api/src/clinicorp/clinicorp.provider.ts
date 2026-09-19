@@ -252,12 +252,12 @@ export class ClinicorpAgendaProvider implements AgendaProvider {
       query.professionalId ?? this.defaults.professionalId ?? null;
     const professionalIds = professionalId
       ? [professionalId]
-      : query.professionalIds && query.professionalIds.length > 0
+      : query.professionalIds !== undefined
         ? [...query.professionalIds]
         : (await this.listProfessionals(unitId)).map((p) => p.id);
     if (!professionalIds.length) {
       throw new AgendaProviderError(
-        'A conta não devolveu nenhum profissional — a consulta de horários exige um.',
+        'Nenhum profissional ativo está disponível nesta unidade — a consulta de horários exige um.',
         { kind: 'config' },
       );
     }

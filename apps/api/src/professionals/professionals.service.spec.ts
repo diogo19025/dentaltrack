@@ -37,6 +37,7 @@ describe('ProfessionalsService (cadastro espelhado · F20)', () => {
       update: jest.fn(),
       updateMany: jest.fn(),
       delete: jest.fn(),
+      count: jest.fn(),
     },
     appointment: { count: jest.fn() },
   };
@@ -44,6 +45,7 @@ describe('ProfessionalsService (cadastro espelhado · F20)', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     prismaMock.professional.findMany.mockResolvedValue([]);
+    prismaMock.professional.count.mockResolvedValue(0);
     prismaMock.appointment.count.mockResolvedValue(0);
     const moduleRef = await Test.createTestingModule({
       providers: [
@@ -90,6 +92,49 @@ describe('ProfessionalsService (cadastro espelhado · F20)', () => {
       expect(dto.externalId).toBe('');
       expect(dto.unitExternalId).toBe('');
       expect(dto.createdAt).toBe(NOW.toISOString());
+    });
+  });
+
+  describe('resolveExternalId', () => {
+    it('converte o UUID local no id que o Clinicorp entende', async () => {
+      prismaMock.professional.findFirst.mockResolvedValueOnce(row());
+
+      await expect(
+        service.resolveExternalId(CLINIC, 'p-local-1', {
+          unitExternalId: '1',
+        }),
+      ).resolves.toBe('10');
+    });
+
+    it('recusa manual, inativo e profissional de outra unidade', async () => {
+      for (const invalid of [
+        row({ externalId: null }),
+        row({ active: false }),
+        row({ unitExternalId: '2' }),
+      ]) {
+        prismaMock.professional.findFirst.mockResolvedValueOnce(invalid);
+        await expect(
+          service.resolveExternalId(CLINIC, invalid.id, {
+            unitExternalId: '1',
+          }),
+        ).resolves.toBeNull();
+      }
+    });
+
+    it('preserva id externo legado somente antes de existir um espelho validável', async () => {
+      prismaMock.professional.findFirst.mockResolvedValue(null);
+      prismaMock.professional.count
+        .mockResolvedValueOnce(0)
+        .mockResolvedValueOnce(2);
+
+      await expect(
+        service.resolveExternalId(CLINIC, '10', { unitExternalId: '1' }),
+      ).resolves.toBe('10');
+      await expect(
+        service.resolveExternalId(CLINIC, 'desconhecido', {
+          unitExternalId: '1',
+        }),
+      ).resolves.toBeNull();
     });
   });
 

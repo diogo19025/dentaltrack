@@ -222,6 +222,28 @@ describe('ClinicorpAgendaProvider (adapter da API real · F9)', () => {
     expect(queried.sort()).toEqual(['10', '11']);
   });
 
+  it('leque explicitamente vazio não volta a consultar toda a conta', async () => {
+    const fetchMock = mockFetch({
+      '/professional/list_all_professionals': {
+        body: [{ id: 10, name: 'Dra. Ana' }],
+      },
+    });
+    const p = new ClinicorpAgendaProvider(
+      new ClinicorpClient({ username: 'u', token: 't', subscriberId: 'sub-1' }),
+      SP,
+      { unitId: '1' },
+    );
+
+    await expect(
+      p.listAvailableSlots({
+        from: new Date(),
+        to: new Date(Date.now() + 3_600_000),
+        professionalIds: [],
+      }),
+    ).rejects.toThrow(/nenhum profissional ativo/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('descobre o subscriber_id pela rota sem parâmetros', async () => {
     const fetchMock = mockFetch({
       '/group/list_subscribers': {
