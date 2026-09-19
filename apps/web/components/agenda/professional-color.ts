@@ -10,6 +10,9 @@ import type { AppointmentSummary, ProfessionalDto } from "@dentaltrack/shared";
 /** Cor neutra para agendamento sem profissional resolvido. */
 export const NEUTRAL_COLOR = "var(--primary)";
 
+/** Tamanho da paleta (`--chart-1..8` no globals.css). */
+export const PALETTE_SIZE = 8;
+
 /**
  * Cor estável por profissional: a posição na lista (ordem de entrada, que a
  * API devolve de propósito) escolhe a cor da paleta de charts, então ninguém
@@ -22,7 +25,7 @@ export function professionalColor(
   if (!professional) return NEUTRAL_COLOR;
   const index = all.findIndex((p) => p.id === professional.id);
   if (index < 0) return NEUTRAL_COLOR;
-  return `var(--chart-${(index % 5) + 1})`;
+  return `var(--chart-${(index % PALETTE_SIZE) + 1})`;
 }
 
 /**

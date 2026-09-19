@@ -1,6 +1,6 @@
 import type { AppointmentSummary, ProfessionalDto } from "@dentaltrack/shared";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import AgendaPage from "./page";
 
 /**
@@ -56,6 +56,15 @@ vi.mock("@/components/auth/role-context", () => ({
 vi.mock("@/components/agenda/scheduled-messages", () => ({
   ScheduledMessagesCard: () => null,
 }));
+
+// Quarta-feira 16/09/2026, 10h: "amanhã" cai na mesma semana da grade.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date(2026, 8, 16, 10, 0, 0));
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function professional(over: Partial<ProfessionalDto>): ProfessionalDto {
   return {
@@ -122,6 +131,45 @@ describe("AgendaPage — profissionais", () => {
     );
   });
 
+  it("a legenda é filtro rápido: clicar num nome isola o profissional", () => {
+    const bruno = "00000000-0000-0000-0000-00000000000b";
+    state.professionals = [
+      professional({}),
+      professional({ id: bruno, externalId: "11", name: "Dr. Bruno Lima" }),
+    ];
+    state.appointments = [
+      appointment({}),
+      appointment({
+        id: "22222222-2222-2222-2222-222222222222",
+        leadName: "João Pedro",
+        professionalId: bruno,
+        professionalName: "Dr. Bruno Lima",
+      }),
+    ];
+
+    render(<AgendaPage />);
+
+    const legend = screen.getByRole("list", {
+      name: "Legenda de profissionais",
+    });
+    const chip = within(legend).getByRole("button", { name: "Dr. Bruno Lima" });
+    fireEvent.click(chip);
+
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("button", { name: /14:00 – 14:30 · João Pedro/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /14:00 – 14:30 · Maria Souza/ }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(chip);
+    expect(chip).toHaveAttribute("aria-pressed", "false");
+    expect(
+      screen.getByRole("button", { name: /14:00 – 14:30 · Maria Souza/ }),
+    ).toBeInTheDocument();
+  });
+
   it("a cor é sempre do profissional: não há escolha de modo de cor", () => {
     state.professionals = [
       professional({}),
@@ -142,7 +190,7 @@ describe("AgendaPage — profissionais", () => {
     const block = screen.getByRole("button", {
       name: /14:00 – 14:30 · Maria Souza · Limpeza · Dra\. Ana Ribeiro/,
     });
-    expect(block).toHaveStyle({ background: "var(--chart-1)" });
+    expect(block.style.getPropertyValue("--pro")).toBe("var(--chart-1)");
   });
 
   it("com um profissional só, não há legenda", () => {
@@ -171,6 +219,26 @@ describe("AgendaPage — profissionais", () => {
   });
 });
 
+describe("AgendaPage — semana", () => {
+  it("a grade vai de segunda a domingo, e o botão Hoje volta para a semana atual", () => {
+    state.professionals = [professional({})];
+    state.appointments = [appointment({})];
+
+    render(<AgendaPage />);
+
+    expect(screen.getByText("14 de set. – 20 de set.")).toBeInTheDocument();
+    const today = screen.getByRole("button", { name: "Hoje" });
+    expect(today).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Próxima semana" }));
+    expect(screen.getByText("21 de set. – 27 de set.")).toBeInTheDocument();
+    expect(today).toBeEnabled();
+
+    fireEvent.click(today);
+    expect(screen.getByText("14 de set. – 20 de set.")).toBeInTheDocument();
+  });
+});
+
 describe("AgendaPage — filtros e detalhe", () => {
   it("oferece o filtro por procedimento junto de situação, profissional e cliente", () => {
     state.professionals = [professional({})];
@@ -189,6 +257,28 @@ describe("AgendaPage — filtros e detalhe", () => {
         within(filters).getByRole("combobox", { name }),
       ).toBeInTheDocument();
     }
+  });
+
+  it("dois horários que coincidem ficam lado a lado na grade", () => {
+    state.professionals = [professional({})];
+    state.appointments = [
+      appointment({}),
+      appointment({
+        id: "22222222-2222-2222-2222-222222222222",
+        leadName: "João Pedro",
+      }),
+    ];
+
+    render(<AgendaPage />);
+
+    const first = screen.getByRole("button", {
+      name: /14:00 – 14:30 · Maria Souza/,
+    });
+    const second = screen.getByRole("button", {
+      name: /14:00 – 14:30 · João Pedro/,
+    });
+    expect(first.style.width).toBe("calc(50% - 3px)");
+    expect(second.style.left).toBe("calc(50% + 3px)");
   });
 
   it("clicar num agendamento da grade abre o painel com os detalhes", () => {
