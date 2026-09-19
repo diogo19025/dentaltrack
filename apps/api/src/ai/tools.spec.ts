@@ -411,6 +411,20 @@ describe('buildChatTools — profissional (F20)', () => {
     expect(res.orientacao).toContain('Nenhum profissional');
   });
 
+  it('checkAvailability: cadastro manual não vira consulta irrestrita na agenda', async () => {
+    agendaMock.resolveProfessional.mockResolvedValueOnce({
+      kind: 'um',
+      professional: { ...ana, externalId: '' },
+    });
+
+    const res = await exec(tools().checkAvailability, {
+      profissional: 'Dra. Ana',
+    });
+
+    expect(agendaMock.getAvailability).not.toHaveBeenCalled();
+    expect(res.orientacao).toContain('não está vinculado');
+  });
+
   it('checkAvailability: sem profissional, consulta sem restrição (política do dono decide o tom)', async () => {
     await exec(tools().checkAvailability, {});
 
@@ -439,7 +453,7 @@ describe('buildChatTools — profissional (F20)', () => {
     );
   });
 
-  it('bookAppointment: sem id, o nome digitado casa com a equipe; ambíguo não decide nada', async () => {
+  it('bookAppointment: sem id, o nome digitado casa com a equipe; ambíguo para antes de agendar', async () => {
     agendaMock.resolveProfessional.mockResolvedValueOnce({
       kind: 'um',
       professional: ana,
@@ -454,14 +468,15 @@ describe('buildChatTools — profissional (F20)', () => {
       kind: 'ambiguo',
       options: [ana, bruno],
     });
-    await exec(tools().bookAppointment, { profissional: 'dr' });
-    expect(agendaMock.book).toHaveBeenLastCalledWith(
-      CLINIC_ID,
-      expect.objectContaining({ professional: null }),
-    );
+    const callsBefore = agendaMock.book.mock.calls.length;
+    const res = await exec(tools().bookAppointment, { profissional: 'dr' });
+
+    expect(res).toMatchObject({ ok: false });
+    expect(res.erro).toContain('Mais de um profissional');
+    expect(agendaMock.book).toHaveBeenCalledTimes(callsBefore);
   });
 
-  it('bookAppointment: falha ao resolver o profissional não derruba o agendamento', async () => {
+  it('bookAppointment: falha ao resolver o profissional não troca silenciosamente pelo padrão', async () => {
     agendaMock.professionalByExternalId.mockRejectedValueOnce(
       new Error('banco fora'),
     );
@@ -470,10 +485,20 @@ describe('buildChatTools — profissional (F20)', () => {
       profissionalId: '11',
     });
 
-    expect(res.ok).toBe(true);
-    expect(agendaMock.book).toHaveBeenCalledWith(
-      CLINIC_ID,
-      expect.objectContaining({ professional: null }),
-    );
+    expect(res).toMatchObject({ ok: false });
+    expect(res.erro).toContain('confirmar o profissional');
+    expect(agendaMock.book).not.toHaveBeenCalled();
+  });
+
+  it('bookAppointment: id que deixou de existir pede nova consulta', async () => {
+    agendaMock.professionalByExternalId.mockResolvedValueOnce(null);
+
+    const res = await exec(tools().bookAppointment, {
+      profissionalId: '11',
+    });
+
+    expect(res).toMatchObject({ ok: false });
+    expect(res.erro).toContain('não está mais disponível');
+    expect(agendaMock.book).not.toHaveBeenCalled();
   });
 });

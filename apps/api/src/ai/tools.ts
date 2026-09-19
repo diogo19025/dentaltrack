@@ -647,7 +647,15 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
                   'Nenhum profissional da equipe tem esse nome. Diga isso ao cliente com gentileza, liste os profissionais que atendem e pergunte com quem ele prefere — ou consulte sem `profissional` para oferecer o primeiro horário livre.',
               };
             }
-            professionalId = match.professional.externalId || null;
+            if (!match.professional.externalId) {
+              return {
+                agendaConectada: true,
+                horarios: [],
+                orientacao:
+                  'Esse profissional não está vinculado à agenda conectada. Explique que não é possível confirmar horários com ele e ofereça consultar os profissionais disponíveis.',
+              };
+            }
+            professionalId = match.professional.externalId;
           }
 
           const { slots, live } = await agenda.getAvailability(clinicId, {
@@ -780,15 +788,24 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
               })
             : null;
 
-          // Profissional (F20): o id do horário oferecido vale mais que o nome
-          // digitado, e um nome ambíguo ou desconhecido não decide nada — o
-          // agendamento segue pelo padrão da integração, como antes.
-          const professional = agenda
+          // Profissional (F20): o id do horário oferecido vale mais que o nome.
+          // Se a escolha explícita deixou de existir, parar é mais seguro do
+          // que reservar silenciosamente com outra pessoa.
+          const professionalResolution = agenda
             ? await resolveProfessional(agenda, clinicId, {
                 profissionalId,
                 profissional,
               })
-            : null;
+            : ({ ok: true, professional: null } as const);
+          if (!professionalResolution.ok) {
+            return {
+              ok: false,
+              erro: professionalResolution.error,
+              orientacao:
+                'Não afirme que está marcado. Consulte checkAvailability novamente ou peça ao cliente para escolher um profissional disponível.',
+            };
+          }
+          const professional = professionalResolution.professional;
 
           // Com agenda conectada e horário definido, isto grava também na
           // agenda real da empresa; sem uma coisa ou outra, registra só aqui —
@@ -993,36 +1010,60 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
 /**
  * Profissional do agendamento (F20), na ordem em que a informação é confiável:
  * o id que veio num horário oferecido, depois o nome que o cliente escreveu.
- * Ambíguo ou desconhecido devolve `null` — o agendamento segue pelo padrão da
- * integração, como antes do cadastro existir, em vez de cair em alguém errado.
+ * Sem escolha explícita devolve `null` e deixa valer a política da empresa.
+ * Escolha ambígua, desconhecida ou indisponível falha fechada: nunca troca a
+ * pessoa escolhida pelo padrão da integração sem avisar.
  */
+type ProfessionalResolution =
+  | { ok: true; professional: ProfessionalDto | null }
+  | { ok: false; error: string };
+
 async function resolveProfessional(
   agenda: AgendaService,
   clinicId: string,
   input: { profissionalId?: string; profissional?: string },
-): Promise<ProfessionalDto | null> {
+): Promise<ProfessionalResolution> {
   try {
     if (input.profissionalId?.trim()) {
       const byId = await agenda.professionalByExternalId(
         clinicId,
         input.profissionalId.trim(),
       );
-      if (byId) return byId;
+      return byId
+        ? { ok: true, professional: byId }
+        : {
+            ok: false,
+            error:
+              'O profissional do horário escolhido não está mais disponível.',
+          };
     }
     if (input.profissional?.trim()) {
       const match = await agenda.resolveProfessional(
         clinicId,
         input.profissional,
       );
-      if (match.kind === 'um') return match.professional;
+      if (match.kind === 'um') {
+        return { ok: true, professional: match.professional };
+      }
+      return {
+        ok: false,
+        error:
+          match.kind === 'ambiguo'
+            ? 'Mais de um profissional corresponde ao nome informado.'
+            : 'O profissional informado não está disponível na agenda.',
+      };
     }
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     logger.warn(
       `Profissional não resolvido para a empresa ${clinicId}: ${detail}`,
     );
+    return {
+      ok: false,
+      error: 'Não foi possível confirmar o profissional escolhido agora.',
+    };
   }
-  return null;
+  return { ok: true, professional: null };
 }
 
 async function bookWithoutAgenda(

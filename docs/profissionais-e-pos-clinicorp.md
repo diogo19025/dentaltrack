@@ -102,9 +102,16 @@ Como ficou, e o que divergiu do proposto:
   = política `fixo` — tudo vai para ele e o agente não oferece escolha
   (`AgendaService.professionalContext`);
 - o **leque** do Clinicorp ficou restrito aos ativos do cadastro (desativar alguém na aba
-  Integração tira a pessoa da consulta), e a mesma consulta vale por um minuto
+  Integração tira a pessoa da consulta) **e à unidade configurada**. Cadastro manual e
+  Google Agenda não aparecem como escolha individual porque esses provedores não têm um
+  id de profissional que a reserva consiga honrar;
+- o profissional fixo é persistido e enviado pelo **id externo do Clinicorp** (o backend
+  também normaliza UUIDs locais gravados por versões anteriores). Se um id ou nome
+  escolhido deixar de ser resolvido, o agente pede nova consulta em vez de agendar
+  silenciosamente com o padrão;
+- a mesma consulta vale por um minuto
   (`AVAILABILITY_CACHE_MS`; agendar, cancelar e remarcar invalidam). A re-checagem do
-  `book()` continua indo ao provedor;
+  `book()` continua indo ao provedor, e entradas vencidas são removidas do cache;
 - a linha local nasce com chave e nome do profissional já no agendamento — o que fecha a
   segunda metade do item 5.
 
