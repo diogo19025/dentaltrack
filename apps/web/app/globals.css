@@ -204,6 +204,30 @@
   }
 }
 
+/* ===== Topbar como material (apple-design § materiais) =====
+   Translúcida com o conteúdo rolando por baixo. Quem pede menos transparência
+   ou mais contraste recebe a superfície sólida. */
+.topbar-material {
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .topbar-material {
+    background: var(--card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .topbar-material {
+    background: var(--card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom-color: var(--border-strong) !important;
+  }
+}
+
 /* ===== Scrollbar sóbria ===== */
 *::-webkit-scrollbar {
   width: 10px;
@@ -313,6 +337,11 @@
 .table tbody tr:hover {
   background: var(--accent);
 }
+/* Feedback no pointer-down, antes do clique concluir: instantâneo. */
+.table tbody tr[role="button"]:active {
+  background: var(--primary-tint);
+  transition-duration: 0s;
+}
 .table tbody tr:last-child td {
   border-bottom: 0;
 }
@@ -320,10 +349,12 @@
 /* ===== Motion (médio) ===== */
 @keyframes fadeUp {
   from {
-    transform: translateY(10px);
+    transform: translateY(6px);
+    opacity: 0;
   }
   to {
     transform: none;
+    opacity: 1;
   }
 }
 @keyframes blink {
@@ -355,7 +386,15 @@
   }
 }
 .anim-fade-up {
-  animation: fadeUp 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: fadeUp 0.28s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+/* Troca de valor no lugar (número de KPI ao mudar o período): só opacidade. */
+@keyframes swapIn {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+.anim-swap {
+  animation: swapIn 0.2s ease both;
 }
 .anim-fade {
   animation: fadeIn 0.4s ease both;
@@ -415,11 +454,26 @@
   box-shadow: var(--shadow-md);
 }
 
+/* Movimento reduzido = movimento mais suave, não zero. Deslocamentos (entrada
+   escalonada, barras crescendo, lift) viram fade curto; transições de cor e
+   opacidade continuam, porque ajudam a entender o que mudou. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    transition-duration: 0.001ms !important;
+  .anim-fade-up,
+  .stagger > *,
+  .bar-grow {
+    animation-name: fadeIn;
+    animation-duration: 0.2s;
+    animation-delay: 0s;
+    transform: none;
+  }
+  .lift:hover,
+  .lift:active {
+    transform: none;
+  }
+  .shimmer {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
   }
 }

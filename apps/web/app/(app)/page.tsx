@@ -10,6 +10,7 @@ import {
   Inbox,
   MessageCircle,
   RefreshCw,
+  Tags,
   Target,
   Users,
 } from "lucide-react";
@@ -66,7 +67,8 @@ const pctFmt = (n: number) => `${Math.round(n * 100)}%`;
 
 export default function DashboardPage() {
   const [range, setRange] = useState<MetricsRange>("50d");
-  const { data, isLoading, isError, error, refetch } = useMetrics(range);
+  const { data, isLoading, isError, error, refetch, isPlaceholderData } =
+    useMetrics(range);
   const { data: recent } = useRecentConversations(6);
   const { data: leadsData, isLoading: leadsLoading } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -103,8 +105,12 @@ export default function DashboardPage() {
       ) : isLoading || !data ? (
         <DashboardSkeleton />
       ) : (
-        <>
-          {/* KPIs */}
+        <div
+          data-stale={isPlaceholderData || undefined}
+          className="transition-opacity duration-200 ease-out data-[stale]:opacity-60"
+        >
+          {/* KPIs — a entrada escalonada roda uma vez: o grid não remonta ao
+            trocar o período (keepPreviousData), só os números trocam no lugar. */}
           <div className="stagger mb-[18px] grid grid-cols-3 gap-[18px] max-[1100px]:grid-cols-2 max-[680px]:grid-cols-1">
             <KpiCard
               icon={Users}
@@ -115,10 +121,10 @@ export default function DashboardPage() {
             />
             <KpiCard
               icon={MessageCircle}
-              label="Mensagens do bot (50d)"
+              label="Mensagens do bot"
               value={intFmt(data.kpis.botMessages.value)}
               kpi={data.kpis.botMessages}
-              hint="Respostas do agente · janela 50 dias"
+              hint="Respostas do agente no período"
             />
             <KpiCard
               icon={RefreshCw}
@@ -152,7 +158,7 @@ export default function DashboardPage() {
 
           {/* Linha + Donut */}
           <div className="mb-[18px] grid grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] gap-[18px] max-[980px]:grid-cols-1">
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-[18px] flex items-start justify-between gap-3">
                 <div>
                   <div className="text-base font-semibold tracking-[-0.01em]">
@@ -168,7 +174,7 @@ export default function DashboardPage() {
               <LineChart data={data.line} height={250} />
             </Card>
 
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
                 Status das conversas
               </div>
@@ -183,7 +189,7 @@ export default function DashboardPage() {
 
           {/* Funil + Top tags */}
           <div className="mb-[18px] grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1">
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
                 Funil de conversão
               </div>
@@ -193,7 +199,7 @@ export default function DashboardPage() {
               <Funnel data={data.funnel} />
               <BookingsFootnote bookings={data.bookings} />
             </Card>
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
                 Tags mais frequentes
               </div>
@@ -203,9 +209,24 @@ export default function DashboardPage() {
               {data.topTags.length > 0 ? (
                 <HBars data={data.topTags} />
               ) : (
-                <p className="py-6 text-center text-[13px] text-muted-foreground">
-                  Nenhuma tag detectada ainda.
-                </p>
+                <div className="flex flex-col items-center gap-2 py-6 text-center">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-primary-tint text-primary">
+                    <Tags className="size-4" />
+                  </span>
+                  <p className="text-[13px] font-medium">
+                    Nenhuma tag detectada ainda
+                  </p>
+                  <p className="max-w-[300px] text-[12.5px] text-muted-foreground">
+                    O assistente classifica cada conversa pelas tags de
+                    interesse que a empresa cadastrar.
+                  </p>
+                  <Button asChild variant="link" size="sm" className="group">
+                    <Link href="/settings?tab=tags">
+                      Definir tags{" "}
+                      <ChevronRight className="size-4 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
+                    </Link>
+                  </Button>
+                </div>
               )}
             </Card>
           </div>
@@ -234,7 +255,7 @@ export default function DashboardPage() {
           />
 
           {/* Conversas recentes */}
-          <Card className="anim-fade-up gap-0 overflow-hidden p-0">
+          <Card className="gap-0 overflow-hidden p-0">
             <div className="flex items-start justify-between gap-3 p-[22px_24px] pb-4">
               <div>
                 <div className="text-base font-semibold tracking-[-0.01em]">
@@ -244,9 +265,10 @@ export default function DashboardPage() {
                   Últimas interações do agente
                 </div>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="group">
                 <Link href="/leads">
-                  Ver todas <ChevronRight className="size-4" />
+                  Ver todas{" "}
+                  <ChevronRight className="size-4 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
                 </Link>
               </Button>
             </div>
@@ -334,7 +356,7 @@ export default function DashboardPage() {
               if (!open) setSelectedConversationId(null);
             }}
           />
-        </>
+        </div>
       )}
     </>
   );

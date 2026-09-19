@@ -38,17 +38,20 @@ export function LeadTemperatureSection({
   onLeadClick?: (lead: LeadDto) => void;
 }) {
   return (
-    <Card className="anim-fade-up gap-0 p-[22px_24px]">
+    <Card className="gap-0 p-[22px_24px]">
       <div className="mb-[18px] flex items-start justify-between gap-3">
         <div>
-          <div className="text-base font-semibold tracking-[-0.01em]">Temperatura dos leads</div>
+          <div className="text-base font-semibold tracking-[-0.01em]">
+            Temperatura dos leads
+          </div>
           <div className="mt-[3px] text-[13px] text-muted-foreground">
             Chance de conversão pelo comportamento na conversa
           </div>
         </div>
-        <Button asChild variant="ghost" size="sm">
+        <Button asChild variant="ghost" size="sm" className="group">
           <Link href="/leads">
-            Ver todos <ChevronRight className="size-4" />
+            Ver todos{" "}
+            <ChevronRight className="size-4 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
           </Link>
         </Button>
       </div>
@@ -61,7 +64,8 @@ export function LeadTemperatureSection({
         </div>
       ) : !leads || leads.length === 0 ? (
         <p className="py-6 text-center text-[13px] text-muted-foreground">
-          Nenhum lead capturado ainda. Eles aparecem aqui quando o agente registra um contato.
+          Nenhum lead capturado ainda. Eles aparecem aqui quando o agente
+          registra um contato.
         </p>
       ) : (
         <div className="grid grid-cols-3 gap-[18px] max-[980px]:grid-cols-1">
@@ -83,7 +87,9 @@ export function LeadTemperatureSection({
                     style={{ background: bucket.fg }}
                     aria-hidden="true"
                   />
-                  <span className="text-[13px] font-semibold">{bucket.label}</span>
+                  <span className="text-[13px] font-semibold">
+                    {bucket.label}
+                  </span>
                   <span
                     className="tabular rounded-full px-2 py-[2px] text-[12px] font-semibold"
                     style={{ background: bucket.bg, color: bucket.fg }}
@@ -91,7 +97,9 @@ export function LeadTemperatureSection({
                     {bucketLeads.length}
                   </span>
                 </div>
-                <div className="mt-[3px] text-[12px] text-muted-foreground">{bucket.hint}</div>
+                <div className="mt-[3px] text-[12px] text-muted-foreground">
+                  {bucket.hint}
+                </div>
 
                 {top.length > 0 ? (
                   <ul role="list" className="mt-3 flex flex-col gap-3">
@@ -101,7 +109,7 @@ export function LeadTemperatureSection({
                           type="button"
                           aria-haspopup="dialog"
                           onClick={() => onLeadClick?.(lead)}
-                          className="-m-1.5 w-[calc(100%+12px)] rounded-[10px] p-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                          className="-m-1.5 w-[calc(100%+12px)] rounded-[10px] p-1.5 text-left outline-none transition-[background-color,scale] duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 active:scale-[0.995] active:bg-primary-tint active:duration-0"
                         >
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8">
@@ -113,9 +121,11 @@ export function LeadTemperatureSection({
                               <div className="truncate text-[13.5px] font-medium">
                                 {lead.name ?? "Lead"}
                               </div>
-                              <div className="truncate text-[12px] text-muted-foreground">
-                                {lead.interest ?? "—"}
-                              </div>
+                              {lead.interest && (
+                                <div className="truncate text-[12px] tracking-[0.01em] text-muted-foreground">
+                                  {lead.interest}
+                                </div>
+                              )}
                             </div>
                             <span
                               className="tabular text-[13px] font-semibold"
@@ -131,7 +141,10 @@ export function LeadTemperatureSection({
                           >
                             <div
                               className="h-full rounded-full"
-                              style={{ width: `${lead.score}%`, background: bucket.fg }}
+                              style={{
+                                width: `${lead.score}%`,
+                                background: bucket.fg,
+                              }}
                             />
                           </div>
                         </button>
