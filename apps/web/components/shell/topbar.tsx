@@ -38,13 +38,10 @@ export function Topbar() {
 
   return (
     <div className="sticky top-0 z-20 flex-none">
-      <header
-        className="flex h-16 items-center gap-4 border-b border-border px-7"
-        style={{
-          background: "color-mix(in srgb, var(--card) 80%, transparent)",
-          backdropFilter: "blur(8px)",
-        }}
-      >
+      {/* Material translúcido (globals.css `.topbar-material`): o conteúdo
+        passa por baixo, e a borda inferior só aparece quando há conteúdo ali
+        (`html[data-scrolled]`, publicado pelo AppMain). */}
+      <header className="topbar-material flex h-16 items-center gap-4 border-b border-transparent px-7 transition-[border-color] duration-150 ease-out [html[data-scrolled]_&]:border-border">
         <div className="flex items-center gap-2 text-[13.5px] text-muted-foreground">
           <span>{brand.name}</span>
           <ChevronRight className="size-[14px]" />

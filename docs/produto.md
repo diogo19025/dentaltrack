@@ -214,6 +214,8 @@ Reproduzir o design **pixel-perfect** mantendo a stack. Não inventar cores, fon
 
 As cinco telas do handoff (Login · Dashboard · Chat · Configurações · Leads) são réplica 1:1. As telas criadas depois (**Funil**, **Agenda**, abas extras de Configurações) não têm mockup e seguem o design system existente: mesmos tokens, primitivos e espaçamentos. O código as marca com um comentário citando esta seção.
 
+**Movimento (desde 2026-09-19, revisão pelas skills `apple-design`, `emil-design-eng` e `better-ui`, versionadas em `.claude/skills/`).** Animação de entrada só na primeira pintura (a troca de período mantém o dado anterior e só troca os números no lugar); gráficos sem animação de dados; hover apenas em superfícies clicáveis, e toda superfície clicável responde no *pointer-down*; transições nomeiam as propriedades que mudam, com ease-out forte (`cubic-bezier(0.23, 1, 0.32, 1)`) e abaixo de 300ms; `prefers-reduced-motion` troca deslocamento por fade, sem zerar cor e opacidade; a topbar é material translúcido com a borda só quando há conteúdo por baixo, e cai para superfície sólida em `prefers-reduced-transparency`/`prefers-contrast`. Os tokens e o layout do handoff não mudam.
+
 Tokens em `app/globals.css` (`@theme`): cores shadcn, `--chart-1..5`, `--tag-*`, status, `--radius` 0.7rem, sombras `xs..xl`. Fontes Geist e Geist Mono, classe `tabular` para números. Acessibilidade AA: rótulos ligados a campos, setas em tablist, `role=log` no chat, foco visível, `prefers-reduced-motion`.
 
 **Fidelidade 1:1 é sobre aparência.** Todo controle vindo do handoff precisa de comportamento por trás e de um teste que clique nele; controle inerte não entra na tela (ver [`engenharia.md`](engenharia.md#-regras-aprendidas-com-defeitos-de-produção)).
