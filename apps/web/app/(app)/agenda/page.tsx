@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
 import { OwnerOnly, useRole } from "@/components/auth/role-context";
 
 /** Altura de uma hora na grade, em px. */
-const HOUR_PX = 48;
+const HOUR_PX = 56;
 const DAYS_IN_GRID = 7;
 const UPCOMING_LIMIT = 4;
 /** Quantos profissionais a legenda mostra antes de resumir em "+N". */
@@ -488,6 +488,9 @@ interface AppointmentBlock {
   startsAt: Date;
   endsAt: Date;
   appointment: AppointmentSummary;
+  /** Faixa ocupada dentro do dia quando há horários coincidentes. */
+  lane: number;
+  lanes: number;
 }
 
 function WeekGrid({
@@ -677,11 +680,22 @@ function WeekGrid({
                     ))}
 
                     {blocks.map(
-                      ({ appointment, top, height, startsAt, endsAt }) => {
+                      ({
+                        appointment,
+                        top,
+                        height,
+                        startsAt,
+                        endsAt,
+                        lane,
+                        lanes,
+                      }) => {
                         const missed = appointment.status === "faltou";
                         const range = `${formatHm(startsAt)} – ${formatHm(endsAt)}`;
-                        const color = colorOf(appointment);
-                        const label = `${range} · ${appointment.leadName ?? "Sem nome"}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""}${appointment.professionalName ? ` · ${appointment.professionalName}` : ""} (${APPOINTMENT_STATUS_LABELS[appointment.status]})`;
+                        const color = missed
+                          ? "var(--status-abandonada)"
+                          : colorOf(appointment);
+                        const name = appointment.leadName ?? "Sem nome";
+                        const label = `${range} · ${name}${appointment.procedureName ? ` · ${appointment.procedureName}` : ""}${appointment.professionalName ? ` · ${appointment.professionalName}` : ""} (${APPOINTMENT_STATUS_LABELS[appointment.status]})`;
                         return (
                           <button
                             key={appointment.id}
@@ -691,31 +705,31 @@ function WeekGrid({
                             title={label}
                             onClick={() => onSelect(appointment)}
                             className={cn(
-                              "absolute inset-x-1 block overflow-hidden rounded-[6px] px-1.5 py-1 text-left outline-none",
+                              "absolute block overflow-hidden rounded-[6px] py-[3px] pl-2 pr-1.5 text-left outline-none",
                               "transition-[box-shadow,filter,scale] duration-150 ease-out",
-                              "hover:z-10 hover:shadow-[var(--shadow-md)] hover:brightness-[1.05]",
+                              "hover:z-10 hover:shadow-[var(--shadow-md)] hover:brightness-[0.97]",
                               "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                              "active:scale-[0.98] active:brightness-[0.97]",
-                              missed
-                                ? "status-abandonada"
-                                : "text-primary-foreground",
+                              "active:scale-[0.985] active:brightness-[0.95] active:duration-0",
+                              missed && "line-through decoration-current/50",
                             )}
                             style={{
+                              ...blockStyle(color),
                               top,
                               height,
-                              ...(missed ? {} : { background: color }),
+                              left: `calc(${(lane * 100) / lanes}% + 4px)`,
+                              width: `calc(${100 / lanes}% - ${lane === lanes - 1 ? 8 : 5}px)`,
                             }}
                           >
-                            {height >= 40 ? (
+                            {height >= 44 ? (
                               <>
-                                <div className="tabular truncate text-[10px] leading-tight opacity-90">
+                                <div className="truncate text-[12px] font-semibold leading-[1.25]">
+                                  {name}
+                                </div>
+                                <div className="tabular truncate text-[11px] leading-[1.25] opacity-80">
                                   {range}
                                 </div>
-                                <div className="truncate text-[11px] font-semibold leading-tight">
-                                  {appointment.leadName ?? "Sem nome"}
-                                </div>
-                                {height >= 56 && (
-                                  <div className="truncate text-[10px] font-medium leading-tight opacity-90">
+                                {height >= 62 && (
+                                  <div className="truncate text-[11px] font-medium leading-[1.25] opacity-80">
                                     {appointment.procedureName ?? "Consulta"}
                                     {appointment.professionalName
                                       ? ` · ${appointment.professionalName}`
@@ -724,14 +738,13 @@ function WeekGrid({
                                 )}
                               </>
                             ) : (
-                              <div className="truncate text-[11px] font-semibold leading-tight">
-                                <span className="tabular">
+                              <div className="flex items-baseline gap-1.5 truncate text-[12px] leading-[1.25]">
+                                <span className="tabular flex-none font-medium opacity-80">
                                   {formatHm(startsAt)}
-                                </span>{" "}
-                                · {appointment.leadName ?? "Sem nome"}
-                                {appointment.procedureName
-                                  ? ` · ${appointment.procedureName}`
-                                  : ""}
+                                </span>
+                                <span className="truncate font-semibold">
+                                  {name}
+                                </span>
                               </div>
                             )}
                           </button>
@@ -795,6 +808,21 @@ function ColorDot({ color }: { color: string }) {
   );
 }
 
+/**
+ * Estilo do bloco: fundo no tom claro da cor do profissional, texto na mesma
+ * cor escurecida e a barra sólida à esquerda. Um bloco sólido com texto
+ * branco a 10px não passava no contraste nas cores claras da paleta (dourado,
+ * verde-sálvia), e uma semana cheia virava uma parede de chips escuros.
+ */
+function blockStyle(color: string): React.CSSProperties {
+  return {
+    "--pro": color,
+    background: `color-mix(in srgb, ${color} 14%, var(--card))`,
+    color: `color-mix(in srgb, ${color} 72%, black)`,
+    boxShadow: `inset 3px 0 0 ${color}`,
+  } as React.CSSProperties;
+}
+
 /** Blocos de atendimento do dia, posicionados na grade. */
 function appointmentBlocksFor(
   day: Date,
@@ -803,7 +831,7 @@ function appointmentBlocksFor(
 ): AppointmentBlock[] {
   const dayStart = day.getTime();
   const dayEnd = dayStart + DAY_MS;
-  return appointments
+  const blocks = appointments
     .filter((a) => {
       const t = new Date(a.startsAt as string).getTime();
       return t >= dayStart && t < dayEnd;
@@ -821,10 +849,48 @@ function appointmentBlocksFor(
         height: Math.max(
           ((endsAt.getTime() - startsAt.getTime()) / 60_000) * (HOUR_PX / 60) -
             2,
-          22,
+          24,
         ),
+        lane: 0,
+        lanes: 1,
       };
-    });
+    })
+    .sort(
+      (a, b) =>
+        a.startsAt.getTime() - b.startsAt.getTime() ||
+        b.endsAt.getTime() - a.endsAt.getTime(),
+    );
+  assignLanes(blocks);
+  return blocks;
+}
+
+/**
+ * Horários coincidentes ficam lado a lado, como num calendário de verdade —
+ * com dez profissionais, dois às 09:00 no mesmo dia é o caso comum, e um
+ * bloco por cima do outro escondia o de baixo. Agrupa os que se sobrepõem em
+ * cadeia e dá a cada um a primeira faixa livre; a largura do grupo é dividida
+ * pelo número de faixas que ele precisou.
+ */
+function assignLanes(blocks: AppointmentBlock[]): void {
+  let group: AppointmentBlock[] = [];
+  let laneEnds: number[] = [];
+  let groupEnd = -Infinity;
+  const close = () => {
+    for (const b of group) b.lanes = laneEnds.length;
+    group = [];
+    laneEnds = [];
+  };
+  for (const block of blocks) {
+    const start = block.startsAt.getTime();
+    if (start >= groupEnd) close();
+    let lane = laneEnds.findIndex((end) => end <= start);
+    if (lane < 0) lane = laneEnds.length;
+    laneEnds[lane] = block.endsAt.getTime();
+    block.lane = lane;
+    group.push(block);
+    groupEnd = Math.max(groupEnd, block.endsAt.getTime());
+  }
+  close();
 }
 
 /* ─────────────────────────── Blocos compartilhados ─────────────────────────── */

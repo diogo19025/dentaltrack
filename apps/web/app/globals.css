@@ -60,6 +60,10 @@
   --chart-3: #557892;
   --chart-4: #b06b7c;
   --chart-5: #7c9a6c;
+  /* Continuação da paleta, só para colorir a equipe na agenda. */
+  --chart-6: #6f6aa8;
+  --chart-7: #c2703f;
+  --chart-8: #3e8ea3;
 
   /* Tag tints (pílulas) */
   --tag-teal-bg: #e2efed;
@@ -84,9 +88,14 @@
 
   /* Shadows (suaves, clínicas) */
   --shadow-xs: 0 1px 2px 0 rgba(20, 40, 38, 0.04);
-  --shadow-sm: 0 1px 2px 0 rgba(20, 40, 38, 0.05), 0 1px 3px 0 rgba(20, 40, 38, 0.05);
-  --shadow-md: 0 2px 4px -1px rgba(20, 40, 38, 0.06), 0 4px 10px -2px rgba(20, 40, 38, 0.07);
-  --shadow-lg: 0 8px 24px -6px rgba(20, 40, 38, 0.1), 0 4px 10px -3px rgba(20, 40, 38, 0.06);
+  --shadow-sm:
+    0 1px 2px 0 rgba(20, 40, 38, 0.05), 0 1px 3px 0 rgba(20, 40, 38, 0.05);
+  --shadow-md:
+    0 2px 4px -1px rgba(20, 40, 38, 0.06),
+    0 4px 10px -2px rgba(20, 40, 38, 0.07);
+  --shadow-lg:
+    0 8px 24px -6px rgba(20, 40, 38, 0.1),
+    0 4px 10px -3px rgba(20, 40, 38, 0.06);
   --shadow-xl: 0 18px 48px -12px rgba(16, 42, 40, 0.18);
 
   --sidebar-w: 264px;
@@ -136,6 +145,9 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -231,17 +243,44 @@
   background: currentColor;
   opacity: 0.85;
 }
-.tag-teal { background: var(--tag-teal-bg); color: var(--tag-teal-fg); }
-.tag-violet { background: var(--tag-violet-bg); color: var(--tag-violet-fg); }
-.tag-amber { background: var(--tag-amber-bg); color: var(--tag-amber-fg); }
-.tag-blue { background: var(--tag-blue-bg); color: var(--tag-blue-fg); }
-.tag-rose { background: var(--tag-rose-bg); color: var(--tag-rose-fg); }
-.tag-sage { background: var(--tag-sage-bg); color: var(--tag-sage-fg); }
+.tag-teal {
+  background: var(--tag-teal-bg);
+  color: var(--tag-teal-fg);
+}
+.tag-violet {
+  background: var(--tag-violet-bg);
+  color: var(--tag-violet-fg);
+}
+.tag-amber {
+  background: var(--tag-amber-bg);
+  color: var(--tag-amber-fg);
+}
+.tag-blue {
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-fg);
+}
+.tag-rose {
+  background: var(--tag-rose-bg);
+  color: var(--tag-rose-fg);
+}
+.tag-sage {
+  background: var(--tag-sage-bg);
+  color: var(--tag-sage-fg);
+}
 
 /* Status das conversas */
-.status-em_andamento { background: var(--status-andamento-tint); color: var(--status-andamento); }
-.status-agendada { background: var(--status-agendada-tint); color: var(--status-agendada); }
-.status-abandonada { background: var(--status-abandonada-tint); color: var(--status-abandonada); }
+.status-em_andamento {
+  background: var(--status-andamento-tint);
+  color: var(--status-andamento);
+}
+.status-agendada {
+  background: var(--status-agendada-tint);
+  color: var(--status-agendada);
+}
+.status-abandonada {
+  background: var(--status-abandonada-tint);
+  color: var(--status-abandonada);
+}
 
 /* Tabela (1:1 com theme.css) — dashboard e leads */
 .table {
@@ -278,15 +317,26 @@
 
 /* ===== Motion (médio) ===== */
 @keyframes fadeUp {
-  from { transform: translateY(10px); }
-  to { transform: none; }
+  from {
+    transform: translateY(10px);
+  }
+  to {
+    transform: none;
+  }
 }
 @keyframes blink {
-  0%, 100% { opacity: 0.25; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 @keyframes shimmer {
-  100% { background-position: -200% 0; }
+  100% {
+    background-position: -200% 0;
+  }
 }
 /* Skeleton de loading (1:1 com o `Skeleton` do ui.jsx — gradiente + shimmer). */
 .shimmer {
@@ -295,8 +345,12 @@
   animation: shimmer 1.4s infinite;
 }
 @keyframes fadeIn {
-  from { opacity: 0.4; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .anim-fade-up {
   animation: fadeUp 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
@@ -309,19 +363,39 @@
 .stagger > * {
   animation: fadeUp 0.5s cubic-bezier(0.22, 0.61, 0.36, 1) both;
 }
-.stagger > *:nth-child(1) { animation-delay: 0.02s; }
-.stagger > *:nth-child(2) { animation-delay: 0.06s; }
-.stagger > *:nth-child(3) { animation-delay: 0.1s; }
-.stagger > *:nth-child(4) { animation-delay: 0.14s; }
-.stagger > *:nth-child(5) { animation-delay: 0.18s; }
-.stagger > *:nth-child(6) { animation-delay: 0.22s; }
-.stagger > *:nth-child(7) { animation-delay: 0.26s; }
-.stagger > *:nth-child(8) { animation-delay: 0.3s; }
+.stagger > *:nth-child(1) {
+  animation-delay: 0.02s;
+}
+.stagger > *:nth-child(2) {
+  animation-delay: 0.06s;
+}
+.stagger > *:nth-child(3) {
+  animation-delay: 0.1s;
+}
+.stagger > *:nth-child(4) {
+  animation-delay: 0.14s;
+}
+.stagger > *:nth-child(5) {
+  animation-delay: 0.18s;
+}
+.stagger > *:nth-child(6) {
+  animation-delay: 0.22s;
+}
+.stagger > *:nth-child(7) {
+  animation-delay: 0.26s;
+}
+.stagger > *:nth-child(8) {
+  animation-delay: 0.3s;
+}
 
 /* Crescimento das barras (funil / top tags) — escala a partir da esquerda */
 @keyframes barGrow {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 .bar-grow {
   transform-origin: left;

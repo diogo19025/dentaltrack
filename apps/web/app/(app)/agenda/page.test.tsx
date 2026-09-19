@@ -142,7 +142,7 @@ describe("AgendaPage — profissionais", () => {
     const block = screen.getByRole("button", {
       name: /14:00 – 14:30 · Maria Souza · Limpeza · Dra\. Ana Ribeiro/,
     });
-    expect(block).toHaveStyle({ background: "var(--chart-1)" });
+    expect(block.style.getPropertyValue("--pro")).toBe("var(--chart-1)");
   });
 
   it("com um profissional só, não há legenda", () => {
@@ -189,6 +189,28 @@ describe("AgendaPage — filtros e detalhe", () => {
         within(filters).getByRole("combobox", { name }),
       ).toBeInTheDocument();
     }
+  });
+
+  it("dois horários que coincidem ficam lado a lado na grade", () => {
+    state.professionals = [professional({})];
+    state.appointments = [
+      appointment({}),
+      appointment({
+        id: "22222222-2222-2222-2222-222222222222",
+        leadName: "João Pedro",
+      }),
+    ];
+
+    render(<AgendaPage />);
+
+    const first = screen.getByRole("button", {
+      name: /14:00 – 14:30 · Maria Souza/,
+    });
+    const second = screen.getByRole("button", {
+      name: /14:00 – 14:30 · João Pedro/,
+    });
+    expect(first.style.width).toBe("calc(50% - 5px)");
+    expect(second.style.left).toBe("calc(50% + 4px)");
   });
 
   it("clicar num agendamento da grade abre o painel com os detalhes", () => {
