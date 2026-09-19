@@ -206,120 +206,122 @@ export default function AgendaPage() {
     <div
       role="search"
       aria-label="Filtros da agenda"
-      className="flex flex-wrap items-center gap-x-2 gap-y-2.5 border-b border-border bg-muted/40 px-4 py-2.5"
+      className="border-b border-border bg-muted/40"
     >
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar cliente ou procedimento"
-          className="h-9 w-[240px] bg-card pl-8"
-          aria-label="Buscar na agenda"
-        />
-      </div>
-      <Select
-        value={statusFilter}
-        onValueChange={(value) =>
-          setStatusFilter(value as AppointmentStatus | "todos")
-        }
-      >
-        <SelectTrigger
-          className="h-9 min-w-[180px]"
-          aria-label="Filtrar por situação"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="todos">Todas as situações</SelectItem>
-          {APPOINTMENT_STATUSES.map((status) => (
-            <SelectItem key={status} value={status}>
-              {APPOINTMENT_STATUS_LABELS[status]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {professionals.length > 0 && (
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2.5 px-4 py-2.5">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar cliente ou procedimento"
+            className="h-9 w-[220px] bg-card pl-8"
+            aria-label="Buscar na agenda"
+          />
+        </div>
         <Select
-          value={professionalFilter}
-          onValueChange={setProfessionalFilter}
+          value={statusFilter}
+          onValueChange={(value) =>
+            setStatusFilter(value as AppointmentStatus | "todos")
+          }
         >
           <SelectTrigger
-            className="h-9 min-w-[204px]"
-            aria-label="Filtrar por profissional"
+            className="h-9 min-w-[180px]"
+            aria-label="Filtrar por situação"
           >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todos">Todos os profissionais</SelectItem>
-            {professionals.map((professional) => (
-              <SelectItem key={professional.id} value={professional.id}>
-                <span className="flex items-center gap-2">
-                  <ColorDot
-                    color={professionalColor(professional, professionals)}
-                  />
-                  {professional.name}
-                  {!professional.active && (
-                    <span className="text-muted-foreground">(inativo)</span>
-                  )}
-                </span>
+            <SelectItem value="todos">Todas as situações</SelectItem>
+            {APPOINTMENT_STATUSES.map((status) => (
+              <SelectItem key={status} value={status}>
+                {APPOINTMENT_STATUS_LABELS[status]}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-      )}
-      {procedureOptions.length > 0 && (
-        <Select value={procedureFilter} onValueChange={setProcedureFilter}>
-          <SelectTrigger
-            className="h-9 min-w-[204px]"
-            aria-label="Filtrar por procedimento"
+        {professionals.length > 0 && (
+          <Select
+            value={professionalFilter}
+            onValueChange={setProfessionalFilter}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os procedimentos</SelectItem>
-            {procedureOptions.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      {clientOptions.length > 0 && (
-        <Select value={clientFilter} onValueChange={setClientFilter}>
-          <SelectTrigger
-            className="h-9 min-w-[172px]"
-            aria-label="Filtrar por cliente"
+            <SelectTrigger
+              className="h-9 min-w-[204px]"
+              aria-label="Filtrar por profissional"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os profissionais</SelectItem>
+              {professionals.map((professional) => (
+                <SelectItem key={professional.id} value={professional.id}>
+                  <span className="flex items-center gap-2">
+                    <ColorDot
+                      color={professionalColor(professional, professionals)}
+                    />
+                    {professional.name}
+                    {!professional.active && (
+                      <span className="text-muted-foreground">(inativo)</span>
+                    )}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {procedureOptions.length > 0 && (
+          <Select value={procedureFilter} onValueChange={setProcedureFilter}>
+            <SelectTrigger
+              className="h-9 min-w-[204px]"
+              aria-label="Filtrar por procedimento"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os procedimentos</SelectItem>
+              {procedureOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {clientOptions.length > 0 && (
+          <Select value={clientFilter} onValueChange={setClientFilter}>
+            <SelectTrigger
+              className="h-9 min-w-[172px]"
+              aria-label="Filtrar por cliente"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos os clientes</SelectItem>
+              {clientOptions.map((name) => (
+                <SelectItem key={name} value={name}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {hasActiveFilters && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-9"
+            onClick={() => {
+              setSearch("");
+              setStatusFilter("todos");
+              setProcedureFilter("todos");
+              setClientFilter("todos");
+              setProfessionalFilter("todos");
+            }}
           >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos os clientes</SelectItem>
-            {clientOptions.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-      {hasActiveFilters && (
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-9"
-          onClick={() => {
-            setSearch("");
-            setStatusFilter("todos");
-            setProcedureFilter("todos");
-            setClientFilter("todos");
-            setProfessionalFilter("todos");
-          }}
-        >
-          Limpar filtros
-        </Button>
-      )}
+            Limpar filtros
+          </Button>
+        )}
+      </div>
       {activeProfessionals.length > 1 && (
         <Legend
           professionals={activeProfessionals}
@@ -457,7 +459,7 @@ function UpcomingSection({
                     style={{ background: color }}
                   />
                   <div className="flex min-h-[26px] items-center justify-between gap-2">
-                    <span className="tabular text-[13px] font-semibold capitalize text-primary">
+                    <span className="tabular block text-[13px] font-semibold text-primary first-letter:uppercase">
                       {appointment.startsAt
                         ? formatWhenRelative(appointment.startsAt)
                         : (appointment.preferredTime ?? "A combinar")}
@@ -708,7 +710,7 @@ function WeekGrid({
                             title={label}
                             onClick={() => onSelect(appointment)}
                             className={cn(
-                              "absolute block overflow-hidden rounded-[6px] py-[3px] pl-2 pr-1.5 text-left outline-none",
+                              "absolute block overflow-hidden rounded-[4px] py-[3px] pl-2 pr-1.5 text-left outline-none",
                               "transition-[box-shadow,filter,scale] duration-150 ease-out",
                               "hover:z-10 hover:shadow-[var(--shadow-md)] hover:brightness-[0.97]",
                               "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
@@ -742,9 +744,11 @@ function WeekGrid({
                               </>
                             ) : (
                               <div className="flex items-baseline gap-1.5 truncate text-[12px] leading-[1.25]">
-                                <span className="tabular flex-none font-medium opacity-80">
-                                  {formatHm(startsAt)}
-                                </span>
+                                {lanes === 1 && (
+                                  <span className="tabular flex-none font-medium opacity-80">
+                                    {formatHm(startsAt)}
+                                  </span>
+                                )}
                                 <span className="truncate font-semibold">
                                   {name}
                                 </span>
@@ -796,7 +800,7 @@ function Legend({
   return (
     <ul
       aria-label="Legenda de profissionais"
-      className="ml-auto flex flex-wrap items-center gap-x-0.5 gap-y-1"
+      className="flex flex-wrap items-center gap-x-0.5 gap-y-0.5 px-3 pb-2"
     >
       {professionals.map((professional) => {
         const active = selected === professional.id;
