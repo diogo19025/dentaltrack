@@ -6,11 +6,23 @@ import {
   useRescheduleAppointment,
 } from "@/hooks/use-agenda";
 import { ApiError } from "@/lib/api-client";
-import { AppointmentActions } from "./appointment-actions";
+import { AppointmentDetailDialog } from "./appointment-detail-dialog";
 
 vi.mock("@/hooks/use-agenda", () => ({
   useCancelAppointment: vi.fn(),
   useRescheduleAppointment: vi.fn(),
+}));
+
+// Caixas que buscam na rede ao abrir; têm testes próprios no dashboard.
+vi.mock("@/components/dashboard/send-reminder-dialog", () => ({
+  SendReminderDialog: ({ conversationId }: { conversationId: string }) => (
+    <div role="dialog" aria-label="Enviar lembrete">
+      lembrete para {conversationId}
+    </div>
+  ),
+}));
+vi.mock("@/components/dashboard/conversation-detail-dialog", () => ({
+  ConversationDetailDialog: () => null,
 }));
 
 const mockCancel = vi.mocked(useCancelAppointment);
@@ -51,33 +63,90 @@ const appointment = (
   ...overrides,
 });
 
-const openMenu = () =>
-  fireEvent.keyDown(screen.getByLabelText("Ações do agendamento"), {
-    key: "ArrowDown",
-  });
+function open(a: AppointmentSummary) {
+  return render(
+    <AppointmentDetailDialog
+      appointment={a}
+      color="var(--chart-2)"
+      onOpenChange={vi.fn()}
+    />,
+  );
+}
 
-describe("AppointmentActions (cancelar / remarcar · P0.5)", () => {
+describe("AppointmentDetailDialog", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCancel.mockReturnValue(mutation<Cancel>());
     mockReschedule.mockReturnValue(mutation<Reschedule>());
   });
 
+  it("mostra procedimento, cliente, profissional, horário e origem", () => {
+    open(appointment());
+
+    expect(
+      screen.getByRole("heading", { name: "Implante" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Veio do sistema de gestão")).toBeInTheDocument();
+    expect(screen.getAllByText("Ana Silva").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Dra. Ana").length).toBeGreaterThan(0);
+    expect(screen.getByText(/1 h/)).toBeInTheDocument();
+    expect(screen.getByText("ext-9")).toBeInTheDocument();
+  });
+
+  it("sem telefone nem conversa, explica por que não dá para falar com o cliente", () => {
+    open(appointment());
+
+    expect(
+      screen.queryByRole("link", { name: /Conversar no WhatsApp/ }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Enviar lembrete/ }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/Sem telefone nem conversa vinculada/),
+    ).toBeInTheDocument();
+  });
+
+  it("com telefone, abre o WhatsApp do contato; com conversa, envia lembrete e abre a conversa", () => {
+    open(
+      appointment({
+        leadPhone: "11 98888-7777",
+        conversationId: "22222222-2222-2222-2222-222222222222",
+      }),
+    );
+
+    expect(
+      screen.getByRole("link", { name: /Conversar no WhatsApp/ }),
+    ).toHaveAttribute("href", "https://wa.me/5511988887777");
+    expect(
+      screen.getByRole("button", { name: /Ver conversa/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Enviar lembrete/ }));
+    expect(
+      screen.getByRole("dialog", { name: "Enviar lembrete" }),
+    ).toHaveTextContent("lembrete para 22222222-2222-2222-2222-222222222222");
+  });
+
   it.each(["cancelado", "compareceu"] as const)(
-    "não oferece ações para agendamento %s",
+    "não oferece remarcar nem cancelar para agendamento %s",
     (status) => {
-      render(<AppointmentActions appointment={appointment({ status })} />);
-      expect(screen.queryByLabelText("Ações do agendamento")).toBeNull();
+      open(appointment({ status }));
+      expect(screen.queryByRole("button", { name: /Remarcar/ })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: /Cancelar agendamento/ }),
+      ).toBeNull();
     },
   );
 
   it("cancelar pede confirmação antes de chamar a API", () => {
     const mutate = vi.fn();
     mockCancel.mockReturnValue(mutation<Cancel>({ mutate }));
-    render(<AppointmentActions appointment={appointment()} />);
+    open(appointment());
 
-    openMenu();
-    fireEvent.click(screen.getByText("Cancelar agendamento…"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Cancelar agendamento/ }),
+    );
 
     // Nada saiu ainda: o dialog é a confirmação.
     expect(mutate).not.toHaveBeenCalled();
@@ -97,10 +166,9 @@ describe("AppointmentActions (cancelar / remarcar · P0.5)", () => {
   it("remarcar envia o novo horário em ISO", () => {
     const mutate = vi.fn();
     mockReschedule.mockReturnValue(mutation<Reschedule>({ mutate }));
-    render(<AppointmentActions appointment={appointment()} />);
+    open(appointment());
 
-    openMenu();
-    fireEvent.click(screen.getByText("Remarcar…"));
+    fireEvent.click(screen.getByRole("button", { name: /^Remarcar$/ }));
 
     const input = screen.getByLabelText("Novo horário");
     fireEvent.change(input, { target: { value: "2026-10-02T10:30" } });
@@ -123,16 +191,16 @@ describe("AppointmentActions (cancelar / remarcar · P0.5)", () => {
           503,
           JSON.stringify({
             statusCode: 503,
-            message: "A agenda da empresa não aceitou remarcar agora: Google 503",
+            message:
+              "A agenda da empresa não aceitou remarcar agora: Google 503",
           }),
           "req-1",
         ),
       }),
     );
-    render(<AppointmentActions appointment={appointment()} />);
+    open(appointment());
 
-    openMenu();
-    fireEvent.click(screen.getByText("Remarcar…"));
+    fireEvent.click(screen.getByRole("button", { name: /^Remarcar$/ }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "A agenda da empresa não aceitou remarcar agora: Google 503 (código req-1)",
