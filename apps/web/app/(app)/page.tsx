@@ -249,9 +249,10 @@ export default function DashboardPage() {
                   Últimas interações do agente
                 </div>
               </div>
-              <Button asChild variant="ghost" size="sm">
+              <Button asChild variant="ghost" size="sm" className="group">
                 <Link href="/leads">
-                  Ver todas <ChevronRight className="size-4" />
+                  Ver todas{" "}
+                  <ChevronRight className="size-4 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
                 </Link>
               </Button>
             </div>

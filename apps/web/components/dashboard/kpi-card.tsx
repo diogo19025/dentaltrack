@@ -28,7 +28,7 @@ export function KpiCard({
   const up = kpi.deltaDir === "up";
 
   return (
-    <Card className="lift flex flex-col gap-3.5 p-[22px_24px]">
+    <Card className="flex flex-col gap-3.5 p-[22px_24px]">
       <div className="flex items-center justify-between">
         <span className="flex size-[38px] items-center justify-center rounded-[10px] bg-primary-tint text-primary">
           <Icon className="size-[19px]" />

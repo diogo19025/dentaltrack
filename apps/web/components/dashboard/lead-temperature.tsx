@@ -48,9 +48,10 @@ export function LeadTemperatureSection({
             Chance de conversão pelo comportamento na conversa
           </div>
         </div>
-        <Button asChild variant="ghost" size="sm">
+        <Button asChild variant="ghost" size="sm" className="group">
           <Link href="/leads">
-            Ver todos <ChevronRight className="size-4" />
+            Ver todos{" "}
+            <ChevronRight className="size-4 transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
           </Link>
         </Button>
       </div>
@@ -108,7 +109,7 @@ export function LeadTemperatureSection({
                           type="button"
                           aria-haspopup="dialog"
                           onClick={() => onLeadClick?.(lead)}
-                          className="-m-1.5 w-[calc(100%+12px)] rounded-[10px] p-1.5 text-left outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                          className="-m-1.5 w-[calc(100%+12px)] rounded-[10px] p-1.5 text-left outline-none transition-[background-color,scale] duration-150 ease-out hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 active:scale-[0.995] active:bg-primary-tint active:duration-0"
                         >
                           <div className="flex items-center gap-2.5">
                             <Avatar className="size-8">

@@ -272,6 +272,11 @@
 .table tbody tr:hover {
   background: var(--accent);
 }
+/* Feedback no pointer-down, antes do clique concluir: instantâneo. */
+.table tbody tr[role="button"]:active {
+  background: var(--primary-tint);
+  transition-duration: 0s;
+}
 .table tbody tr:last-child td {
   border-bottom: 0;
 }

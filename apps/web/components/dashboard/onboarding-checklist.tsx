@@ -67,7 +67,7 @@ export function OnboardingChecklist() {
               href={item.href}
               aria-label={`${item.label}${item.done ? " (feito)" : ""}`}
               className={cn(
-                "group flex items-start gap-2.5 rounded-[var(--radius-sm)] px-2 py-2 -mx-2 transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                "group -mx-2 flex items-start gap-2.5 rounded-[var(--radius-sm)] px-2 py-2 transition-[background-color,scale] duration-150 ease-out hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.995] active:bg-primary-tint active:duration-0",
                 item.done && "text-muted-foreground",
               )}
             >
@@ -92,7 +92,7 @@ export function OnboardingChecklist() {
                 )}
               </span>
               {!item.done && (
-                <ChevronRight className="mt-0.5 size-4 flex-none text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                <ChevronRight className="mt-0.5 size-4 flex-none -translate-x-1 text-muted-foreground opacity-0 transition-[opacity,translate] duration-150 ease-out group-hover:translate-x-0 group-hover:opacity-100" />
               )}
             </Link>
           </li>
