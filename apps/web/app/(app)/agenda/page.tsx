@@ -57,8 +57,6 @@ import { OwnerOnly, useRole } from "@/components/auth/role-context";
 const HOUR_PX = 56;
 const DAYS_IN_GRID = 7;
 const UPCOMING_LIMIT = 4;
-/** Quantos profissionais a legenda mostra antes de resumir em "+N". */
-const LEGEND_LIMIT = 6;
 
 /** Cor de um agendamento — sempre a do profissional que atende. */
 type ColorOf = (appointment: AppointmentSummary) => string;
@@ -78,14 +76,14 @@ type ColorOf = (appointment: AppointmentSummary) => string;
  */
 export default function AgendaPage() {
   const { isOwner } = useRole();
-  // Início da semana exibida (meia-noite local). 0 = semana que começa hoje.
+  // Semana exibida, de segunda a domingo (meia-noite local). 0 = a atual.
   const [weekOffset, setWeekOffset] = useState(0);
-  const weekStart = useMemo(() => {
-    const today = startOfDay(new Date());
-    return new Date(today.getTime() + weekOffset * DAYS_IN_GRID * DAY_MS);
-  }, [weekOffset]);
+  const weekStart = useMemo(
+    () => addDays(startOfWeek(new Date()), weekOffset * DAYS_IN_GRID),
+    [weekOffset],
+  );
   const weekEnd = useMemo(
-    () => new Date(weekStart.getTime() + (DAYS_IN_GRID - 1) * DAY_MS),
+    () => addDays(weekStart, DAYS_IN_GRID - 1),
     [weekStart],
   );
 
@@ -207,7 +205,7 @@ export default function AgendaPage() {
     <div
       role="search"
       aria-label="Filtros da agenda"
-      className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5"
+      className="flex flex-wrap items-center gap-x-2 gap-y-2.5 border-b border-border bg-muted/40 px-4 py-2.5"
     >
       <div className="relative">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -226,7 +224,7 @@ export default function AgendaPage() {
         }
       >
         <SelectTrigger
-          className="h-9 w-[170px]"
+          className="h-9 min-w-[180px]"
           aria-label="Filtrar por situação"
         >
           <SelectValue />
@@ -246,7 +244,7 @@ export default function AgendaPage() {
           onValueChange={setProfessionalFilter}
         >
           <SelectTrigger
-            className="h-9 w-[200px]"
+            className="h-9 min-w-[204px]"
             aria-label="Filtrar por profissional"
           >
             <SelectValue />
@@ -272,7 +270,7 @@ export default function AgendaPage() {
       {procedureOptions.length > 0 && (
         <Select value={procedureFilter} onValueChange={setProcedureFilter}>
           <SelectTrigger
-            className="h-9 w-[190px]"
+            className="h-9 min-w-[204px]"
             aria-label="Filtrar por procedimento"
           >
             <SelectValue />
@@ -290,7 +288,7 @@ export default function AgendaPage() {
       {clientOptions.length > 0 && (
         <Select value={clientFilter} onValueChange={setClientFilter}>
           <SelectTrigger
-            className="h-9 w-[170px]"
+            className="h-9 min-w-[172px]"
             aria-label="Filtrar por cliente"
           >
             <SelectValue />
@@ -320,6 +318,16 @@ export default function AgendaPage() {
         >
           Limpar filtros
         </Button>
+      )}
+      {activeProfessionals.length > 1 && (
+        <Legend
+          professionals={activeProfessionals}
+          all={professionals}
+          selected={professionalFilter}
+          onToggle={(id) =>
+            setProfessionalFilter((current) => (current === id ? "todos" : id))
+          }
+        />
       )}
     </div>
   );
@@ -364,8 +372,6 @@ export default function AgendaPage() {
         appointments={weekAppointments}
         loading={weekLoading}
         colorOf={colorOf}
-        legend={activeProfessionals.length > 1 ? activeProfessionals : []}
-        allProfessionals={professionals}
         toolbar={toolbar}
         onSelect={setSelected}
         onPrev={() => setWeekOffset((v) => v - 1)}
@@ -498,8 +504,6 @@ function WeekGrid({
   appointments,
   loading,
   colorOf,
-  legend,
-  allProfessionals,
   toolbar,
   onSelect,
   onPrev,
@@ -511,9 +515,6 @@ function WeekGrid({
   appointments: AppointmentSummary[];
   loading: boolean;
   colorOf: ColorOf;
-  /** Profissionais da legenda (vazio = sem legenda, equipe de um só). */
-  legend: ProfessionalDto[];
-  allProfessionals: ProfessionalDto[];
   /** Busca e filtros, renderizados como a segunda linha do cabeçalho. */
   toolbar: React.ReactNode;
   onSelect: (appointment: AppointmentSummary) => void;
@@ -523,11 +524,7 @@ function WeekGrid({
   isCurrentWeek: boolean;
 }) {
   const days = useMemo(
-    () =>
-      Array.from(
-        { length: DAYS_IN_GRID },
-        (_, i) => new Date(weekStart.getTime() + i * DAY_MS),
-      ),
+    () => Array.from({ length: DAYS_IN_GRID }, (_, i) => addDays(weekStart, i)),
     [weekStart],
   );
 
@@ -561,18 +558,17 @@ function WeekGrid({
   return (
     <Card className="mb-5 gap-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
-        <div className="flex items-baseline gap-2.5">
-          <h2 className="text-base font-semibold tracking-[-0.01em]">
-            Grade da semana
-          </h2>
-          <span className="tabular text-[13px] text-muted-foreground first-letter:uppercase">
+        <h2 className="text-base font-semibold tracking-[-0.01em]">
+          Grade da semana
+        </h2>
+        {/* O intervalo fica colado na navegação que o muda. */}
+        <div className="ml-auto flex items-center gap-3">
+          <span
+            className="tabular text-[13px] text-muted-foreground"
+            aria-live="polite"
+          >
             {rangeLabel(days[0], days[days.length - 1])}
           </span>
-        </div>
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          {legend.length > 0 && (
-            <Legend professionals={legend} all={allProfessionals} />
-          )}
           {/* Navegação como um grupo só: uma borda, divisórias entre os botões. */}
           <div
             role="group"
@@ -624,18 +620,20 @@ function WeekGrid({
               <div />
               {days.map((day) => {
                 const isToday = day.getTime() === today;
+                const isPast = day.getTime() < today;
                 return (
                   <div
                     key={day.toISOString()}
                     className="border-l border-border px-2 py-2 text-center"
                   >
-                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                      {day.toLocaleDateString("pt-BR", { weekday: "short" })}
+                    <div className="text-[11px] uppercase tracking-[0.06em] text-muted-foreground">
+                      {weekdayLabel(day)}
                     </div>
                     <div
                       className={cn(
-                        "mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold",
+                        "tabular mx-auto mt-0.5 flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold",
                         isToday && "bg-primary text-primary-foreground",
+                        isPast && "text-muted-foreground",
                       )}
                     >
                       {day.getDate()}
@@ -772,28 +770,53 @@ function WeekGrid({
   );
 }
 
-/** Legenda de cores por profissional (só com equipe de 2+). */
+/**
+ * Legenda de cores por profissional (só com equipe de 2+). Cada nome é um
+ * filtro rápido: clicar isola o profissional na grade e na lista, clicar de
+ * novo desfaz. A legenda que só informava, resumida em "+4", obrigava a ir ao
+ * seletor para descobrir de quem era a cor que sobrou.
+ */
 function Legend({
   professionals,
   all,
+  selected,
+  onToggle,
 }: {
   professionals: ProfessionalDto[];
   all: ProfessionalDto[];
+  selected: string;
+  onToggle: (id: string) => void;
 }) {
-  const shown = professionals.slice(0, LEGEND_LIMIT);
-  const rest = professionals.length - shown.length;
+  const filtering = selected !== "todos";
   return (
     <ul
       aria-label="Legenda de profissionais"
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted-foreground"
+      className="ml-auto flex flex-wrap items-center gap-x-0.5 gap-y-1"
     >
-      {shown.map((professional) => (
-        <li key={professional.id} className="flex items-center gap-1.5">
-          <ColorDot color={professionalColor(professional, all)} />
-          {professional.name}
-        </li>
-      ))}
-      {rest > 0 && <li>+{rest}</li>}
+      {professionals.map((professional) => {
+        const active = selected === professional.id;
+        return (
+          <li key={professional.id}>
+            <button
+              type="button"
+              aria-pressed={active}
+              onClick={() => onToggle(professional.id)}
+              className={cn(
+                "flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] font-medium outline-none",
+                "transition-[background-color,color,opacity,scale] duration-150 ease-out",
+                "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] active:duration-0",
+                active
+                  ? "bg-card text-foreground shadow-[var(--shadow-xs)] ring-1 ring-border"
+                  : "text-muted-foreground",
+                filtering && !active && "opacity-55 hover:opacity-100",
+              )}
+            >
+              <ColorDot color={professionalColor(professional, all)} />
+              {professional.name}
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -980,6 +1003,27 @@ function pickUpcoming(
 /** Minutos desde o início da grade (hora local do navegador). */
 function minutesFrom(date: Date, hourStart: number): number {
   return (date.getHours() - hourStart) * 60 + date.getMinutes();
+}
+
+/** Segunda-feira da semana da data (meia-noite local). */
+function startOfWeek(date: Date): Date {
+  const d = startOfDay(date);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
+/** Soma dias pelo calendário (não por 24h), para não escorregar em mudança de fuso. */
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+/** "seg", "ter" — a abreviação do pt-BR vem com ponto, que aqui só suja. */
+function weekdayLabel(date: Date): string {
+  return date
+    .toLocaleDateString("pt-BR", { weekday: "short" })
+    .replace(".", "");
 }
 
 function rangeLabel(first: Date, last: Date): string {
