@@ -39,21 +39,39 @@ export function KpiCard({
             style={
               up
                 ? { background: "var(--success-tint)", color: "var(--success)" }
-                : { background: "var(--destructive-tint)", color: "var(--destructive)" }
+                : {
+                    background: "var(--destructive-tint)",
+                    color: "var(--destructive)",
+                  }
             }
           >
-            {up ? <ArrowUp className="size-[13px]" /> : <ArrowDown className="size-[13px]" />}
+            {up ? (
+              <ArrowUp className="size-[13px]" />
+            ) : (
+              <ArrowDown className="size-[13px]" />
+            )}
             {kpi.delta}%
           </span>
         )}
       </div>
 
       <div>
-        <div className="mb-[5px] text-[13px] text-muted-foreground">{label}</div>
-        <div className="tabular text-[30px] font-semibold leading-none tracking-[-0.02em]">
+        <div className="mb-[5px] text-[13px] text-muted-foreground">
+          {label}
+        </div>
+        {/* `key` remonta só o número quando ele muda (troca de período):
+          fade de 200ms no lugar, sem o card inteiro reentrar. */}
+        <div
+          key={value}
+          className="anim-swap tabular text-[30px] font-semibold leading-none tracking-[-0.02em]"
+        >
           {value}
         </div>
-        {hint && <div className="mt-[7px] text-[12px] text-muted-foreground">{hint}</div>}
+        {hint && (
+          <div className="mt-[7px] text-[12px] text-muted-foreground">
+            {hint}
+          </div>
+        )}
       </div>
 
       {kpi.spark.length > 0 && (

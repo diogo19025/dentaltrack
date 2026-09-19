@@ -66,7 +66,8 @@ const pctFmt = (n: number) => `${Math.round(n * 100)}%`;
 
 export default function DashboardPage() {
   const [range, setRange] = useState<MetricsRange>("50d");
-  const { data, isLoading, isError, error, refetch } = useMetrics(range);
+  const { data, isLoading, isError, error, refetch, isPlaceholderData } =
+    useMetrics(range);
   const { data: recent } = useRecentConversations(6);
   const { data: leadsData, isLoading: leadsLoading } = useLeads();
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
@@ -103,8 +104,12 @@ export default function DashboardPage() {
       ) : isLoading || !data ? (
         <DashboardSkeleton />
       ) : (
-        <>
-          {/* KPIs */}
+        <div
+          data-stale={isPlaceholderData || undefined}
+          className="transition-opacity duration-200 ease-out data-[stale]:opacity-60"
+        >
+          {/* KPIs — a entrada escalonada roda uma vez: o grid não remonta ao
+            trocar o período (keepPreviousData), só os números trocam no lugar. */}
           <div className="stagger mb-[18px] grid grid-cols-3 gap-[18px] max-[1100px]:grid-cols-2 max-[680px]:grid-cols-1">
             <KpiCard
               icon={Users}
@@ -152,7 +157,7 @@ export default function DashboardPage() {
 
           {/* Linha + Donut */}
           <div className="mb-[18px] grid grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] gap-[18px] max-[980px]:grid-cols-1">
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-[18px] flex items-start justify-between gap-3">
                 <div>
                   <div className="text-base font-semibold tracking-[-0.01em]">
@@ -168,7 +173,7 @@ export default function DashboardPage() {
               <LineChart data={data.line} height={250} />
             </Card>
 
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
                 Status das conversas
               </div>
@@ -183,7 +188,7 @@ export default function DashboardPage() {
 
           {/* Funil + Top tags */}
           <div className="mb-[18px] grid grid-cols-2 gap-[18px] max-[980px]:grid-cols-1">
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
                 Funil de conversão
               </div>
@@ -193,7 +198,7 @@ export default function DashboardPage() {
               <Funnel data={data.funnel} />
               <BookingsFootnote bookings={data.bookings} />
             </Card>
-            <Card className="anim-fade-up gap-0 p-[22px_24px]">
+            <Card className="gap-0 p-[22px_24px]">
               <div className="mb-1 text-base font-semibold tracking-[-0.01em]">
                 Tags mais frequentes
               </div>
@@ -234,7 +239,7 @@ export default function DashboardPage() {
           />
 
           {/* Conversas recentes */}
-          <Card className="anim-fade-up gap-0 overflow-hidden p-0">
+          <Card className="gap-0 overflow-hidden p-0">
             <div className="flex items-start justify-between gap-3 p-[22px_24px] pb-4">
               <div>
                 <div className="text-base font-semibold tracking-[-0.01em]">
@@ -334,7 +339,7 @@ export default function DashboardPage() {
               if (!open) setSelectedConversationId(null);
             }}
           />
-        </>
+        </div>
       )}
     </>
   );

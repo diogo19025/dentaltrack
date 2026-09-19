@@ -28,7 +28,7 @@ export function OnboardingChecklist() {
   return (
     <Card
       data-testid="onboarding-checklist"
-      className="anim-fade-up mb-[18px] gap-0 p-[22px_24px]"
+      className="mb-[18px] gap-0 p-[22px_24px]"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
@@ -52,9 +52,11 @@ export function OnboardingChecklist() {
         aria-valuenow={pct}
         className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-secondary"
       >
+        {/* scaleX em vez de width: fica no compositor e não relayouta a
+          linha inteira a cada passo concluído. */}
         <div
-          className="h-full rounded-full bg-primary transition-[width]"
-          style={{ width: `${pct}%` }}
+          className="h-full w-full origin-left rounded-full bg-primary transition-transform duration-[400ms] ease-[cubic-bezier(0.23,1,0.32,1)]"
+          style={{ transform: `scaleX(${pct / 100})` }}
         />
       </div>
 

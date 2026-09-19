@@ -278,8 +278,8 @@
 
 /* ===== Motion (médio) ===== */
 @keyframes fadeUp {
-  from { transform: translateY(10px); }
-  to { transform: none; }
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: none; opacity: 1; }
 }
 @keyframes blink {
   0%, 100% { opacity: 0.25; }
@@ -299,7 +299,15 @@
   to { opacity: 1; }
 }
 .anim-fade-up {
-  animation: fadeUp 0.42s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  animation: fadeUp 0.28s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+/* Troca de valor no lugar (número de KPI ao mudar o período): só opacidade. */
+@keyframes swapIn {
+  from { opacity: 0.35; }
+  to { opacity: 1; }
+}
+.anim-swap {
+  animation: swapIn 0.2s ease both;
 }
 .anim-fade {
   animation: fadeIn 0.4s ease both;
@@ -339,11 +347,26 @@
   box-shadow: var(--shadow-md);
 }
 
+/* Movimento reduzido = movimento mais suave, não zero. Deslocamentos (entrada
+   escalonada, barras crescendo, lift) viram fade curto; transições de cor e
+   opacidade continuam, porque ajudam a entender o que mudou. */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    transition-duration: 0.001ms !important;
+  .anim-fade-up,
+  .stagger > *,
+  .bar-grow {
+    animation-name: fadeIn;
+    animation-duration: 0.2s;
+    animation-delay: 0s;
+    transform: none;
+  }
+  .lift:hover,
+  .lift:active {
+    transform: none;
+  }
+  .shimmer {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
   }
 }

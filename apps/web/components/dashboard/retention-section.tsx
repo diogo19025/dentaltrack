@@ -24,13 +24,15 @@ export function RetentionSection({
     retention.recurrent.some((v) => v > 0);
 
   return (
-    <Card className="anim-fade-up gap-0 p-[22px_24px]">
+    <Card className="gap-0 p-[22px_24px]">
       <div className="mb-[18px] flex items-start justify-between gap-3 max-[680px]:flex-col">
         <div>
-          <div className="text-base font-semibold tracking-[-0.01em]">Abandono × Recorrência</div>
+          <div className="text-base font-semibold tracking-[-0.01em]">
+            Abandono × Recorrência
+          </div>
           <div className="mt-[3px] text-[13px] text-muted-foreground">
-            Atendimentos abandonados × clientes que voltaram a agendar · últimos {rangeDaysLabel}{" "}
-            dias
+            Atendimentos abandonados × clientes que voltaram a agendar · últimos{" "}
+            {rangeDaysLabel} dias
           </div>
         </div>
         <RetentionLegend />
@@ -60,8 +62,8 @@ export function RetentionSection({
         <RetentionLine data={retention} />
       ) : (
         <p className="py-6 text-center text-[13px] text-muted-foreground">
-          Sem abandonos nem retornos no período. Os retornos aparecem quando um cliente que já
-          agendou volta para marcar outro atendimento.
+          Sem abandonos nem retornos no período. Os retornos aparecem quando um
+          cliente que já agendou volta para marcar outro atendimento.
         </p>
       )}
     </Card>
@@ -73,7 +75,10 @@ function RetentionLegend() {
   return (
     <div className="flex gap-4">
       <span className="flex items-center gap-[7px] text-[13px] text-muted-foreground">
-        <span className="size-2.5 rounded-[3px]" style={{ background: "var(--chart-1)" }} />
+        <span
+          className="size-2.5 rounded-[3px]"
+          style={{ background: "var(--chart-1)" }}
+        />
         Recorrentes
       </span>
       <span className="flex items-center gap-[7px] text-[13px] text-muted-foreground">
@@ -110,11 +115,17 @@ function RetentionStat({
     <div>
       <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
         {color && (
-          <span className="size-2 rounded-full" style={{ background: color }} aria-hidden="true" />
+          <span
+            className="size-2 rounded-full"
+            style={{ background: color }}
+            aria-hidden="true"
+          />
         )}
         {label}
       </div>
-      <div className="tabular mt-1 text-[26px] font-semibold tracking-[-0.02em]">{value}</div>
+      <div className="tabular mt-1 text-[26px] font-semibold tracking-[-0.02em]">
+        {value}
+      </div>
       <div className="mt-[2px] text-[12px] text-muted-foreground">{hint}</div>
     </div>
   );
