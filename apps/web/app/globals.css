@@ -190,6 +190,30 @@
   }
 }
 
+/* ===== Topbar como material (apple-design § materiais) =====
+   Translúcida com o conteúdo rolando por baixo. Quem pede menos transparência
+   ou mais contraste recebe a superfície sólida. */
+.topbar-material {
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .topbar-material {
+    background: var(--card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  .topbar-material {
+    background: var(--card);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom-color: var(--border-strong) !important;
+  }
+}
+
 /* ===== Scrollbar sóbria ===== */
 *::-webkit-scrollbar {
   width: 10px;
