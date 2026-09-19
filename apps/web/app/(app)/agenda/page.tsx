@@ -201,6 +201,129 @@ export default function AgendaPage() {
   // mutações que invalidam a agenda.
   const [selected, setSelected] = useState<AppointmentSummary | null>(null);
 
+  // Barra de busca e filtros — vive dentro do cartão da grade, como a barra
+  // de um calendário, e vale também para a lista de próximos.
+  const toolbar = (
+    <div
+      role="search"
+      aria-label="Filtros da agenda"
+      className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5"
+    >
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar cliente ou procedimento"
+          className="h-9 w-[240px] bg-card pl-8"
+          aria-label="Buscar na agenda"
+        />
+      </div>
+      <Select
+        value={statusFilter}
+        onValueChange={(value) =>
+          setStatusFilter(value as AppointmentStatus | "todos")
+        }
+      >
+        <SelectTrigger
+          className="h-9 w-[170px]"
+          aria-label="Filtrar por situação"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="todos">Todas as situações</SelectItem>
+          {APPOINTMENT_STATUSES.map((status) => (
+            <SelectItem key={status} value={status}>
+              {APPOINTMENT_STATUS_LABELS[status]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {professionals.length > 0 && (
+        <Select
+          value={professionalFilter}
+          onValueChange={setProfessionalFilter}
+        >
+          <SelectTrigger
+            className="h-9 w-[200px]"
+            aria-label="Filtrar por profissional"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os profissionais</SelectItem>
+            {professionals.map((professional) => (
+              <SelectItem key={professional.id} value={professional.id}>
+                <span className="flex items-center gap-2">
+                  <ColorDot
+                    color={professionalColor(professional, professionals)}
+                  />
+                  {professional.name}
+                  {!professional.active && (
+                    <span className="text-muted-foreground">(inativo)</span>
+                  )}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {procedureOptions.length > 0 && (
+        <Select value={procedureFilter} onValueChange={setProcedureFilter}>
+          <SelectTrigger
+            className="h-9 w-[190px]"
+            aria-label="Filtrar por procedimento"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os procedimentos</SelectItem>
+            {procedureOptions.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {clientOptions.length > 0 && (
+        <Select value={clientFilter} onValueChange={setClientFilter}>
+          <SelectTrigger
+            className="h-9 w-[170px]"
+            aria-label="Filtrar por cliente"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos os clientes</SelectItem>
+            {clientOptions.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+      {hasActiveFilters && (
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-9"
+          onClick={() => {
+            setSearch("");
+            setStatusFilter("todos");
+            setProcedureFilter("todos");
+            setClientFilter("todos");
+            setProfessionalFilter("todos");
+          }}
+        >
+          Limpar filtros
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <>
       <PageHeader
@@ -236,125 +359,6 @@ export default function AgendaPage() {
         onSelect={setSelected}
       />
 
-      <div
-        role="search"
-        aria-label="Filtros da agenda"
-        className="mb-3 flex flex-wrap items-center gap-2"
-      >
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar cliente ou procedimento"
-            className="h-9 w-[240px] pl-8"
-            aria-label="Buscar na agenda"
-          />
-        </div>
-        <Select
-          value={statusFilter}
-          onValueChange={(value) =>
-            setStatusFilter(value as AppointmentStatus | "todos")
-          }
-        >
-          <SelectTrigger
-            className="h-9 w-[170px]"
-            aria-label="Filtrar por situação"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todas as situações</SelectItem>
-            {APPOINTMENT_STATUSES.map((status) => (
-              <SelectItem key={status} value={status}>
-                {APPOINTMENT_STATUS_LABELS[status]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {professionals.length > 0 && (
-          <Select
-            value={professionalFilter}
-            onValueChange={setProfessionalFilter}
-          >
-            <SelectTrigger
-              className="h-9 w-[200px]"
-              aria-label="Filtrar por profissional"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os profissionais</SelectItem>
-              {professionals.map((professional) => (
-                <SelectItem key={professional.id} value={professional.id}>
-                  <span className="flex items-center gap-2">
-                    <ColorDot
-                      color={professionalColor(professional, professionals)}
-                    />
-                    {professional.name}
-                    {!professional.active && (
-                      <span className="text-muted-foreground">(inativo)</span>
-                    )}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {procedureOptions.length > 0 && (
-          <Select value={procedureFilter} onValueChange={setProcedureFilter}>
-            <SelectTrigger
-              className="h-9 w-[190px]"
-              aria-label="Filtrar por procedimento"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os procedimentos</SelectItem>
-              {procedureOptions.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {clientOptions.length > 0 && (
-          <Select value={clientFilter} onValueChange={setClientFilter}>
-            <SelectTrigger
-              className="h-9 w-[170px]"
-              aria-label="Filtrar por cliente"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos os clientes</SelectItem>
-              {clientOptions.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        {hasActiveFilters && (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-9"
-            onClick={() => {
-              setSearch("");
-              setStatusFilter("todos");
-              setProcedureFilter("todos");
-              setClientFilter("todos");
-              setProfessionalFilter("todos");
-            }}
-          >
-            Limpar filtros
-          </Button>
-        )}
-      </div>
-
       <WeekGrid
         weekStart={weekStart}
         appointments={weekAppointments}
@@ -362,6 +366,7 @@ export default function AgendaPage() {
         colorOf={colorOf}
         legend={activeProfessionals.length > 1 ? activeProfessionals : []}
         allProfessionals={professionals}
+        toolbar={toolbar}
         onSelect={setSelected}
         onPrev={() => setWeekOffset((v) => v - 1)}
         onNext={() => setWeekOffset((v) => v + 1)}
@@ -432,10 +437,10 @@ function UpcomingSection({
                   onClick={() => onSelect(appointment)}
                   className={cn(
                     "relative flex w-full flex-col gap-1.5 overflow-hidden rounded-lg border border-border bg-card p-4 pl-5 text-left shadow-sm outline-none",
-                    "transition-[box-shadow,border-color] duration-150 ease-out",
+                    "transition-[box-shadow,border-color,scale] duration-150 ease-out",
                     "hover:border-border-strong hover:shadow-[var(--shadow-md)]",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    "active:translate-y-[0.5px]",
+                    "active:scale-[0.992]",
                   )}
                 >
                   {/* Filete do profissional — a mesma cor do bloco na grade. */}
@@ -492,6 +497,7 @@ function WeekGrid({
   colorOf,
   legend,
   allProfessionals,
+  toolbar,
   onSelect,
   onPrev,
   onNext,
@@ -505,6 +511,8 @@ function WeekGrid({
   /** Profissionais da legenda (vazio = sem legenda, equipe de um só). */
   legend: ProfessionalDto[];
   allProfessionals: ProfessionalDto[];
+  /** Busca e filtros, renderizados como a segunda linha do cabeçalho. */
+  toolbar: React.ReactNode;
   onSelect: (appointment: AppointmentSummary) => void;
   onPrev: () => void;
   onNext: () => void;
@@ -549,43 +557,47 @@ function WeekGrid({
 
   return (
     <Card className="mb-5 gap-0 overflow-hidden p-0">
-      <div className="flex flex-wrap items-center gap-3 border-b border-border px-6 py-[14px]">
-        <div>
-          <div className="text-base font-semibold tracking-[-0.01em]">
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+        <div className="flex items-baseline gap-2.5">
+          <h2 className="text-base font-semibold tracking-[-0.01em]">
             Grade da semana
-          </div>
-          <div className="mt-0.5 text-[13px] text-muted-foreground">
+          </h2>
+          <span className="tabular text-[13px] text-muted-foreground first-letter:uppercase">
             {rangeLabel(days[0], days[days.length - 1])}
-          </div>
+          </span>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-3">
           {legend.length > 0 && (
             <Legend professionals={legend} all={allProfessionals} />
           )}
-          <div className="flex items-center gap-1">
+          {/* Navegação como um grupo só: uma borda, divisórias entre os botões. */}
+          <div
+            role="group"
+            aria-label="Navegar entre semanas"
+            className="flex h-[34px] items-stretch overflow-hidden rounded-[var(--radius-sm)] border border-border-strong bg-card shadow-xs [&>*+*]:border-l [&>*+*]:border-border"
+          >
             <Button
               type="button"
-              variant="outline"
-              size="icon-sm"
+              variant="ghost"
+              className="h-auto w-[34px] rounded-none px-0"
               aria-label="Semana anterior"
               onClick={onPrev}
             >
               <ChevronLeft className="size-4" />
             </Button>
-            {!isCurrentWeek && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onToday}
-              >
-                Hoje
-              </Button>
-            )}
             <Button
               type="button"
-              variant="outline"
-              size="icon-sm"
+              variant="ghost"
+              className="h-auto rounded-none px-3 text-[13px]"
+              onClick={onToday}
+              disabled={isCurrentWeek}
+            >
+              Hoje
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-auto w-[34px] rounded-none px-0"
               aria-label="Próxima semana"
               onClick={onNext}
             >
@@ -594,6 +606,8 @@ function WeekGrid({
           </div>
         </div>
       </div>
+
+      {toolbar}
 
       {loading ? (
         <div className="p-6">
@@ -678,10 +692,10 @@ function WeekGrid({
                             onClick={() => onSelect(appointment)}
                             className={cn(
                               "absolute inset-x-1 block overflow-hidden rounded-[6px] px-1.5 py-1 text-left outline-none",
-                              "transition-[box-shadow,filter,opacity] duration-150 ease-out",
+                              "transition-[box-shadow,filter,scale] duration-150 ease-out",
                               "hover:z-10 hover:shadow-[var(--shadow-md)] hover:brightness-[1.05]",
                               "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                              "active:brightness-[0.97]",
+                              "active:scale-[0.98] active:brightness-[0.97]",
                               missed
                                 ? "status-abandonada"
                                 : "text-primary-foreground",
