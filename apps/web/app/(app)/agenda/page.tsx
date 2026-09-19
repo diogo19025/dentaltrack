@@ -55,7 +55,7 @@ import { cn } from "@/lib/utils";
 import { OwnerOnly, useRole } from "@/components/auth/role-context";
 
 /** Altura de uma hora na grade, em px. */
-const HOUR_PX = 56;
+const HOUR_PX = 64;
 const DAYS_IN_GRID = 7;
 const UPCOMING_LIMIT = 4;
 
@@ -710,10 +710,10 @@ function WeekGrid({
                             title={label}
                             onClick={() => onSelect(appointment)}
                             className={cn(
-                              "absolute block overflow-hidden rounded-[4px] py-[3px] pl-2 pr-1.5 text-left outline-none",
+                              "absolute flex flex-col justify-center overflow-hidden rounded-[4px] py-[2px] pl-2 pr-1.5 text-left outline-none",
                               "transition-[box-shadow,filter,scale] duration-150 ease-out",
-                              "hover:z-10 hover:shadow-[var(--shadow-md)] hover:brightness-[0.97]",
-                              "focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                              "hover:z-20 hover:shadow-[var(--shadow-md)] hover:brightness-[0.97]",
+                              "focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                               "active:scale-[0.985] active:brightness-[0.95] active:duration-0",
                               missed && "line-through decoration-current/50",
                             )}
@@ -721,11 +721,22 @@ function WeekGrid({
                               ...blockStyle(color),
                               top,
                               height,
-                              left: `calc(${(lane * 100) / lanes}% + 4px)`,
-                              width: `calc(${100 / lanes}% - ${lane === lanes - 1 ? 8 : 5}px)`,
+                              ...laneStyle(lane, lanes),
                             }}
                           >
-                            {height >= 44 ? (
+                            {lanes > 1 ? (
+                              // Dividindo a coluna não cabe hora + nome numa
+                              // linha: a linha da grade já diz a hora, e o nome
+                              // quebra em até duas linhas em vez de ser cortado.
+                              <div
+                                className={cn(
+                                  "text-[11px] font-semibold leading-[1.2]",
+                                  height >= 30 ? "line-clamp-2" : "truncate",
+                                )}
+                              >
+                                {name}
+                              </div>
+                            ) : height >= 46 ? (
                               <>
                                 <div className="truncate text-[12px] font-semibold leading-[1.25]">
                                   {name}
@@ -744,11 +755,9 @@ function WeekGrid({
                               </>
                             ) : (
                               <div className="flex items-baseline gap-1.5 truncate text-[12px] leading-[1.25]">
-                                {lanes === 1 && (
-                                  <span className="tabular flex-none font-medium opacity-80">
-                                    {formatHm(startsAt)}
-                                  </span>
-                                )}
+                                <span className="tabular flex-none font-medium opacity-80">
+                                  {formatHm(startsAt)}
+                                </span>
                                 <span className="truncate font-semibold">
                                   {name}
                                 </span>
@@ -853,6 +862,28 @@ function blockStyle(color: string): React.CSSProperties {
     color: `color-mix(in srgb, ${color} 72%, black)`,
     boxShadow: `inset 3px 0 0 ${color}`,
   } as React.CSSProperties;
+}
+
+/**
+ * Posição horizontal do bloco na coluna do dia. Dois coincidentes dividem a
+ * coluna ao meio; a partir de três, dividir vira tira ilegível, então eles
+ * ficam em cascata — cada um deslocado e por cima do anterior, o último
+ * inteiro e os de trás visíveis pela barra e pelo começo do nome (o hover e
+ * o foco trazem qualquer um para a frente).
+ */
+function laneStyle(lane: number, lanes: number): React.CSSProperties {
+  if (lanes <= 2) {
+    return {
+      left: `calc(${(lane * 100) / lanes}% + 3px)`,
+      width: `calc(${100 / lanes}% - ${lane === lanes - 1 ? 6 : 3}px)`,
+    };
+  }
+  const step = 100 / (lanes + 1);
+  return {
+    left: `calc(${lane * step}% + 3px)`,
+    width: `calc(${100 - lane * step}% - 6px)`,
+    zIndex: lane + 1,
+  };
 }
 
 /** Blocos de atendimento do dia, posicionados na grade. */

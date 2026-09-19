@@ -277,8 +277,8 @@ describe("AgendaPage — filtros e detalhe", () => {
     const second = screen.getByRole("button", {
       name: /14:00 – 14:30 · João Pedro/,
     });
-    expect(first.style.width).toBe("calc(50% - 5px)");
-    expect(second.style.left).toBe("calc(50% + 4px)");
+    expect(first.style.width).toBe("calc(50% - 3px)");
+    expect(second.style.left).toBe("calc(50% + 3px)");
   });
 
   it("clicar num agendamento da grade abre o painel com os detalhes", () => {
