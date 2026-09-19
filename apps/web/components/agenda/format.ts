@@ -36,6 +36,24 @@ export function formatWhen(iso: string): string {
   return `${day} às ${formatHm(date)}`;
 }
 
+/** "hoje" · "amanhã" · "ontem" · null quando está mais longe que isso. */
+export function relativeDayLabel(date: Date, now = new Date()): string | null {
+  const diff = Math.round(
+    (startOfDay(date).getTime() - startOfDay(now).getTime()) / DAY_MS,
+  );
+  if (diff === 0) return "hoje";
+  if (diff === 1) return "amanhã";
+  if (diff === -1) return "ontem";
+  return null;
+}
+
+/** "hoje às 09:00" · "amanhã às 09:00" · "sex., 12/09 às 14:30". */
+export function formatWhenRelative(iso: string): string {
+  const date = new Date(iso);
+  const day = relativeDayLabel(date);
+  return day ? `${day} às ${formatHm(date)}` : formatWhen(iso);
+}
+
 /** "sexta-feira, 12 de setembro". */
 export function formatLongDay(date: Date): string {
   return date.toLocaleDateString("pt-BR", {

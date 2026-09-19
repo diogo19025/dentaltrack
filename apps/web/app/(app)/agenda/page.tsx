@@ -38,8 +38,9 @@ import {
   dateKey,
   dateKeyPlus,
   formatHm,
-  formatWhen,
+  formatWhenRelative,
   pad2,
+  relativeDayLabel,
   startOfDay,
 } from "@/components/agenda/format";
 import {
@@ -455,13 +456,17 @@ function UpcomingSection({
                     className="absolute inset-y-3 left-0 w-[3px] rounded-r-full"
                     style={{ background: color }}
                   />
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="tabular text-[13px] font-semibold text-primary">
+                  <div className="flex min-h-[26px] items-center justify-between gap-2">
+                    <span className="tabular text-[13px] font-semibold capitalize text-primary">
                       {appointment.startsAt
-                        ? formatWhen(appointment.startsAt)
+                        ? formatWhenRelative(appointment.startsAt)
                         : (appointment.preferredTime ?? "A combinar")}
                     </span>
-                    <AppointmentBadge status={appointment.status} />
+                    {/* Tudo aqui está marcado por definição; a pílula só entra
+                      quando a situação acrescenta algo (confirmado, pedido). */}
+                    {appointment.status !== "agendado" && (
+                      <AppointmentBadge status={appointment.status} />
+                    )}
                   </div>
                   <div className="truncate text-sm font-medium">
                     {appointment.leadName ?? "Sem nome"}
@@ -918,6 +923,12 @@ function assignLanes(blocks: AppointmentBlock[]): void {
 
 /* ─────────────────────────── Blocos compartilhados ─────────────────────────── */
 
+/**
+ * Estado da integração. Conectada é o estado normal e vira uma linha de
+ * status discreta — uma faixa colorida permanente para dizer "está tudo
+ * certo" competia com o conteúdo. A caixa fica para o que pede atenção:
+ * modo simulado e sem integração.
+ */
 function IntegrationStrip({
   mode,
   lastSyncedAt,
@@ -925,38 +936,64 @@ function IntegrationStrip({
   mode: string;
   lastSyncedAt: string | null;
 }) {
-  const connected = mode !== "desligado";
+  const synced = lastSyncedAt && (
+    <span className="ml-auto text-xs tracking-[0.01em] text-muted-foreground">
+      Sincronizado {formatSyncedAt(lastSyncedAt)}
+    </span>
+  );
+
+  if (mode === "live") {
+    return (
+      <p
+        role="status"
+        className="-mt-2 mb-5 flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground"
+      >
+        <span
+          aria-hidden="true"
+          className="size-2 flex-none rounded-full bg-success"
+        />
+        <span>
+          Conectado ao sistema de gestão · o assistente oferece só horários
+          livres de verdade
+        </span>
+        {synced}
+      </p>
+    );
+  }
+
+  const mock = mode === "mock";
   return (
     <div
       className={cn(
         "mb-5 flex flex-wrap items-center gap-2 rounded-[var(--radius-sm)] border border-border px-4 py-3 text-[13px]",
-        connected ? "bg-primary-tint" : "bg-secondary",
+        mock ? "bg-warning-tint" : "bg-secondary",
       )}
     >
-      {connected ? (
-        <Link2
-          className="size-4 flex-none"
-          style={{ color: "var(--primary)" }}
-        />
+      {mock ? (
+        <Link2 className="size-4 flex-none text-warning" />
       ) : (
         <PlugZap className="size-4 flex-none text-muted-foreground" />
       )}
-      <span
-        className={connected ? "text-primary" : "text-secondary-foreground"}
-      >
-        {mode === "live"
-          ? "Conectado ao sistema de gestão — o assistente oferece só horários livres de verdade."
-          : mode === "mock"
-            ? "Integração em modo simulado — os dados abaixo são fictícios, para conhecer o fluxo."
-            : "Sem sistema de gestão conectado. O assistente coleta a preferência e a equipe confirma."}
+      <span className={mock ? "text-warning" : "text-secondary-foreground"}>
+        {mock
+          ? "Integração em modo simulado — os dados abaixo são fictícios, para conhecer o fluxo."
+          : "Sem sistema de gestão conectado. O assistente coleta a preferência e a equipe confirma."}
       </span>
-      {lastSyncedAt && (
-        <span className="ml-auto text-xs text-muted-foreground">
-          Sincronizado em {new Date(lastSyncedAt).toLocaleString("pt-BR")}
-        </span>
-      )}
+      {synced}
     </div>
   );
+}
+
+/** "hoje às 17:20" · "ontem às 17:20" · "em 12/09 às 17:20" — sem segundos. */
+function formatSyncedAt(iso: string): string {
+  const date = new Date(iso);
+  const day = relativeDayLabel(date);
+  if (day) return `${day} às ${formatHm(date)}`;
+  const dm = date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+  });
+  return `em ${dm} às ${formatHm(date)}`;
 }
 
 function Empty({

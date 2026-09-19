@@ -134,7 +134,9 @@
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
   --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-input: var(--input);
