@@ -7,7 +7,7 @@ import { RemindersService } from './reminders.service';
 /**
  * Lembretes por WhatsApp a partir do CRM (pós-MVP). Importa o
  * ConversationsModule (persistir a mensagem) e o transporte de saída via
- * EvolutionService. PrismaService vem do PrismaModule global.
+ * WhatsappTransportResolver. PrismaService vem do PrismaModule global.
  */
 @Module({
   imports: [ConversationsModule, WhatsappTransportModule],

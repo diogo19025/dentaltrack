@@ -5,7 +5,11 @@ import { OutboundService } from '../automations/outbound.service';
 import { ChatService } from '../chat/chat.service';
 import { runWithContext, setContext } from '../common/request-context';
 import { PrismaService } from '../prisma/prisma.service';
-import { EvolutionService } from './evolution.service';
+import type {
+  WhatsappRecipient,
+  WhatsappTransport,
+} from './transport/whatsapp-transport';
+import { WhatsappTransportResolver } from './transport/whatsapp-transport.resolver';
 import {
   type EvolutionWebhookPayload,
   type ParsedInbound,
@@ -26,7 +30,7 @@ const OPT_OUT_REPLY =
 /**
  * Orquestra o canal WhatsApp (WA-3). Recebe o webhook já bruto da Evolution,
  * resolve a empresa pela instância, deduplica, roda o **mesmo** `ChatService`
- * (non-streaming) e devolve a resposta pela Evolution. Channel-agnostic: o motor
+ * (non-streaming) e devolve a resposta pela porta de transporte. Channel-agnostic: o motor
  * não muda — este serviço é só o adaptador de borda.
  */
 @Injectable()
@@ -36,7 +40,7 @@ export class WhatsappService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly chat: ChatService,
-    private readonly evolution: EvolutionService,
+    private readonly transports: WhatsappTransportResolver,
     private readonly optOut: OptOutService,
     private readonly outbound: OutboundService,
   ) {}
@@ -63,6 +67,7 @@ export class WhatsappService {
   /** O turno em si, já dentro do escopo de correlação. */
   private async processInbound(inbound: ParsedInbound): Promise<void> {
     const startedAt = Date.now();
+    const transport = this.transports.forEvolutionInstance(inbound.instance);
     try {
       // A empresa precisa ser conhecida antes do claim porque a unicidade é
       // `(clinicId, externalId)`: duas empresas não compartilham namespace.
@@ -100,14 +105,14 @@ export class WhatsappService {
           'palavra no WhatsApp',
         );
         await this.safeSend(
-          inbound.instance,
-          await this.replyTarget(inbound),
+          transport,
+          await transport.resolveAddress(recipientOf(inbound)),
           OPT_OUT_REPLY,
         );
         return;
       }
 
-      const turn = await this.buildTurn(inbound);
+      const turn = await this.buildTurn(inbound, transport);
       if (!turn) return; // tipo não suportado / mídia indisponível
 
       const { conversationId, reply, attachments } =
@@ -120,10 +125,10 @@ export class WhatsappService {
         });
 
       if (reply || attachments.length > 0) {
-        const target = await this.replyTarget(inbound);
+        const target = await transport.resolveAddress(recipientOf(inbound));
         if (reply) {
           try {
-            await this.evolution.sendText(inbound.instance, target, reply);
+            await transport.sendText(target, reply);
           } catch (err) {
             await this.queueFailedReply({
               clinicId,
@@ -151,7 +156,7 @@ export class WhatsappService {
         // Best-effort — a falha de um anexo não impede os demais nem a resposta.
         for (const media of attachments) {
           try {
-            await this.evolution.sendMedia(inbound.instance, target, media);
+            await transport.sendMedia(target, media);
           } catch (mediaErr) {
             const detail =
               mediaErr instanceof Error ? mediaErr.message : String(mediaErr);
@@ -168,26 +173,25 @@ export class WhatsappService {
         durationMs: Date.now() - startedAt,
         reason: err instanceof Error ? err.name : 'desconhecido',
       });
-      await this.handleError(err, inbound);
+      await this.handleError(err, inbound, transport);
     }
   }
 
   /**
    * Monta a entrada do turno (texto OU áudio). Para áudio, usa o base64 do
-   * webhook ou o busca na Evolution (getBase64FromMediaMessage).
+   * webhook ou o busca no provedor.
    */
   private async buildTurn(
     inbound: ParsedInbound,
+    transport: WhatsappTransport,
   ): Promise<{ message?: string; audio?: string; audioType?: string } | null> {
     if (inbound.text) return { message: inbound.text };
 
     if (inbound.audio) {
-      const base64 =
-        inbound.audio.base64 ??
-        (await this.evolution.getMediaBase64(
-          inbound.instance,
-          inbound.audio.key,
-        ));
+      const base64 = await transport.fetchInboundAudio({
+        base64: inbound.audio.base64,
+        ref: inbound.audio.key,
+      });
       if (!base64) {
         this.logger.warn(
           `Áudio sem base64 (instância ${inbound.instance}) — ignorando.`,
@@ -198,26 +202,6 @@ export class WhatsappService {
     }
 
     return null;
-  }
-
-  /**
-   * JID de destino da resposta. Contato migrado p/ **LID** (`addressingMode:
-   * 'lid'`): resolve o JID `@lid` (enviar p/ o telefone não entrega — fica em
-   * PENDING). Sem LID (ou se a resolução falhar): usa o telefone, como antes.
-   */
-  private async replyTarget(inbound: ParsedInbound): Promise<string> {
-    if (inbound.addressingMode === 'lid') {
-      const lid = await this.evolution.resolveLidJid(
-        inbound.instance,
-        inbound.remoteJid,
-        inbound.messageId,
-      );
-      if (lid) return lid;
-      this.logger.warn(
-        `LID não resolvido para ${inbound.phone} — enviando ao telefone (pode não entregar).`,
-      );
-    }
-    return inbound.phone;
   }
 
   /** Resolve a empresa dona da instância Evolution (WA-1). */
@@ -300,6 +284,7 @@ export class WhatsappService {
   private async handleError(
     err: unknown,
     inbound: ParsedInbound,
+    transport: WhatsappTransport,
   ): Promise<void> {
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.error(
@@ -309,8 +294,8 @@ export class WhatsappService {
 
     if (err instanceof AiUnavailableError) {
       await this.safeSend(
-        inbound.instance,
-        await this.replyTarget(inbound),
+        transport,
+        await transport.resolveAddress(recipientOf(inbound)),
         AI_FALLBACK,
       );
     }
@@ -318,17 +303,29 @@ export class WhatsappService {
 
   /** Envia sem propagar erro (usado em caminhos de fallback). */
   private async safeSend(
-    instance: string,
+    transport: WhatsappTransport,
     phone: string,
     text: string,
   ): Promise<void> {
     try {
-      await this.evolution.sendText(instance, phone, text);
+      await transport.sendText(phone, text);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.error(`Falha ao enviar mensagem ao ${phone}: ${detail}`);
     }
   }
+}
+
+/** Destinatário da resposta a uma mensagem recebida. */
+function recipientOf(inbound: ParsedInbound): WhatsappRecipient {
+  return {
+    phone: inbound.phone,
+    inReplyTo: {
+      remoteJid: inbound.remoteJid,
+      messageId: inbound.messageId,
+      addressingMode: inbound.addressingMode,
+    },
+  };
 }
 
 function isUniqueViolation(err: unknown): boolean {

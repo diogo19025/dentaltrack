@@ -4,6 +4,7 @@ import { DEFAULT_AUTOMATION_SETTINGS } from '@dentaltrack/shared';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from '../whatsapp/evolution.service';
+import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
 import { AutomationSettingsService } from './automation-settings.service';
 import { reminderKey } from './automation-keys';
 import { HolidaysService } from './holidays.service';
@@ -106,6 +107,7 @@ describe('OutboundService (fila de saída · F9)', () => {
         { provide: HolidaysService, useValue: holidaysMock },
         { provide: OptOutService, useValue: optOutMock },
         { provide: EvolutionService, useValue: evolutionMock },
+        WhatsappTransportResolver,
         { provide: ConversationsService, useValue: conversationsMock },
         { provide: ConfigService, useValue: configMock },
       ],
