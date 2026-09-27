@@ -99,6 +99,7 @@ function status(over: Partial<IntegrationStatus> = {}): IntegrationStatus {
     hasCredentials: true,
     usernameHint: "ap******rp",
     google: null,
+    googleVerificationCode: null,
     serviceAccountEmail: null,
     unitId: null,
     professionalId: null,
@@ -119,6 +120,7 @@ function googleStatus(over: Partial<IntegrationStatus> = {}): IntegrationStatus 
     hasCredentials: true,
     usernameHint: null,
     serviceAccountEmail: "agenda@projeto.iam.gserviceaccount.com",
+    googleVerificationCode: "DT-1A2B-3C4D",
     google: {
       calendarId: "clinica@group.calendar.google.com",
       workStart: "08:00",
@@ -390,6 +392,17 @@ describe("IntegrationTab", () => {
         /ID da agenda/i,
       ) as HTMLInputElement;
       expect(calendar.value).toBe("clinica@group.calendar.google.com");
+    });
+
+    it("mostra o código que prova que a agenda é da empresa", () => {
+      state.data.clinicorp = status({
+        mode: "desligado",
+        activeProvider: "google",
+      });
+      state.data.google = googleStatus();
+      render(<IntegrationTab />);
+
+      expect(screen.getByText("DT-1A2B-3C4D")).toBeInTheDocument();
     });
 
     it("sem service account no servidor, avisa em vez de fingir que conecta", () => {

@@ -259,6 +259,12 @@ export const integrationStatusSchema = z.object({
   /** Configuração do Google Agenda (não é segredo; null nos demais). */
   google: googleAgendaConfigSchema.nullable(),
   /**
+   * Código que a empresa cola na descrição da agenda do Google para provar que
+   * a agenda é dela (a service account é a mesma para todas as empresas).
+   * Null nos demais provedores ou sem a chave de cifra no servidor.
+   */
+  googleVerificationCode: z.string().nullable(),
+  /**
    * E-mail da service account com quem a empresa compartilha a agenda —
    * exibido na tela para o passo "compartilhar". Null = servidor sem a
    * credencial do Google configurada.

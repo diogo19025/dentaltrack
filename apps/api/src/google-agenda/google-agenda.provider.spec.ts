@@ -64,6 +64,85 @@ describe('GoogleAgendaProvider (Google Agenda atrás da porta · F12)', () => {
     });
   });
 
+  describe('prova de posse — a service account é a mesma para todas as empresas', () => {
+    const CODE = 'DT-1A2B-3C4D';
+    let fresh = false;
+    const markVerified = jest.fn(() => {
+      fresh = true;
+    });
+    const owned = new GoogleAgendaProvider(
+      clientMock as unknown as GoogleCalendarClient,
+      TZ,
+      config,
+      () => NOW,
+      { code: CODE, isFresh: () => fresh, markVerified },
+    );
+    const window = {
+      from: NOW,
+      to: new Date('2026-09-02T23:00:00.000Z'),
+    };
+
+    beforeEach(() => {
+      fresh = false;
+      clientMock.listEvents.mockResolvedValue([]);
+    });
+
+    it('agenda sem o código na descrição: recusa e não devolve o nome da agenda', async () => {
+      clientMock.getCalendar.mockResolvedValue({
+        summary: 'Agenda de outra empresa',
+        description: 'Horários do consultório',
+      });
+
+      const failure = await owned.listUnits().catch((err: unknown) => err);
+
+      expect(failure).toMatchObject({ kind: 'config' });
+      expect(String((failure as Error).message)).toContain(CODE);
+      expect(String((failure as Error).message)).not.toContain(
+        'Agenda de outra empresa',
+      );
+      expect(markVerified).not.toHaveBeenCalled();
+    });
+
+    it('sem a prova, não lê horários, não lista eventos e não grava', async () => {
+      clientMock.getCalendar.mockResolvedValue({ description: '' });
+
+      await expect(owned.listAvailableSlots(window)).rejects.toMatchObject({
+        kind: 'config',
+      });
+      await expect(owned.listAppointments(window)).rejects.toMatchObject({
+        kind: 'config',
+      });
+      await expect(
+        owned.cancelAppointment({ externalId: 'evt-1' }),
+      ).rejects.toMatchObject({ kind: 'config' });
+
+      expect(clientMock.freeBusy).not.toHaveBeenCalled();
+      expect(clientMock.listEvents).not.toHaveBeenCalled();
+      expect(clientMock.deleteEvent).not.toHaveBeenCalled();
+    });
+
+    it('com o código na descrição, segue e registra a verificação', async () => {
+      clientMock.getCalendar.mockResolvedValue({
+        summary: 'Agenda da Clínica',
+        description: `Agenda oficial. Verificação: ${CODE.toLowerCase()}`,
+      });
+
+      await owned.listAppointments(window);
+
+      expect(clientMock.listEvents).toHaveBeenCalled();
+      expect(markVerified).toHaveBeenCalledTimes(1);
+    });
+
+    it('verificação recente no cache: não relê a descrição', async () => {
+      fresh = true;
+
+      await owned.listAppointments(window);
+
+      expect(clientMock.getCalendar).not.toHaveBeenCalled();
+      expect(clientMock.listEvents).toHaveBeenCalled();
+    });
+  });
+
   describe('listAvailableSlots — janela de trabalho menos free/busy', () => {
     const window = {
       from: NOW,
