@@ -34,7 +34,7 @@ Railway substituiu VPS/Render porque a Evolution precisa de serviço always-on s
 | `SUPABASE_JWT_SECRET` | não | Só projetos HS256 (legado). |
 | `LLM_PROVIDER` · `OPENAI_API_KEY` | sim | `openai` é o primário (LGPD). `LLM_FALLBACK_PROVIDER` + `GOOGLE_GENERATIVE_AI_API_KEY`/`GROQ_API_KEY` opcionais. `mock` só para testes. |
 | `CORS_ORIGIN` | sim | Domínio da Vercel. |
-| `EVOLUTION_API_URL` · `EVOLUTION_API_KEY` · `EVOLUTION_WEBHOOK_TOKEN` | para WhatsApp | Sem URL/KEY o WhatsApp fica inativo. O token é o header `x-evolution-token` que a instância envia. |
+| `EVOLUTION_API_URL` · `EVOLUTION_API_KEY` · `EVOLUTION_WEBHOOK_TOKEN` | para WhatsApp | Sem URL/KEY o WhatsApp fica inativo. O token é o header `x-evolution-token` que a instância envia; **obrigatório em produção**: sem ele o webhook responde 401 a tudo (falha fechada), porque qualquer pessoa que saiba o nome da instância forjaria mensagens. |
 | `API_PUBLIC_URL` | para parear | URL pública desta API, destino do webhook criado pelo QR. Sem ela o botão "Gerar QR code" fica indisponível e a tela explica. Dev com Docker: `http://host.docker.internal:3001`. |
 | `INTEGRATION_ENCRYPTION_KEY` | para agenda live | 32 bytes (64 hex). Sem ela a empresa não consegue salvar credencial: falhar fechado é melhor do que guardar segredo em texto. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Hoje é `optional()` na validação de env e só falha em runtime. |
 | `GOOGLE_CALENDAR_SA_EMAIL` · `GOOGLE_CALENDAR_SA_KEY` | para Google Agenda | Service account (ver § Agenda). PEM com `\n` escapado ou em base64. Sem elas o provedor `google` fica indisponível e a tela avisa. |
