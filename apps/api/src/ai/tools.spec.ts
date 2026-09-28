@@ -17,7 +17,7 @@ describe('buildChatTools', () => {
     clinicSettings: { findUnique: jest.fn().mockResolvedValue(null) },
     conversation: { findFirst: jest.fn(), update: jest.fn() },
     lead: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
-    appointment: { create: jest.fn() },
+    appointment: { create: jest.fn(), findMany: jest.fn() },
   };
   const conversationsMock = { markAsScheduled: jest.fn() };
 
@@ -31,7 +31,10 @@ describe('buildChatTools', () => {
     } as unknown as ChatToolsContext);
   }
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prismaMock.appointment.findMany.mockResolvedValue([]);
+  });
 
   /**
    * Nenhuma tool pode declarar objeto de parâmetros vazio.
@@ -131,6 +134,34 @@ describe('buildChatTools', () => {
     expect(prismaMock.lead.create).not.toHaveBeenCalled();
     expect(prismaMock.lead.update).toHaveBeenCalled();
     expect(res.leadId).toBe('lead-x');
+  });
+
+  it('bookAppointment: com 3 agendamentos em aberto, não reserva outro', async () => {
+    prismaMock.conversation.findFirst.mockResolvedValueOnce({
+      leadId: 'lead-1',
+    });
+    prismaMock.appointment.findMany.mockResolvedValueOnce([
+      { id: 'a1' },
+      { id: 'a2' },
+      { id: 'a3' },
+    ]);
+
+    const res = await exec(tools().bookAppointment, {
+      preferencia: 'qualquer dia',
+    });
+
+    expect(res).toMatchObject({ ok: false });
+    expect(res.orientacao).toContain('Não registre outro horário');
+    expect(prismaMock.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          clinicId: CLINIC_ID,
+          OR: [{ leadId: 'lead-1' }, { conversationId: CONVERSATION_ID }],
+        }),
+      }),
+    );
+    expect(prismaMock.appointment.create).not.toHaveBeenCalled();
+    expect(conversationsMock.markAsScheduled).not.toHaveBeenCalled();
   });
 
   describe('WhatsApp: o telefone é a identidade garantida pelo canal', () => {
@@ -389,7 +420,7 @@ describe('buildChatTools — profissional (F20)', () => {
     clinicSettings: { findUnique: jest.fn().mockResolvedValue(null) },
     conversation: { findFirst: jest.fn(), update: jest.fn() },
     lead: { create: jest.fn(), update: jest.fn(), findFirst: jest.fn() },
-    appointment: { create: jest.fn() },
+    appointment: { create: jest.fn(), findMany: jest.fn() },
   };
   const conversationsMock = { markAsScheduled: jest.fn() };
   const agendaMock = {
@@ -412,6 +443,7 @@ describe('buildChatTools — profissional (F20)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.appointment.findMany.mockResolvedValue([]);
     prismaMock.procedure.findFirst.mockResolvedValue(null);
     prismaMock.conversation.findFirst.mockResolvedValue({ leadId: 'lead-1' });
     prismaMock.lead.findFirst.mockResolvedValue({

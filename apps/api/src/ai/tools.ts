@@ -103,6 +103,14 @@ interface FindMyAppointmentsInput {
  */
 const OPEN_STATUSES = ['pedido', 'agendado', 'confirmado'] as const;
 
+/**
+ * Teto de agendamentos em aberto por contato. Sem ele, uma conversa podia
+ * ocupar dezenas de horários reais na agenda da empresa, um atrás do outro,
+ * e tirá-los de quem de fato quer ser atendido. Três cobre quem marca para si
+ * e para a família sem abrir a porta para inundar a agenda.
+ */
+const MAX_OPEN_APPOINTMENTS_PER_CONTACT = 3;
+
 /** Canais em que o telefone da conversa é garantido pelo próprio canal. */
 const CHANNELS_WITH_VERIFIED_PHONE: ReadonlySet<Channel> = new Set([
   'whatsapp',
@@ -220,15 +228,22 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
    * o agendamento nasceu aqui antes de o lead existir. Nunca por telefone
    * solto — dois contatos podem compartilhar um número (o celular da família é
    * comum), e casar por ele deixaria o agente desmarcar a consulta do outro.
+   *
+   * `knownLeadId` evita reler a conversa quando quem chama já resolveu o lead.
    */
-  async function openAppointments() {
-    const convo = await prisma.conversation.findFirst({
-      where: { id: conversationId, clinicId },
-      select: { leadId: true },
-    });
+  async function openAppointments(knownLeadId?: string | null) {
+    const leadId =
+      knownLeadId !== undefined
+        ? knownLeadId
+        : (
+            await prisma.conversation.findFirst({
+              where: { id: conversationId, clinicId },
+              select: { leadId: true },
+            })
+          )?.leadId;
 
-    const owner = convo?.leadId
-      ? [{ leadId: convo.leadId }, { conversationId }]
+    const owner = leadId
+      ? [{ leadId }, { conversationId }]
       : [{ conversationId }];
 
     return prisma.appointment.findMany({
@@ -795,6 +810,18 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
                   select: { leadId: true },
                 })
               )?.leadId ?? null);
+
+          // Antes de qualquer escrita na agenda: quem já tem o teto de
+          // agendamentos em aberto não reserva mais horário pelo agente.
+          const alreadyOpen = await openAppointments(leadId);
+          if (alreadyOpen.length >= MAX_OPEN_APPOINTMENTS_PER_CONTACT) {
+            return {
+              ok: false,
+              erro: `Este contato já tem ${alreadyOpen.length} agendamentos em aberto.`,
+              orientacao:
+                'Não registre outro horário e não afirme que está marcado. Diga que já existem agendamentos em aberto no nome dele e que a equipe entra em contato para ajudar; se ele quiser trocar um deles, use findMyAppointments e cancelAppointment antes.',
+            };
+          }
 
           const procedure = procedimento
             ? await findProcedureRow(procedimento)
