@@ -82,6 +82,7 @@ Cada regra abaixo veio de um defeito que **chegou a produção com o repositóri
 6. **Alerta enumera os estados que o disparam.** `!== "conectado"` mostrava faixa vermelha durante a leitura do QR. **Regra:** nunca negação; e o texto diz a consequência ("o assistente não está recebendo mensagens"), não o nome do estado.
 7. **"Concluído" não é "em produção".** O placar marcava ✅ para cinco PRs enquanto o Railway servia o build anterior em silêncio, porque o healthcheck do novo falhava. **Regra:** pronto inclui confirmar a versão no ar (`GET /health` → `version`, ou a impressão digital de rotas em [`operacao.md`](operacao.md#smoke-pós-deploy)). Deploy em duas peças (Vercel sobe em minutos, Railway pode não subir) exige que todo campo novo de contrato tenha comportamento definido para "a outra ponta ainda não tem isto", e esse comportamento não pode degradar o usuário.
 8. **Controle desenhado não é controle entregue.** "Enviar logo" existiu por meses sem `onClick`, sem `<input type="file">` e sem coluna no banco; passou na conferência de fidelidade porque estava pixel-perfeito. A mídia de oferta exigia URL pública, que o cliente-alvo não tem como produzir. **Regra:** controle que não faz nada não entra na tela (implementa junto, ou `disabled` com o motivo visível); todo botão do handoff tem teste que clica nele; e quando a doc diz "X é responsabilidade do usuário", a pergunta é se o usuário consegue fazer X.
+9. **Qualquer pessoa na internet é dona de uma empresa.** O cadastro é aberto e o onboarding é automático, então campo que só o dono edita não é campo confiável. A auditoria de 2026-09-27 achou o `baseUrl` do Clinicorp funcionando como SSRF, com a resposta refletida na tela, e o ID da agenda Google dando acesso à agenda de outra empresa, porque a service account é a mesma para todas. O mesmo vale para o que chega pelo WhatsApp (nome de perfil, telefone digitado, texto) e segue para o prompt, para o CSV ou para a fila de saída. **Regra:** toda URL, identificador de recurso externo e texto livre que o servidor usa em nome da empresa é validado contra o que ele pode alcançar (domínio permitido, prova de posse, telefone do canal). Texto que sai para planilha ou para o prompt é neutralizado (`csvCell`, `promptValue`). A Data API do Supabase não enxerga tabela nenhuma (`f21_rls_lockdown`): o front só usa o Auth, e tabela nova já nasce sem grant.
 
 ---
 
@@ -99,6 +100,8 @@ Cada regra abaixo veio de um defeito que **chegou a produção com o repositóri
 - [ ] Botão novo tem handler e um teste que clica nele.
 - [ ] Teste que depende de data congela o relógio.
 - [ ] Tool nova do agente não tem schema de parâmetros vazio.
+- [ ] Campo novo com URL, ID de recurso externo ou texto que vai para prompt, planilha ou mensagem é validado contra o que alcança (regra 9).
+- [ ] Rota nova que custa caro (IA, upload, importação) tem `@Throttle` próprio.
 - [ ] Migration é aditiva (coluna nullable ou com default, `ADD VALUE` em enum) e viaja com o código que a usa.
 - [ ] Mergeou? Confirme a versão **no ar** antes de marcar ✅ no placar.
 
@@ -108,4 +111,13 @@ Cada regra abaixo veio de um defeito que **chegou a produção com o repositóri
 
 Dívida identificada, com diagnóstico feito, que decidimos não corrigir na hora. Não é backlog de produto (isso é o [`roadmap.md`](roadmap.md)). Uma pendência sai daqui quando é corrigida, ou quando se decide por escrito que o comportamento atual é o desejado.
 
-**Nenhuma pendência aberta em 2026-09-17.** Ao registrar uma: área, sintoma, causa, o que falta decidir.
+Ao registrar uma: área, sintoma, causa, o que falta decidir.
+
+**Achados baixos da auditoria de segurança de 2026-09-27**, que ficaram fora do PR das correções:
+
+- **Upload** (`media/media-storage.service.ts`): confia no MIME declarado no multipart e não confere a assinatura do arquivo. O arquivo é servido pelo domínio do Supabase, não pelo nosso, o que limita o estrago. Falta decidir se vale checar os bytes iniciais de imagem e PDF.
+- **Headers HTTP**: o web não manda `frame-ancestors`/`X-Frame-Options`, `nosniff` nem `Referrer-Policy` (`next.config.ts`), e a API ainda manda `x-powered-by`. CSP completa exige medir o que o Next injeta.
+- **JWT** (`auth/supabase-jwt.guard.ts`): não confere o `iss` e aceita usuário anônimo do Supabase, caso o login anônimo seja ligado no painel.
+- **Container** (`apps/api/Dockerfile`): roda como root e leva o workspace inteiro, com as dependências de desenvolvimento.
+- **URL de mídia** (`shared/src/media.ts`): aceita `http://` e qualquer host, e a Evolution busca essa URL do servidor dela. A equipe (staff) consegue exportar a base inteira de contatos, o que merece decisão de produto.
+- **`deepmerge-ts`** na config do CLI do Prisma: única vulnerabilidade alta que sobrou no `pnpm audit --prod`, e só lê config confiável. A correção exige a major 8.
