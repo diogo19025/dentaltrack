@@ -8,6 +8,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import {
   MEDIA_MAX_BYTES,
   type MediaUploadResult,
@@ -17,6 +18,7 @@ import { ClinicId } from '../auth/clinic-id.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { TenantGuard } from '../auth/tenant.guard';
+import { UPLOAD_RATE_LIMIT } from '../common/rate-limit';
 import { MediaStorageService } from './media-storage.service';
 
 /** Teto do transporte: o maior limite de finalidade que existe. */
@@ -43,6 +45,7 @@ export class MediaController {
 
   @Post('upload')
   @Roles('owner')
+  @Throttle(UPLOAD_RATE_LIMIT)
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: TRANSPORT_LIMIT } }),
   )

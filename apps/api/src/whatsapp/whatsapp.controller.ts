@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SkipThrottle } from '@nestjs/throttler';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { Public } from '../auth/public.decorator';
 import type { Env } from '../config/env.validation';
@@ -31,6 +32,9 @@ export class WhatsappController {
   ) {}
 
   @Public()
+  // A Evolution entrega em rajadas (histórico, reconexão); o que protege esta
+  // rota é o token.
+  @SkipThrottle()
   @Post('webhook')
   @HttpCode(200)
   webhook(

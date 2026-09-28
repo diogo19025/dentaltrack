@@ -232,6 +232,7 @@ Todo erro na tela traz um `requestId`. Peça-o e busque no log do Railway (ou no
 | **Erro 500 na tela** | `requestId` → log | Stack no log da API com o mesmo id; o Sentry tem o evento se configurado. |
 | **"Acesso restrito" para o dono** | aviso "Tentar novamente" | Bootstrap falhou (cold start); `role` desconhecido. Recarregar. Se persistir, conferir a `membership` no banco. |
 | **Upload de logo responde 503** | `GET /health` → `arquivos` | `SUPABASE_SERVICE_ROLE_KEY` ausente ou vazia. |
+| **Tela ou API responde 429 "Muitas requisições"** | log da API com o `requestId` | Rate limit HTTP (`common/rate-limit.ts`), contado **por usuário** do JWT: 240 req/min no geral, 20/min no `/chat`, 10/min em `/media/upload` e `/leads/import`. Webhook e `/health` não contam. Se for uso legítimo, subir o teto ali; o balde zera em 1 minuto. |
 | **Verificar conexão da agenda falha** | passo que falhou na aba + categoria | `auth`: agenda não compartilhada ou chave errada · `config`: ID da agenda inexistente · `resposta_invalida`: proxy no caminho. Rodar o `google:smoke` reproduz por fora da tela. |
 | **Faixa "WhatsApp desconectado" após deploy** | Railway → volume da Evolution | Volume não montado em `/evolution/instances`: a sessão se perde a cada deploy. Re-parear e montar o volume. |
 | **Sessão do WhatsApp cai sozinha** | aba WhatsApp | A Evolution reconecta com credenciais intactas (uma tentativa a cada 15 min). Sessão expirada exige QR novo. Mantenha o celular online. |

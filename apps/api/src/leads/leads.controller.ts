@@ -16,6 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import {
   leadExportFormatSchema,
@@ -28,6 +29,7 @@ import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
+import { UPLOAD_RATE_LIMIT } from '../common/rate-limit';
 import { UpdateOptOutDto } from './dto';
 import { LeadPrivacyService } from './lead-privacy.service';
 import { LeadsService } from './leads.service';
@@ -84,6 +86,7 @@ export class LeadsController {
 
   @Post('import')
   @Roles('owner')
+  @Throttle(UPLOAD_RATE_LIMIT)
   @UseInterceptors(
     FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }),
   )
