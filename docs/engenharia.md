@@ -37,6 +37,8 @@ pnpm --filter @dentaltrack/web e2e             # Playwright; roda offline com LL
 pnpm --filter @dentaltrack/api test -- app.module   # compila o AppModule real (ver regra 1 abaixo)
 ```
 
+**O E2E precisa de `E2E_PASSWORD`** no ambiente ou em `apps/web/.env.local` (e, opcionalmente, `E2E_EMAIL`). É a senha de uma conta real no Supabase compartilhado com a produção, e o repositório é público: ela não volta para o código. Sem ela o Playwright para no import de `e2e/credentials.ts` com a instrução.
+
 Testes vivem ao lado do código (Jest na API, Vitest no web). **Não há CI ainda** (PR 11 do [`roadmap.md`](roadmap.md)); até lá a verificação é local e obrigatória antes de commitar.
 
 **Congele o relógio em teste que depende de data.** Dois specs fixaram um `NOW` no fixture enquanto o serviço lia `Date.now()` real: passaram no dia em que foram escritos e ficaram vermelhos no dia seguinte. `jest.spyOn(Date, 'now')`, como fazem `outbound.service.spec.ts` e `agenda.service.spec.ts`.
