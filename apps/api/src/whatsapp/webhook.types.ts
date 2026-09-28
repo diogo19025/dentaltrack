@@ -64,6 +64,14 @@ export interface ParsedInbound {
   audio?: { base64?: string; mimeType: string; key: EvolutionMessageKey };
 }
 
+/**
+ * Teto do texto de uma mensagem recebida, o mesmo do chat web
+ * (`chatRequestSchema`). O WhatsApp aceita dezenas de milhares de caracteres,
+ * e cada um deles vai para o modelo em todo turno seguinte da conversa: sem
+ * teto, uma mensagem colada várias vezes multiplica o custo de IA.
+ */
+export const MAX_INBOUND_TEXT_CHARS = 4000;
+
 /** Normaliza o nome do evento ("messages.upsert" | "MESSAGES_UPSERT" → "messages.upsert"). */
 function normalizeEvent(event: string | undefined): string {
   return (event ?? '').toLowerCase().replace(/_/g, '.');
@@ -103,7 +111,7 @@ export function parseInboundMessage(
   const msg = data?.message;
   const text = msg?.conversation ?? msg?.extendedTextMessage?.text;
   if (text && text.trim()) {
-    return { ...base, text: text.trim() };
+    return { ...base, text: text.trim().slice(0, MAX_INBOUND_TEXT_CHARS) };
   }
 
   const audioMime = msg?.audioMessage?.mimetype;

@@ -6,9 +6,11 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { ClinicId } from '../auth/clinic-id.decorator';
 import { TenantGuard } from '../auth/tenant.guard';
+import { CHAT_RATE_LIMIT } from '../common/rate-limit';
 import { ChatService } from './chat.service';
 import { ChatRequestDto } from './dto';
 
@@ -26,6 +28,7 @@ export class ChatController {
   constructor(private readonly chat: ChatService) {}
 
   @Post()
+  @Throttle(CHAT_RATE_LIMIT)
   async handle(
     @Body() body: ChatRequestDto,
     @ClinicId() clinicId: string,

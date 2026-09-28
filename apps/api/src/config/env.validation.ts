@@ -81,7 +81,8 @@ export const envSchema = z.object({
   // Tempo máximo de uma chamada à Evolution. Leituras transitórias repetem;
   // escritas nunca são repetidas pelo transporte (P0.4).
   EVOLUTION_TIMEOUT_MS: z.coerce.number().int().positive().optional(),
-  // Segredo opcional para autenticar o webhook (header `x-evolution-token`). (WA-4)
+  // Segredo que autentica o webhook (header `x-evolution-token`). (WA-4)
+  // Opcional no boot, mas em produção o webhook recusa tudo sem ele.
   EVOLUTION_WEBHOOK_TOKEN: z.string().optional(),
 
   // --- F9: agenda, integracao e automacoes ---

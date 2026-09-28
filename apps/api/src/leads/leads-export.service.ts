@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type { LeadDto, LeadExportFormat } from '@dentaltrack/shared';
+import {
+  csvCell,
+  type LeadDto,
+  type LeadExportFormat,
+} from '@dentaltrack/shared';
 import * as ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 
@@ -96,10 +100,8 @@ export class LeadsExportService {
   }
 
   private toCsv(leads: LeadDto[]): Buffer {
-    const escape = (v: string) =>
-      /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
     const csv = [HEADER, ...this.rows(leads)]
-      .map((r) => r.map(escape).join(','))
+      .map((r) => r.map(csvCell).join(','))
       .join('\n');
     // BOM → Excel abre UTF-8 com acentos corretos.
     return Buffer.from('﻿' + csv, 'utf8');

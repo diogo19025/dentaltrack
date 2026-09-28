@@ -26,7 +26,7 @@ import {
   streamAssistantReply,
 } from '../ai/generate-reply';
 import { transcribeAudio } from '../ai/transcribe';
-import { ChatService } from './chat.service';
+import { ChatService, recentHistory } from './chat.service';
 import { AgendaService } from '../agenda/agenda.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -539,6 +539,35 @@ describe('ChatService.streamMessage', () => {
      * — o atendente vai ler a conversa, e o CRM não pode parar de funcionar
      * porque uma pessoa assumiu o atendimento. Só a geração é pulada.
      */
+    describe('ritmo de mensagens por contato', () => {
+      it('acima de 15 mensagens em 5 minutos, registra e não chama a IA', async () => {
+        conversationsMock.resolveByPhone.mockResolvedValueOnce({
+          id: CONVERSATION_ID,
+          handoffAt: null,
+        });
+        prismaMock.message.count
+          .mockResolvedValueOnce(20) // 1º contato? não
+          .mockResolvedValueOnce(16); // mensagens do cliente na janela
+
+        const result = await service.processInboundMessage({
+          clinicId: CLINIC_ID,
+          channel: 'whatsapp',
+          contactPhone: PHONE,
+          message: 'oi de novo',
+        });
+
+        expect(conversationsMock.appendMessage).toHaveBeenCalledTimes(1);
+        expect(generateMock).not.toHaveBeenCalled();
+        expect(result.reply).toBe('');
+        expect(prismaMock.message.count).toHaveBeenLastCalledWith({
+          where: expect.objectContaining({
+            conversationId: CONVERSATION_ID,
+            role: 'user',
+          }),
+        });
+      });
+    });
+
     describe('handoff humano (P0.2)', () => {
       const ASSUMIDA_EM = new Date('2026-09-10T14:32:00.000Z');
 
@@ -674,5 +703,39 @@ describe('ChatService.streamMessage', () => {
         expect(result.reply).toBe('Olá!');
       });
     });
+  });
+});
+
+describe('recentHistory (histórico enviado ao modelo)', () => {
+  const turn = (i: number) =>
+    [
+      { role: 'user' as const, content: `pergunta ${i}` },
+      { role: 'assistant' as const, content: `resposta ${i}` },
+    ] as const;
+
+  it('conversa curta passa inteira', () => {
+    const messages = [...turn(1), ...turn(2)];
+    expect(recentHistory(messages)).toEqual(messages);
+  });
+
+  it('conversa longa vai só com as últimas 40 mensagens', () => {
+    const messages = Array.from({ length: 50 }, (_, i) => turn(i)).flat();
+    const recent = recentHistory(messages);
+    expect(recent).toHaveLength(40);
+    expect(recent.at(-1)).toEqual({
+      role: 'assistant',
+      content: 'resposta 49',
+    });
+  });
+
+  it('o corte nunca começa por uma mensagem do assistente', () => {
+    const messages = [
+      { role: 'user' as const, content: 'primeira' },
+      ...Array.from({ length: 30 }, (_, i) => turn(i)).flat(),
+      { role: 'assistant' as const, content: 'extra' },
+    ];
+    const recent = recentHistory(messages);
+    expect(recent[0].role).toBe('user');
+    expect(recent.length).toBeLessThanOrEqual(40);
   });
 });

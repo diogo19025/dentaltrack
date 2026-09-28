@@ -24,6 +24,10 @@ async function bootstrap(): Promise<void> {
   // depois (guards, controllers, serviços) já enxerga o requestId.
   app.use(requestIdMiddleware);
 
+  // Railway põe um proxy na frente da API. Sem isto, `req.ip` é o IP do proxy,
+  // e o rate limit dos requests sem token contaria todo mundo no mesmo balde.
+  app.set('trust proxy', 1);
+
   // O áudio do chat sobe como base64 no JSON do POST /chat — o limite default
   // (100kb) não comporta. Registrar aqui substitui o parser default do Nest.
   app.useBodyParser('json', { limit: '16mb' });
