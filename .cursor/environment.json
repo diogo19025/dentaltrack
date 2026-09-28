@@ -1,0 +1,16 @@
+{
+  "name": "DentalTrack",
+  "install": "bash .cursor/scripts/install.sh",
+  "start": "bash .cursor/scripts/start.sh",
+  "terminals": [
+    {
+      "name": "dev",
+      "command": "pnpm dev",
+      "description": "Shared em watch, API Nest em :3001 e web Next em :3000. LLM em modo mock."
+    }
+  ],
+  "ports": [
+    { "name": "web", "port": 3000 },
+    { "name": "api", "port": 3001 }
+  ]
+}
