@@ -133,6 +133,87 @@ describe('buildChatTools', () => {
     expect(res.leadId).toBe('lead-x');
   });
 
+  describe('WhatsApp: o telefone é a identidade garantida pelo canal', () => {
+    function whatsappTools() {
+      return buildChatTools({
+        prisma: prismaMock,
+        conversations: conversationsMock,
+        clinicId: CLINIC_ID,
+        conversationId: CONVERSATION_ID,
+        channel: 'whatsapp',
+      } as unknown as ChatToolsContext);
+    }
+
+    it('captureLead ignora o telefone digitado e grava o da conversa', async () => {
+      prismaMock.conversation.findFirst
+        .mockResolvedValueOnce({ contactPhone: '5511988887777' }) // telefone do canal
+        .mockResolvedValueOnce({ leadId: 'lead-x' }); // upsertLead
+      prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-x' });
+
+      await exec(whatsappTools().captureLead, {
+        nome: 'Maria',
+        telefone: '5521900000000',
+      });
+
+      expect(prismaMock.lead.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ phone: '5511988887777' }),
+        }),
+      );
+    });
+
+    it('bookAppointment manda à agenda o telefone da conversa, não o digitado', async () => {
+      const agendaMock = {
+        timeZone: jest.fn().mockResolvedValue('America/Sao_Paulo'),
+        book: jest
+          .fn()
+          .mockResolvedValue({ appointmentId: 'appt-1', confirmed: false }),
+      };
+      prismaMock.conversation.findFirst
+        .mockResolvedValueOnce({ contactPhone: '5511988887777' }) // telefone do canal
+        .mockResolvedValueOnce({ leadId: 'lead-1' }); // lead da conversa
+      prismaMock.lead.findFirst.mockResolvedValueOnce({
+        name: 'Maria',
+        phone: '5511988887777',
+      });
+
+      await exec(
+        buildChatTools({
+          prisma: prismaMock,
+          conversations: conversationsMock,
+          clinicId: CLINIC_ID,
+          conversationId: CONVERSATION_ID,
+          channel: 'whatsapp',
+          agenda: agendaMock,
+        } as unknown as ChatToolsContext).bookAppointment,
+        { telefone: '5521900000000', preferencia: 'sexta à tarde' },
+      );
+
+      expect(agendaMock.book).toHaveBeenCalledWith(
+        CLINIC_ID,
+        expect.objectContaining({ patientPhone: '5511988887777' }),
+      );
+    });
+
+    it('no chat web o telefone digitado continua valendo', async () => {
+      prismaMock.conversation.findFirst.mockResolvedValueOnce({
+        leadId: 'lead-x',
+      });
+      prismaMock.lead.update.mockResolvedValueOnce({ id: 'lead-x' });
+
+      await exec(tools().captureLead, {
+        nome: 'Maria',
+        telefone: '5521900000000',
+      });
+
+      expect(prismaMock.lead.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ phone: '5521900000000' }),
+        }),
+      );
+    });
+  });
+
   it('bookAppointment: cria appointment e marca conversa como agendada', async () => {
     prismaMock.conversation.findFirst.mockResolvedValueOnce({
       leadId: 'lead-1',

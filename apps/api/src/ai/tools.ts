@@ -103,6 +103,11 @@ interface FindMyAppointmentsInput {
  */
 const OPEN_STATUSES = ['pedido', 'agendado', 'confirmado'] as const;
 
+/** Canais em que o telefone da conversa é garantido pelo próprio canal. */
+const CHANNELS_WITH_VERIFIED_PHONE: ReadonlySet<Channel> = new Set([
+  'whatsapp',
+]);
+
 /**
  * Tolerância para trás ao listar agendamentos.
  *
@@ -268,6 +273,25 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
     if (!trimmed) return null;
     const mine = await openAppointments();
     return mine.find((row) => row.id === trimmed) ?? null;
+  }
+
+  /**
+   * Telefone que as tools podem gravar no contato.
+   *
+   * No WhatsApp o telefone **é a identidade**, e quem garante que ele é do
+   * cliente é o próprio canal. Aceitar o número que o cliente digita ("meu
+   * telefone é X") trocava `lead.phone`, e lembretes, remarcação e retorno
+   * passavam a sair do número da empresa para X, um terceiro: um jeito fácil de
+   * fazer o bot mandar mensagem para quem não pediu. Ali vale o telefone da
+   * conversa. No chat web, que é o teste da equipe, o digitado continua valendo.
+   */
+  async function trustedPhone(typed?: string): Promise<string | undefined> {
+    if (!CHANNELS_WITH_VERIFIED_PHONE.has(channel)) return typed;
+    const convo = await prisma.conversation.findFirst({
+      where: { id: conversationId, clinicId },
+      select: { contactPhone: true },
+    });
+    return convo?.contactPhone ?? undefined;
   }
 
   /** "quinta-feira, 18/09/2026 às 17:00" — ou a preferência em texto livre. */
@@ -560,7 +584,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
             clinicId,
             conversationId,
             nome,
-            telefone,
+            telefone: await trustedPhone(telefone),
             email,
             source: channel,
           });
@@ -749,7 +773,6 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
       execute: async (input) => {
         const {
           nome,
-          telefone,
           procedimento,
           preferencia,
           dataHora,
@@ -757,6 +780,7 @@ export function buildChatTools(ctx: ChatToolsContext): ToolSet {
           profissional,
         } = input as BookInput;
         try {
+          const telefone = await trustedPhone((input as BookInput).telefone);
           const leadId = nome
             ? await upsertLead(prisma, {
                 clinicId,
