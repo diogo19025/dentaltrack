@@ -24,7 +24,7 @@ import {
 import type { Env } from '../config/env.validation';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { EvolutionService } from '../whatsapp/evolution.service';
+import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
 import { AutomationSettingsService } from './automation-settings.service';
 import { reminderKey } from './automation-keys';
 import { HolidaysService } from './holidays.service';
@@ -151,7 +151,7 @@ export class OutboundService {
     private readonly settings: AutomationSettingsService,
     private readonly holidays: HolidaysService,
     private readonly optOut: OptOutService,
-    private readonly evolution: EvolutionService,
+    private readonly transports: WhatsappTransportResolver,
     private readonly conversations: ConversationsService,
     private readonly config: ConfigService<Env, true>,
   ) {}
@@ -402,7 +402,7 @@ export class OutboundService {
       where: { clinicId },
       select: { whatsappInstance: true },
     });
-    if (!settings?.whatsappInstance || !this.evolution.isConfigured()) {
+    if (!this.transports.forSettings(settings)) {
       return 'whatsapp_nao_configurado';
     }
     return null;
@@ -523,8 +523,8 @@ export class OutboundService {
       where: { clinicId: message.clinicId },
       select: { whatsappInstance: true },
     });
-    const instance = clinic?.whatsappInstance;
-    if (!instance || !message.phone || !this.evolution.isConfigured()) {
+    const transport = this.transports.forSettings(clinic);
+    if (!transport || !message.phone) {
       await this.suppress(message.id, 'whatsapp_nao_configurado');
       return 'suprimido';
     }
@@ -543,12 +543,8 @@ export class OutboundService {
     }
 
     try {
-      const target =
-        (await this.evolution.resolveLidJid(
-          instance,
-          `${message.phone}@s.whatsapp.net`,
-        )) ?? message.phone;
-      await this.evolution.sendText(instance, target, message.body);
+      const target = await transport.resolveAddress({ phone: message.phone });
+      await transport.sendText(target, message.body);
     } catch (err) {
       return this.handleFailure(message, err);
     }
