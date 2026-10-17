@@ -34,10 +34,13 @@ describe("WhatsappTab", () => {
     state.error = new Error("WhatsApp indisponível");
     render(<WhatsappTab />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "WhatsApp indisponível",
+    // Um cartão por número (principal e avisos), cada um com a sua falha.
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    expect(alerts[0]).toHaveTextContent("WhatsApp indisponível");
+    fireEvent.click(
+      screen.getAllByRole("button", { name: /tentar de novo/i })[0],
     );
-    fireEvent.click(screen.getByRole("button", { name: /tentar de novo/i }));
     expect(state.refetch).toHaveBeenCalledOnce();
   });
 });

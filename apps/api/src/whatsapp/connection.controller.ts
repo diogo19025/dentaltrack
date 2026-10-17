@@ -5,11 +5,13 @@ import {
   Get,
   HttpCode,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { createZodDto } from 'nestjs-zod';
 import {
   answerWhatsappOnboardingSchema,
+  whatsappLineQuerySchema,
   type WhatsappConnection,
 } from '@dentaltrack/shared';
 import { ClinicId } from '../auth/clinic-id.decorator';
@@ -23,8 +25,13 @@ export class AnswerOnboardingDto extends createZodDto(
   answerWhatsappOnboardingSchema,
 ) {}
 
+/** `?numero=principal|avisos` (ausente = principal). */
+export class LineQueryDto extends createZodDto(whatsappLineQuerySchema) {}
+
 /**
- * Conexão do número de WhatsApp da empresa (F10) — pareamento por QR na tela.
+ * Conexão dos números de WhatsApp da empresa (F10) — pareamento por QR na tela.
+ * Dois números: `principal` (atende o cliente) e `avisos` (só lembretes e
+ * automações), escolhidos por `?numero=`.
  *
  * Protegido por SupabaseJwtGuard (global) + TenantGuard: o `clinicId` vem do
  * token, e o nome da instância é derivado dele — nunca aceito do cliente. Isso
@@ -39,15 +46,21 @@ export class WhatsappConnectionController {
   constructor(private readonly connection: WhatsappConnectionService) {}
 
   @Get()
-  status(@ClinicId() clinicId: string): Promise<WhatsappConnection> {
-    return this.connection.getStatus(clinicId);
+  status(
+    @ClinicId() clinicId: string,
+    @Query() { numero }: LineQueryDto,
+  ): Promise<WhatsappConnection> {
+    return this.connection.getStatus(clinicId, numero);
   }
 
   /** Cria a instância (se preciso) e devolve um QR novo para parear. */
   @Post()
   @HttpCode(200)
-  connect(@ClinicId() clinicId: string): Promise<WhatsappConnection> {
-    return this.connection.connect(clinicId);
+  connect(
+    @ClinicId() clinicId: string,
+    @Query() { numero }: LineQueryDto,
+  ): Promise<WhatsappConnection> {
+    return this.connection.connect(clinicId, numero);
   }
 
   /** Resposta à pergunta do 1º acesso ("já tem um número dedicado?"). */
@@ -63,13 +76,19 @@ export class WhatsappConnectionController {
   /** Desconecta o número, mantendo a instância para reparear depois. */
   @Post('disconnect')
   @HttpCode(200)
-  disconnect(@ClinicId() clinicId: string): Promise<WhatsappConnection> {
-    return this.connection.disconnect(clinicId);
+  disconnect(
+    @ClinicId() clinicId: string,
+    @Query() { numero }: LineQueryDto,
+  ): Promise<WhatsappConnection> {
+    return this.connection.disconnect(clinicId, numero);
   }
 
   /** Remove a instância e desfaz o vínculo (troca de número). */
   @Delete()
-  reset(@ClinicId() clinicId: string): Promise<WhatsappConnection> {
-    return this.connection.reset(clinicId);
+  reset(
+    @ClinicId() clinicId: string,
+    @Query() { numero }: LineQueryDto,
+  ): Promise<WhatsappConnection> {
+    return this.connection.reset(clinicId, numero);
   }
 }

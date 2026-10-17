@@ -45,6 +45,19 @@ export const WHATSAPP_STATE_LABELS: Record<WhatsappConnectionState, string> = {
   desconectado: "Desconectado",
 };
 
+/**
+ * Qual dos dois números da empresa. `principal` atende o cliente (agente);
+ * `avisos` só envia lembretes e automações disparadas por evento.
+ */
+export const WHATSAPP_LINES = ["principal", "avisos"] as const;
+export const whatsappLineSchema = z.enum(WHATSAPP_LINES);
+export type WhatsappLine = (typeof WHATSAPP_LINES)[number];
+
+/** Query `?numero=` das rotas de conexão; ausente = `principal`. */
+export const whatsappLineQuerySchema = z.object({
+  numero: whatsappLineSchema.default("principal"),
+});
+
 /** GET /whatsapp/connection — estado atual, sem nenhum segredo. */
 export const whatsappConnectionSchema = z.object({
   state: whatsappConnectionStateSchema,

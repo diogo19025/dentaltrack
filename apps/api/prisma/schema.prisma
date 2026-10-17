@@ -105,6 +105,10 @@ model ClinicSettings {
   /// Nome da instância Evolution que atende esta clínica no WhatsApp (WA-1).
   /// Resolve `instância → clínica` no webhook (sem JWT). Único por instância.
   whatsappInstance             String?   @unique @map("whatsapp_instance")
+  /// Segundo número, só para mensagens proativas (lembretes e automações). NULL =
+  /// as automações saem pelo número principal, como antes. Resolve a clínica no
+  /// webhook igual à instância principal; a resposta do cliente volta por ele.
+  whatsappAlertsInstance       String?   @unique @map("whatsapp_alerts_instance")
   /// Último estado observado pelo monitor do WhatsApp (P0.4). String para a
   /// migration continuar aditiva e compatível com a versão anterior.
   whatsappState                String?   @map("whatsapp_state")

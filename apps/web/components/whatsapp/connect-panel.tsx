@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { WhatsappConnection } from "@dentaltrack/shared";
+import type { WhatsappConnection, WhatsappLine } from "@dentaltrack/shared";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -40,14 +40,17 @@ export function WhatsappConnectPanel({
   connection,
   onConnected,
   compact = false,
+  line = "principal",
 }: {
   connection: WhatsappConnection;
   onConnected?: () => void;
   compact?: boolean;
+  line?: WhatsappLine;
 }) {
-  const connect = useConnectWhatsapp();
-  const disconnect = useDisconnectWhatsapp();
-  const reset = useResetWhatsapp();
+  const connect = useConnectWhatsapp(line);
+  const disconnect = useDisconnectWhatsapp(line);
+  const reset = useResetWhatsapp(line);
+  const alerts = line === "avisos";
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
 
   const qrCode = connect.data?.qrCode ?? connection.qrCode;
@@ -118,8 +121,10 @@ export function WhatsappConnectPanel({
             </div>
           </div>
           <p className="text-[13px] text-muted-foreground">
-            O assistente já responde a quem escrever para este número. As conversas
-            aparecem no painel com o canal <strong>WhatsApp</strong>.
+            {alerts
+              ? "Lembretes e mensagens automáticas de eventos saem por este número."
+              : <>O assistente já responde a quem escrever para este número. As conversas
+            aparecem no painel com o canal <strong>WhatsApp</strong>.</>}
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -142,6 +147,9 @@ export function WhatsappConnectPanel({
               Trocar de número
             </Button>
           </div>
+          {connection.lastError && (
+            <Notice tone="warning">{connection.lastError}</Notice>
+          )}
           {disconnect.isError && (
             <Notice tone="warning">{errorMessage(disconnect.error)}</Notice>
           )}
@@ -151,7 +159,11 @@ export function WhatsappConnectPanel({
           open={resetConfirmOpen}
           onOpenChange={setResetConfirmOpen}
           title="Trocar o número do WhatsApp?"
-          description="A conexão atual será removida. O assistente só voltará a responder no WhatsApp depois que um novo número for pareado."
+          description={
+            alerts
+              ? "A conexão atual será removida. Os lembretes voltam a sair pelo número principal até que um novo número seja pareado."
+              : "A conexão atual será removida. O assistente só voltará a responder no WhatsApp depois que um novo número for pareado."
+          }
           confirmLabel="Remover conexão"
           destructive
           isPending={reset.isPending}
