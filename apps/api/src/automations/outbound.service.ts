@@ -171,7 +171,7 @@ export class OutboundService {
     // sobrepostas não passam mais as duas pela checagem e criam as duas.
     const phone = OptOutService.normalizePhone(input.phone);
 
-    const suppression = await this.preflight(input.clinicId, phone);
+    const suppression = await this.preflight(input.clinicId, phone, input.kind);
     if (suppression) {
       return (await this.create(input, input.scheduledFor, phone, suppression))
         ? 'suprimido'
@@ -394,15 +394,20 @@ export class OutboundService {
   private async preflight(
     clinicId: string,
     phone: string | null,
+    kind: AutomationKind,
   ): Promise<OutboundSuppressionReason | null> {
     if (!phone) return 'sem_telefone';
     if (await this.optOut.isOptedOut(clinicId, phone)) return 'opt_out';
 
     const settings = await this.prisma.clinicSettings.findUnique({
       where: { clinicId },
-      select: { whatsappInstance: true },
+      select: { whatsappInstance: true, whatsappAlertsInstance: true },
     });
-    if (!settings?.whatsappInstance || !this.evolution.isConfigured()) {
+    // Mesma regra do envio: a resposta do agente exige o número principal.
+    const instance = isReactiveKind(kind)
+      ? settings?.whatsappInstance
+      : (settings?.whatsappAlertsInstance ?? settings?.whatsappInstance);
+    if (!instance || !this.evolution.isConfigured()) {
       return 'whatsapp_nao_configurado';
     }
     return null;
@@ -521,9 +526,13 @@ export class OutboundService {
   }): Promise<'enviado' | 'suprimido' | 'falhou'> {
     const clinic = await this.prisma.clinicSettings.findUnique({
       where: { clinicId: message.clinicId },
-      select: { whatsappInstance: true },
+      select: { whatsappInstance: true, whatsappAlertsInstance: true },
     });
-    const instance = clinic?.whatsappInstance;
+    // Lembretes e automações saem pelo número de avisos, se houver; a resposta
+    // do agente (`resposta_ia`) sempre pelo principal, onde o cliente escreveu.
+    const instance = isReactiveKind(message.kind)
+      ? clinic?.whatsappInstance
+      : (clinic?.whatsappAlertsInstance ?? clinic?.whatsappInstance);
     if (!instance || !message.phone || !this.evolution.isConfigured()) {
       await this.suppress(message.id, 'whatsapp_nao_configurado');
       return 'suprimido';
@@ -542,15 +551,28 @@ export class OutboundService {
       return 'suprimido';
     }
 
-    try {
+    const phone = message.phone;
+    const send = async (from: string) => {
       const target =
-        (await this.evolution.resolveLidJid(
-          instance,
-          `${message.phone}@s.whatsapp.net`,
-        )) ?? message.phone;
-      await this.evolution.sendText(instance, target, message.body);
+        (await this.evolution.resolveLidJid(from, `${phone}@s.whatsapp.net`)) ??
+        phone;
+      await this.evolution.sendText(from, target, message.body);
+    };
+    try {
+      await send(instance);
     } catch (err) {
-      return this.handleFailure(message, err);
+      // Número de avisos fora do ar não pode calar os lembretes: tenta uma vez
+      // pelo principal antes de entrar na fila de retentativa.
+      const fallback =
+        instance === clinic?.whatsappAlertsInstance
+          ? clinic.whatsappInstance
+          : null;
+      if (!fallback) return this.handleFailure(message, err);
+      try {
+        await send(fallback);
+      } catch (fallbackErr) {
+        return this.handleFailure(message, fallbackErr);
+      }
     }
 
     // A mensagem proativa entra na conversa do contato: a resposta cai no

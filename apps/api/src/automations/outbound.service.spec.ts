@@ -389,6 +389,41 @@ describe('OutboundService (fila de saída · F9)', () => {
       );
     });
 
+    it('lembrete sai pelo número de avisos; a resposta da IA, pelo principal', async () => {
+      prismaMock.clinicSettings.findUnique.mockResolvedValue({
+        whatsappInstance: 'dentaltrack',
+        whatsappAlertsInstance: 'dentaltrack-av',
+      });
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        pending,
+        { ...pending, id: 'msg-2', kind: 'resposta_ia' },
+      ]);
+
+      await outbound.dispatchDue(NOW);
+
+      expect(evolutionMock.sendText.mock.calls.map((c) => c[0])).toEqual([
+        'dentaltrack-av',
+        'dentaltrack',
+      ]);
+    });
+
+    it('avisos fora do ar: tenta o número principal antes de falhar', async () => {
+      prismaMock.clinicSettings.findUnique.mockResolvedValue({
+        whatsappInstance: 'dentaltrack',
+        whatsappAlertsInstance: 'dentaltrack-av',
+      });
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([pending]);
+      evolutionMock.sendText.mockRejectedValueOnce(new Error('sessão caída'));
+
+      const summary = await outbound.dispatchDue(NOW);
+
+      expect(summary.enviados).toBe(1);
+      expect(evolutionMock.sendText.mock.calls.map((c) => c[0])).toEqual([
+        'dentaltrack-av',
+        'dentaltrack',
+      ]);
+    });
+
     it('resposta da IA já persistida não cria uma segunda mensagem', async () => {
       prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
         { ...pending, kind: 'resposta_ia' },

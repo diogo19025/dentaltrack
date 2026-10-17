@@ -65,7 +65,12 @@ export class AutomationPlannerService {
   /** Planeja para todas as empresas que têm WhatsApp conectado. */
   async planAll(now = new Date()): Promise<number> {
     const clinics = await this.prisma.clinicSettings.findMany({
-      where: { whatsappInstance: { not: null } },
+      where: {
+        OR: [
+          { whatsappInstance: { not: null } },
+          { whatsappAlertsInstance: { not: null } },
+        ],
+      },
       select: { clinicId: true },
     });
 

@@ -222,8 +222,15 @@ export class WhatsappService {
 
   /** Resolve a empresa dona da instância Evolution (WA-1). */
   private async resolveClinicId(instance: string): Promise<string | null> {
-    const settings = await this.prisma.clinicSettings.findUnique({
-      where: { whatsappInstance: instance },
+    // Os dois números da empresa resolvem para ela: o cliente que responde a um
+    // lembrete cai no mesmo fio e é atendido pelo número em que escreveu.
+    const settings = await this.prisma.clinicSettings.findFirst({
+      where: {
+        OR: [
+          { whatsappInstance: instance },
+          { whatsappAlertsInstance: instance },
+        ],
+      },
       select: { clinicId: true },
     });
     return settings?.clinicId ?? null;
