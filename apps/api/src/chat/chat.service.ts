@@ -34,6 +34,29 @@ import { setContext } from '../common/request-context';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+/**
+ * Mensagens da conversa que vão para o modelo a cada turno. O histórico
+ * inteiro ia sempre: uma conversa longa pagava por todas as mensagens antigas
+ * em cada resposta, e o custo crescia sem teto. As últimas 40 cobrem folgado
+ * um atendimento; o que o agente precisa lembrar de antes (nome, telefone,
+ * agendamentos) já entra pelo system prompt.
+ */
+const MAX_HISTORY_MESSAGES = 40;
+
+/** Janela e teto do ritmo de mensagens por contato no canal sem login. */
+const INBOUND_BURST_WINDOW_MS = 5 * 60_000;
+const INBOUND_BURST_MAX = 15;
+
+/**
+ * Corta o histórico nas últimas mensagens, começando sempre por uma do
+ * cliente: parte dos provedores recusa uma conversa que abre com o assistente.
+ */
+export function recentHistory(messages: ReplyMessage[]): ReplyMessage[] {
+  const recent = messages.slice(-MAX_HISTORY_MESSAGES);
+  const firstUser = recent.findIndex((m) => m.role === 'user');
+  return firstUser <= 0 ? recent : recent.slice(firstUser);
+}
+
 /** Entrada de texto OU áudio (base64) de um turno — comum a web e WhatsApp. */
 interface TurnInput {
   message?: string;
@@ -229,6 +252,25 @@ export class ChatService {
       };
     }
 
+    // 2b. Ritmo por contato. Canal sem login é aberto a qualquer número, e cada
+    // mensagem custa três chamadas de IA (resposta, tags, funil). Acima do
+    // teto a mensagem fica registrada, como no handoff, mas não gera resposta:
+    // quem conversa de verdade não escreve 15 mensagens em 5 minutos, e quem
+    // escreve não precisa de 15 respostas.
+    if (await this.isBursting(conversationId)) {
+      this.logger.warn({
+        event: 'ai.reply',
+        outcome: 'ok',
+        reason: 'limite_de_mensagens',
+      });
+      return {
+        conversationId,
+        reply: '',
+        transcript,
+        attachments: [],
+      };
+    }
+
     // 3. Mesmo preparo do web (prompt + histórico + tools + coletor de mídia).
     const { systemPrompt, history, tools, attachments } =
       await this.prepareTurn(conversationId, input.clinicId);
@@ -296,12 +338,14 @@ export class ChatService {
       this.loadKnownContact(conversationId, clinicId),
     ]);
     const systemPrompt = await this.buildPrompt(clinicId, known?.contact);
-    const history: ReplyMessage[] = convo.messages
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .map((m) => ({
-        role: m.role as ReplyMessage['role'],
-        content: m.content,
-      }));
+    const history = recentHistory(
+      convo.messages
+        .filter((m) => m.role === 'user' || m.role === 'assistant')
+        .map((m) => ({
+          role: m.role as ReplyMessage['role'],
+          content: m.content,
+        })),
+    );
     const attachments: MediaAttachment[] = [];
     const tools = buildChatTools({
       prisma: this.prisma,
@@ -313,6 +357,18 @@ export class ChatService {
       agenda: this.agenda,
     });
     return { systemPrompt, history, tools, attachments };
+  }
+
+  /** O contato passou do teto de mensagens na janela curta? */
+  private async isBursting(conversationId: string): Promise<boolean> {
+    const recent = await this.prisma.message.count({
+      where: {
+        conversationId,
+        role: 'user',
+        createdAt: { gte: new Date(Date.now() - INBOUND_BURST_WINDOW_MS) },
+      },
+    });
+    return recent > INBOUND_BURST_MAX;
   }
 
   /**

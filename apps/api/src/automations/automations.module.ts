@@ -12,7 +12,7 @@ import { OutboundService } from './outbound.service';
  * Automações de relacionamento (F9): planejamento (o que precisa ser enviado),
  * fila de saída (quando e como sai) e a configuração da empresa.
  *
- * Importa o transporte do WhatsApp (`EvolutionService`) e o
+ * Importa o transporte do WhatsApp (`WhatsappTransportResolver`) e o
  * `ConversationsModule` para que a mensagem enviada entre na conversa do
  * contato — é o que faz a resposta do cliente cair no mesmo fio e o agente
  * assumir dali. PrismaService vem do PrismaModule global.

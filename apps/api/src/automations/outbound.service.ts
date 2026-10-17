@@ -24,7 +24,8 @@ import {
 import type { Env } from '../config/env.validation';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { EvolutionService } from '../whatsapp/evolution.service';
+import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
+import type { WhatsappTransport } from '../whatsapp/transport/whatsapp-transport';
 import { AutomationSettingsService } from './automation-settings.service';
 import { reminderKey } from './automation-keys';
 import { HolidaysService } from './holidays.service';
@@ -151,7 +152,7 @@ export class OutboundService {
     private readonly settings: AutomationSettingsService,
     private readonly holidays: HolidaysService,
     private readonly optOut: OptOutService,
-    private readonly evolution: EvolutionService,
+    private readonly transports: WhatsappTransportResolver,
     private readonly conversations: ConversationsService,
     private readonly config: ConfigService<Env, true>,
   ) {}
@@ -388,6 +389,24 @@ export class OutboundService {
   }
 
   /**
+   * Instância por onde a mensagem sai: lembretes e automações pelo número de
+   * avisos, se houver; a resposta do agente sempre pelo principal, onde o
+   * cliente escreveu.
+   */
+  private outboundInstance(
+    settings: {
+      whatsappInstance: string | null;
+      whatsappAlertsInstance: string | null;
+    } | null,
+    kind: AutomationKind,
+  ): string | null {
+    if (isReactiveKind(kind)) return settings?.whatsappInstance ?? null;
+    return (
+      settings?.whatsappAlertsInstance ?? settings?.whatsappInstance ?? null
+    );
+  }
+
+  /**
    * Motivos que impedem o disparo **antes** mesmo de entrar na fila ativa.
    * Verificar aqui evita ocupar a fila com o que nunca poderia sair.
    */
@@ -403,11 +422,11 @@ export class OutboundService {
       where: { clinicId },
       select: { whatsappInstance: true, whatsappAlertsInstance: true },
     });
-    // Mesma regra do envio: a resposta do agente exige o número principal.
-    const instance = isReactiveKind(kind)
-      ? settings?.whatsappInstance
-      : (settings?.whatsappAlertsInstance ?? settings?.whatsappInstance);
-    if (!instance || !this.evolution.isConfigured()) {
+    if (
+      !this.transports.forSettings({
+        whatsappInstance: this.outboundInstance(settings, kind),
+      })
+    ) {
       return 'whatsapp_nao_configurado';
     }
     return null;
@@ -528,12 +547,11 @@ export class OutboundService {
       where: { clinicId: message.clinicId },
       select: { whatsappInstance: true, whatsappAlertsInstance: true },
     });
-    // Lembretes e automações saem pelo número de avisos, se houver; a resposta
-    // do agente (`resposta_ia`) sempre pelo principal, onde o cliente escreveu.
-    const instance = isReactiveKind(message.kind)
-      ? clinic?.whatsappInstance
-      : (clinic?.whatsappAlertsInstance ?? clinic?.whatsappInstance);
-    if (!instance || !message.phone || !this.evolution.isConfigured()) {
+    const instance = this.outboundInstance(clinic, message.kind);
+    const transport = this.transports.forSettings({
+      whatsappInstance: instance,
+    });
+    if (!transport || !message.phone) {
       await this.suppress(message.id, 'whatsapp_nao_configurado');
       return 'suprimido';
     }
@@ -552,20 +570,20 @@ export class OutboundService {
     }
 
     const phone = message.phone;
-    const send = async (from: string) => {
-      const target =
-        (await this.evolution.resolveLidJid(from, `${phone}@s.whatsapp.net`)) ??
-        phone;
-      await this.evolution.sendText(from, target, message.body);
+    const send = async (via: WhatsappTransport) => {
+      const target = await via.resolveAddress({ phone });
+      await via.sendText(target, message.body);
     };
     try {
-      await send(instance);
+      await send(transport);
     } catch (err) {
       // Número de avisos fora do ar não pode calar os lembretes: tenta uma vez
       // pelo principal antes de entrar na fila de retentativa.
       const fallback =
         instance === clinic?.whatsappAlertsInstance
-          ? clinic.whatsappInstance
+          ? this.transports.forSettings({
+              whatsappInstance: clinic.whatsappInstance,
+            })
           : null;
       if (!fallback) return this.handleFailure(message, err);
       try {

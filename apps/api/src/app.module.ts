@@ -6,6 +6,7 @@ import { AutomationsModule } from './automations/automations.module';
 import { ChatModule } from './chat/chat.module';
 import { ClinicorpModule } from './clinicorp/clinicorp.module';
 import { ObservabilityModule } from './common/observability.module';
+import { RateLimitModule } from './common/rate-limit';
 import { validateEnv } from './config/env.validation';
 import { ConversationsModule } from './conversations/conversations.module';
 import { HealthModule } from './health/health.module';
@@ -30,6 +31,7 @@ import { WhatsappModule } from './whatsapp/whatsapp.module';
     ObservabilityModule,
     PrismaModule,
     AuthModule,
+    RateLimitModule,
     HealthModule,
     ConversationsModule,
     ChatModule,

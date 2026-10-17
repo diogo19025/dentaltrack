@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { calendarVerificationCode } from '../google-agenda/calendar-ownership';
 import { GoogleAgendaProvider } from '../google-agenda/google-agenda.provider';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProfessionalsService } from '../professionals/professionals.service';
@@ -340,6 +341,14 @@ describe('IntegrationService (configuração da integração · F9/F12)', () => 
       expect(status.serviceAccountEmail).toBe(
         'agenda@projeto.iam.gserviceaccount.com',
       );
+      expect(status.googleVerificationCode).toBe(
+        calendarVerificationCode(KEY, CLINIC),
+      );
+    });
+
+    it('o código de verificação só existe no Google', async () => {
+      const status = await integrations.getStatus(CLINIC, 'clinicorp');
+      expect(status.googleVerificationCode).toBeNull();
     });
 
     it('sem a service account no servidor, serviceAccountEmail é null (a tela avisa)', async () => {

@@ -1,8 +1,13 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import * as ExcelJS from 'exceljs';
+import { deflateRawSync } from 'node:zlib';
 import { PrismaService } from '../prisma/prisma.service';
-import { LeadsImportService } from './leads-import.service';
+import {
+  LeadsImportService,
+  MAX_XLSX_UNCOMPRESSED_BYTES,
+  assertZipWithinLimits,
+} from './leads-import.service';
 
 const CLINIC = '00000000-0000-0000-0000-0000000c1141';
 
@@ -179,5 +184,68 @@ describe('LeadsImportService', () => {
     );
     expect(result.imported).toBe(0);
     expect(prismaMock.lead.createMany).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Zip mínimo com uma entrada deflate. `declaredSize` permite forjar o tamanho
+ * descompactado no diretório central, que é o que um arquivo malicioso faz.
+ */
+function zipWith(raw: Buffer, declaredSize = raw.length): Buffer {
+  const name = Buffer.from('xl/worksheets/sheet1.xml');
+  const data = deflateRawSync(raw);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(8, 8); // deflate
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(declaredSize, 22);
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(8, 10);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt32LE(declaredSize, 24);
+  central.writeUInt16LE(name.length, 28);
+  central.writeUInt32LE(0, 42); // local header no início
+  const centralOffset = local.length + name.length + data.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(central.length + name.length, 12);
+  end.writeUInt32LE(centralOffset, 16);
+  return Buffer.concat([local, name, data, central, name, end]);
+}
+
+describe('assertZipWithinLimits (zip bomb na importação)', () => {
+  const bomb = Buffer.alloc(MAX_XLSX_UNCOMPRESSED_BYTES + 1024, 0x61);
+
+  it('recusa quando o conteúdo real passa do teto', () => {
+    expect(() => assertZipWithinLimits(zipWith(bomb))).toThrow(/muito grande/);
+  });
+
+  it('mede o tamanho real, não o declarado: forjar o diretório não passa', () => {
+    const forged = zipWith(bomb, 100);
+    expect(forged.length).toBeLessThan(5 * 1024 * 1024); // cabe no upload
+    expect(() => assertZipWithinLimits(forged)).toThrow(/muito grande/);
+  });
+
+  it('aceita o zip pequeno e recusa o que não é zip', () => {
+    expect(() =>
+      assertZipWithinLimits(zipWith(Buffer.from('<x/>'))),
+    ).not.toThrow();
+    expect(() => assertZipWithinLimits(Buffer.from('não é um zip'))).toThrow(
+      /corrompido/,
+    );
+  });
+
+  it('a importação recusa o arquivo antes de abrir no exceljs', async () => {
+    const service = new LeadsImportService({} as unknown as PrismaService);
+    await expect(
+      service.import(CLINIC, {
+        originalname: 'leads.xlsx',
+        buffer: zipWith(bomb, 100),
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

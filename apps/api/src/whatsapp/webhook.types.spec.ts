@@ -1,4 +1,4 @@
-import { parseInboundMessage } from './webhook.types';
+import { MAX_INBOUND_TEXT_CHARS, parseInboundMessage } from './webhook.types';
 
 const JID = '5511999998888@s.whatsapp.net';
 
@@ -51,6 +51,13 @@ describe('parseInboundMessage', () => {
       }),
     );
     expect(res?.text).toBe('oi tudo bem');
+  });
+
+  it('corta o texto no mesmo teto do chat web', () => {
+    const res = parseInboundMessage(
+      payload({ message: { conversation: 'a'.repeat(50_000) } }),
+    );
+    expect(res?.text).toHaveLength(MAX_INBOUND_TEXT_CHARS);
   });
 
   it('normaliza o nome do evento (MESSAGES_UPSERT)', () => {

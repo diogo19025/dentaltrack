@@ -12,7 +12,8 @@ import type {
 } from '@dentaltrack/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConversationsService } from '../conversations/conversations.service';
-import { EvolutionService } from '../whatsapp/evolution.service';
+import type { WhatsappTransport } from '../whatsapp/transport/whatsapp-transport';
+import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
 
 /**
  * Normaliza um telefone para o formato que a Evolution espera (dígitos com DDI).
@@ -61,7 +62,7 @@ export function buildReminderDraft(input: {
 
 /**
  * Envio de **lembrete por WhatsApp** disparado pelo CRM (pós-MVP). Reusa o mesmo
- * transporte de saída do canal (`EvolutionService`) e persiste a mensagem na
+ * transporte de saída do canal (`WhatsappTransportResolver`) e persiste a mensagem na
  * própria conversa (`ConversationsService.appendMessage`) — channel-agnostic, o
  * motor do agente não é tocado. Tudo escopado por `clinicId` (multi-tenant).
  */
@@ -72,7 +73,7 @@ export class RemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversations: ConversationsService,
-    private readonly evolution: EvolutionService,
+    private readonly transports: WhatsappTransportResolver,
   ) {}
 
   /**
@@ -86,7 +87,7 @@ export class RemindersService {
     const loaded = await this.load(clinicId, conversationId);
     const { canSend, reason } = this.checkEligibility(
       loaded.normalizedPhone,
-      loaded.instance,
+      loaded.transport,
     );
     return { canSend, reason, phone: loaded.displayPhone, draft: loaded.draft };
   }
@@ -109,23 +110,18 @@ export class RemindersService {
         'O contato não tem telefone para o envio do lembrete.',
       );
     }
-    if (!loaded.instance || !this.evolution.isConfigured()) {
+    if (!loaded.transport) {
       throw new BadRequestException(
         'O WhatsApp não está configurado para esta empresa.',
       );
     }
 
-    // Contatos migrados p/ LID só recebem no JID `@lid` (enviar p/ o telefone
-    // fica preso em PENDING). Resolve on-demand (null p/ contatos não-LID, que
-    // caem no telefone, como antes). Ver `EvolutionService.resolveLidJid`.
-    const target =
-      (await this.evolution.resolveLidJid(
-        loaded.instance,
-        `${loaded.normalizedPhone}@s.whatsapp.net`,
-      )) ?? loaded.normalizedPhone;
+    const target = await loaded.transport.resolveAddress({
+      phone: loaded.normalizedPhone,
+    });
 
     try {
-      await this.evolution.sendText(loaded.instance, target, message);
+      await loaded.transport.sendText(target, message);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.logger.error(
@@ -158,10 +154,10 @@ export class RemindersService {
 
   private checkEligibility(
     normalizedPhone: string | null,
-    instance: string | null,
+    transport: WhatsappTransport | null,
   ): { canSend: boolean; reason: ReminderBlocker | null } {
     if (!normalizedPhone) return { canSend: false, reason: 'no_phone' };
-    if (!instance || !this.evolution.isConfigured()) {
+    if (!transport) {
       return { canSend: false, reason: 'whatsapp_not_configured' };
     }
     return { canSend: true, reason: null };
@@ -169,7 +165,7 @@ export class RemindersService {
 
   /**
    * Carrega tudo o que o lembrete precisa numa conversa escopada por tenant:
-   * status, telefone (do canal ou do lead), instância da empresa e o rascunho
+   * status, telefone (do canal ou do lead), transporte da empresa e o rascunho
    * pronto. Lança 404 (cross-tenant também cai aqui).
    */
   private async load(clinicId: string, conversationId: string) {
@@ -221,7 +217,7 @@ export class RemindersService {
       status: convo.status,
       displayPhone,
       normalizedPhone: normalizeWhatsappPhone(displayPhone),
-      instance: settings?.whatsappInstance ?? null,
+      transport: this.transports.forSettings(settings),
       draft: buildReminderDraft({
         clinicName: convo.clinic.name,
         leadName: convo.lead?.name ?? null,

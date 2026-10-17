@@ -26,8 +26,14 @@ import type {
   ExternalPatient,
   RescheduleAppointmentInput,
 } from '../clinicorp/agenda-provider';
+import {
+  type CalendarOwnership,
+  descriptionHasCode,
+  ownershipMissingMessage,
+} from './calendar-ownership';
 import type {
   GoogleCalendarClient,
+  GoogleCalendarInfo,
   GoogleEvent,
 } from './google-calendar.client';
 
@@ -77,11 +83,22 @@ export class GoogleAgendaProvider implements AgendaProvider {
     private readonly config: GoogleAgendaConfig,
     /** Relógio injetável — testes determinísticos, como no mock. */
     private readonly now: () => Date = () => new Date(),
+    /**
+     * Prova de posse da agenda (ver `calendar-ownership.ts`). Em produção o
+     * `IntegrationService` sempre informa; ausente só nos testes do adapter e
+     * no smoke do operador, que apontam para uma agenda conhecida.
+     */
+    private readonly ownership: CalendarOwnership | null = null,
   ) {}
 
-  /** A "unidade" é a própria agenda — e buscá-la valida o compartilhamento. */
+  /**
+   * A "unidade" é a própria agenda — e buscá-la valida o compartilhamento e a
+   * posse. O nome da agenda só sai depois da prova: devolvê-lo antes faria da
+   * verificação um jeito de descobrir agendas de outras empresas.
+   */
   async listUnits(): Promise<ExternalUnit[]> {
     const calendar = await this.client.getCalendar(this.config.calendarId);
+    this.assertOwnership(calendar);
     return [
       {
         id: this.config.calendarId,
@@ -129,6 +146,7 @@ export class GoogleAgendaProvider implements AgendaProvider {
     const endMinutes = parseHhMm(this.config.workEnd, 18 * 60);
     const workDays = new Set(this.config.workDays);
 
+    await this.ensureOwnership();
     const busy = await this.client.freeBusy(
       this.config.calendarId,
       query.from,
@@ -187,6 +205,7 @@ export class GoogleAgendaProvider implements AgendaProvider {
   }
 
   async listAppointments(query: AgendaWindow): Promise<ExternalAppointment[]> {
+    await this.ensureOwnership();
     const events = await this.client.listEvents(
       this.config.calendarId,
       query.from,
@@ -231,6 +250,7 @@ export class GoogleAgendaProvider implements AgendaProvider {
       .filter(Boolean)
       .join('\n');
 
+    await this.ensureOwnership();
     const event = await this.client.createEvent(this.config.calendarId, {
       summary,
       description,
@@ -265,6 +285,7 @@ export class GoogleAgendaProvider implements AgendaProvider {
 
   /** Apagar o evento é cancelar; o client já trata "não existe" como feito. */
   async cancelAppointment(input: CancelAppointmentInput): Promise<void> {
+    await this.ensureOwnership();
     await this.client.deleteEvent(this.config.calendarId, input.externalId);
   }
 
@@ -275,6 +296,7 @@ export class GoogleAgendaProvider implements AgendaProvider {
   async rescheduleAppointment(
     input: RescheduleAppointmentInput,
   ): Promise<ExternalAppointment> {
+    await this.ensureOwnership();
     const event = await this.client.patchEvent(
       this.config.calendarId,
       input.externalId,
@@ -293,6 +315,28 @@ export class GoogleAgendaProvider implements AgendaProvider {
       throw new Error('O Google não devolveu o evento remarcado.');
     }
     return moved;
+  }
+
+  /**
+   * Garante a prova de posse antes de ler ou gravar na agenda. Com o cache
+   * fresco não chama o Google; sem ele, lê a descrição da agenda uma vez.
+   */
+  private async ensureOwnership(): Promise<void> {
+    if (!this.ownership || this.ownership.isFresh?.()) return;
+    const calendar = await this.client.getCalendar(this.config.calendarId);
+    this.assertOwnership(calendar);
+  }
+
+  /** A descrição tem o código da empresa? Senão, erro de configuração. */
+  private assertOwnership(calendar: GoogleCalendarInfo): void {
+    if (!this.ownership) return;
+    if (!descriptionHasCode(calendar.description, this.ownership.code)) {
+      throw new AgendaProviderError(
+        ownershipMissingMessage(this.ownership.code),
+        { kind: 'config' },
+      );
+    }
+    this.ownership.markVerified?.();
   }
 
   /** Evento → agendamento normalizado. Dia inteiro e sem horário viram `null`. */

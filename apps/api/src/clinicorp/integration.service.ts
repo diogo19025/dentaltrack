@@ -37,7 +37,14 @@ import {
   maskUsername,
 } from './credentials-crypto';
 import { MockAgendaProvider } from './mock.provider';
+import {
+  type CalendarOwnership,
+  calendarVerificationCode,
+} from '../google-agenda/calendar-ownership';
 import { suggestStatusMappings } from './status-heuristics';
+
+/** Quanto tempo uma prova de posse da agenda Google vale antes de reler. */
+const OWNERSHIP_CACHE_MS = 10 * 60_000;
 
 /** Linha de integração como o Prisma a devolve (o que usamos dela). */
 interface IntegrationRow {
@@ -77,6 +84,12 @@ export class IntegrationService {
     string,
     { timeZone: string; provider: MockAgendaProvider }
   >();
+  /**
+   * Agendas Google cuja posse foi provada há pouco, por empresa + agenda. O
+   * provedor é recriado a cada chamada; sem este cache cada consulta de
+   * horários leria a descrição da agenda de novo.
+   */
+  private readonly verifiedCalendars = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -161,6 +174,8 @@ export class IntegrationService {
         provider === 'google' ? Boolean(google) : Boolean(credentials),
       usernameHint: credentials ? maskUsername(credentials.username) : null,
       google,
+      googleVerificationCode:
+        provider === 'google' ? this.googleVerificationCode(clinicId) : null,
       serviceAccountEmail: this.serviceAccountEmail(),
       unitId: row?.unitId ?? null,
       professionalId,
@@ -584,6 +599,8 @@ export class IntegrationService {
           }),
           timeZone,
           config,
+          undefined,
+          this.calendarOwnership(clinicId, config.calendarId),
         ),
       };
     }
@@ -611,6 +628,29 @@ export class IntegrationService {
           categoryName: row.categoryExternalId ?? null,
         },
       ),
+    };
+  }
+
+  /** Código que a empresa cola na descrição da agenda; `null` sem chave de cifra. */
+  private googleVerificationCode(clinicId: string): string | null {
+    try {
+      return calendarVerificationCode(this.encryptionKey(), clinicId);
+    } catch {
+      return null;
+    }
+  }
+
+  /** Prova de posse exigida do provedor Google, com o cache desta instância. */
+  private calendarOwnership(
+    clinicId: string,
+    calendarId: string,
+  ): CalendarOwnership {
+    const key = `${clinicId}:${calendarId}`;
+    return {
+      code: calendarVerificationCode(this.encryptionKey(), clinicId),
+      isFresh: () => (this.verifiedCalendars.get(key) ?? 0) > Date.now(),
+      markVerified: () =>
+        this.verifiedCalendars.set(key, Date.now() + OWNERSHIP_CACHE_MS),
     };
   }
 

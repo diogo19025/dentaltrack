@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from '../whatsapp/evolution.service';
+import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
 import {
   buildReminderDraft,
   normalizeWhatsappPhone,
@@ -90,6 +91,7 @@ describe('RemindersService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: ConversationsService, useValue: conversationsMock },
         { provide: EvolutionService, useValue: evolutionMock },
+        WhatsappTransportResolver,
       ],
     }).compile();
     service = moduleRef.get(RemindersService);

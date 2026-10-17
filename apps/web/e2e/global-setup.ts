@@ -1,33 +1,16 @@
-import fs from "node:fs";
 import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
-import { E2E_CLINIC_NAME, E2E_EMAIL, E2E_PASSWORD } from "./credentials";
+import { E2E_CLINIC_NAME, E2E_EMAIL, E2E_PASSWORD, readEnvFile } from "./credentials";
 
 /**
- * Garante o usuário e2e no Supabase (idempotente), sem env extra:
+ * Garante o usuário e2e no Supabase (idempotente). A senha vem de
+ * `E2E_PASSWORD` (ver `credentials.ts`):
  * 1. Com `SUPABASE_SERVICE_ROLE_KEY` (apps/api/.env): cria/confirma via admin
  *    API — caminho 100% automático.
  * 2. Sem a service key: tenta o login com as credenciais e2e (anon key do
  *    apps/web/.env.local). Se o login funciona, segue; senão, falha com as
  *    instruções de desbloqueio (o projeto exige confirmação de e-mail).
  */
-
-/** Parser mínimo de .env (KEY=VALUE) — o dotenv não injeta no contexto transpilado do Playwright. */
-function readEnvFile(filePath: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  if (!fs.existsSync(filePath)) return out;
-  for (const line of fs.readFileSync(filePath, "utf8").split(/\r?\n/)) {
-    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(line.trim());
-    if (!match) continue;
-    let value = match[2].trim();
-    const quoted =
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"));
-    if (quoted) value = value.slice(1, -1);
-    out[match[1]] = value;
-  }
-  return out;
-}
 
 const UNBLOCK_HELP = [
   `E2E: o usuário de teste (${E2E_EMAIL}) ainda não consegue autenticar — o projeto Supabase exige confirmação de e-mail.`,

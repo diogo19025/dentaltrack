@@ -5,6 +5,7 @@ import { OutboundService } from '../automations/outbound.service';
 import { ChatService } from '../chat/chat.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from './evolution.service';
+import { WhatsappTransportResolver } from './transport/whatsapp-transport.resolver';
 import { WhatsappService } from './whatsapp.service';
 
 const JID = '5511999998888@s.whatsapp.net';
@@ -66,6 +67,7 @@ describe('WhatsappService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: ChatService, useValue: chatMock },
         { provide: EvolutionService, useValue: evolutionMock },
+        WhatsappTransportResolver,
         { provide: OptOutService, useValue: optOutMock },
         { provide: OutboundService, useValue: outboundMock },
       ],

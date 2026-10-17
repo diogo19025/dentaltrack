@@ -1,4 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
+import { SkipThrottle } from '@nestjs/throttler';
 import type { HealthResponse } from '@dentaltrack/shared';
 import { Public } from '../auth/public.decorator';
 import { isSentryEnabled } from '../common/sentry';
@@ -23,6 +24,8 @@ export class HealthController {
    * o produto ainda funciona para todo o resto.
    */
   @Public()
+  // Healthcheck do Railway: bate a cada poucos segundos, sempre do mesmo IP.
+  @SkipThrottle()
   @Get()
   async check(): Promise<HealthResponse> {
     let db: HealthResponse['db'] = 'up';

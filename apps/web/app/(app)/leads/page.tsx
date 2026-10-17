@@ -1,7 +1,11 @@
 "use client";
 
 import { useRef, useMemo, useState } from "react";
-import type { LeadDto, LeadImportResult } from "@dentaltrack/shared";
+import {
+  csvCell,
+  type LeadDto,
+  type LeadImportResult,
+} from "@dentaltrack/shared";
 import {
   Calendar,
   Clock,
@@ -562,10 +566,8 @@ function exportCsv(leads: LeadDto[]): void {
     l.source,
     l.createdAt,
   ]);
-  const escape = (v: string) =>
-    /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
   const csv = [header, ...rows]
-    .map((r) => r.map((c) => escape(String(c))).join(","))
+    .map((r) => r.map((c) => csvCell(String(c))).join(","))
     .join("\n");
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);

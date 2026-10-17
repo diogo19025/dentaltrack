@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { isClinicorpApiUrl } from '@dentaltrack/shared';
 import { withRetry, type RetryOptions } from '../common/http-retry';
 import {
   AgendaProviderError,
@@ -174,11 +175,21 @@ export class ClinicorpClient {
     url: URL,
     init: RequestInit,
   ): Promise<unknown> {
+    // A URL final, e não só a base: é ela que vai para a rede. Linhas gravadas
+    // antes da regra de domínio continuam no banco e caem aqui.
+    if (!isClinicorpApiUrl(url.href)) {
+      throw new AgendaProviderError(
+        'O endereço da API do Clinicorp precisa ser https e do domínio clinicorp.com. Deixe o campo em branco para usar o endereço oficial.',
+        { kind: 'config' },
+      );
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const res = await this.fetchImpl(url, {
         ...init,
+        // Um redirect levaria a credencial para outro host.
+        redirect: 'error',
         signal: controller.signal,
         headers: {
           ...(init.headers ?? {}),

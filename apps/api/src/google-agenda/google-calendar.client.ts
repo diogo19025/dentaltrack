@@ -57,6 +57,8 @@ export interface GoogleEvent {
 export interface GoogleCalendarInfo {
   id?: string;
   summary?: string;
+  /** Onde a empresa cola o código de verificação (prova de posse). */
+  description?: string;
   timeZone?: string;
 }
 

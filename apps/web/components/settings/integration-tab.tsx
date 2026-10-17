@@ -439,6 +439,16 @@ function ProviderPanel({
                     (permissão &quot;Fazer alterações em eventos&quot;), copie o{" "}
                     <strong>ID da agenda</strong> em Configurações da agenda →
                     &quot;Integrar agenda&quot; e cole abaixo.
+                    {data.googleVerificationCode && (
+                      <>
+                        {" "}
+                        Na mesma tela, em &quot;Descrição&quot;, cole o código{" "}
+                        <strong className="font-mono">
+                          {data.googleVerificationCode}
+                        </strong>
+                        : é ele que prova que a agenda é desta empresa.
+                      </>
+                    )}
                   </Note>
                 ) : (
                   <div className="flex gap-2 rounded-[var(--radius-sm)] border border-border bg-secondary p-3 text-[13px] md:col-span-2">

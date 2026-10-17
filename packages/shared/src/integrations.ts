@@ -106,6 +106,47 @@ export const AGENDA_ERROR_MESSAGES: Record<AgendaErrorKind, string> = {
     "A agenda falhou por um motivo que não reconhecemos. O suporte precisa do código abaixo.",
 };
 
+/**
+ * O pacote compila só com a lib ES2022 (sem DOM nem tipos do Node), mas o
+ * `URL` do WHATWG existe nos dois lados em que ele roda. A declaração local dá
+ * tipo ao global sem puxar uma lib inteira para o pacote.
+ */
+interface ParsedUrl {
+  protocol: string;
+  hostname: string;
+  username: string;
+  password: string;
+  port: string;
+}
+declare const URL: new (input: string) => ParsedUrl;
+
+/**
+ * O endereço da API do Clinicorp é do Clinicorp? `https`, sem usuário na URL,
+ * sem porta explícita e host `clinicorp.com` ou um subdomínio dele.
+ *
+ * O campo existe para apontar a homologação, mas aceitava qualquer URL: o
+ * servidor chamava o endereço com a credencial em Basic e devolvia à tela um
+ * trecho da resposta, ou seja, qualquer conta recém-criada tinha um proxy para
+ * a rede interna da hospedagem (SSRF). A API revalida isso a cada chamada,
+ * porque linhas gravadas antes desta regra continuam no banco.
+ */
+export function isClinicorpApiUrl(value: string): boolean {
+  let url: ParsedUrl;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  return (
+    url.protocol === "https:" &&
+    url.username === "" &&
+    url.password === "" &&
+    url.port === "" &&
+    (host === "clinicorp.com" || host.endsWith(".clinicorp.com"))
+  );
+}
+
 /** Credenciais da API (write-only — nunca retornam em nenhum GET). */
 export const clinicorpCredentialsSchema = z.object({
   /** Usuário da API (HTTP Basic) — não é o login do painel web. */
@@ -120,7 +161,14 @@ export const clinicorpCredentialsSchema = z.object({
    */
   subscriberId: z.string().trim().min(1).nullable(),
   /** Sobrescreve a base da API (homologação). Vazio = produção. */
-  baseUrl: z.string().url("Informe uma URL válida.").nullable(),
+  baseUrl: z
+    .string()
+    .url("Informe uma URL válida.")
+    .refine(
+      isClinicorpApiUrl,
+      "Use um endereço https do Clinicorp (…clinicorp.com).",
+    )
+    .nullable(),
 });
 export type ClinicorpCredentials = z.infer<typeof clinicorpCredentialsSchema>;
 
@@ -258,6 +306,12 @@ export const integrationStatusSchema = z.object({
   activeProvider: integrationProviderSchema.nullable(),
   /** Configuração do Google Agenda (não é segredo; null nos demais). */
   google: googleAgendaConfigSchema.nullable(),
+  /**
+   * Código que a empresa cola na descrição da agenda do Google para provar que
+   * a agenda é dela (a service account é a mesma para todas as empresas).
+   * Null nos demais provedores ou sem a chave de cifra no servidor.
+   */
+  googleVerificationCode: z.string().nullable(),
   /**
    * E-mail da service account com quem a empresa compartilha a agenda —
    * exibido na tela para o passo "compartilhar". Null = servidor sem a

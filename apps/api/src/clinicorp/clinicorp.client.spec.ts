@@ -1,3 +1,4 @@
+import { clinicorpCredentialsSchema } from '@dentaltrack/shared';
 import { AgendaProviderError } from './agenda-provider';
 import {
   ClinicorpClient,
@@ -26,6 +27,59 @@ const jsonResponse = (body: unknown, status = 200) =>
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+
+describe('endereço da API restrito ao Clinicorp (SSRF)', () => {
+  const base = {
+    username: 'api-user',
+    token: 'segredo',
+    subscriberId: 'sub-1',
+  };
+
+  it.each([
+    'http://169.254.169.254/latest/meta-data/#',
+    'http://evolution.railway.internal:8080',
+    'https://evil.example.com/rest/v1',
+    'https://api.clinicorp.com.evil.example.com/rest/v1',
+    'https://evil.example.com\\@api.clinicorp.com/rest/v1',
+    'https://user:pass@api.clinicorp.com/rest/v1',
+    'https://api.clinicorp.com:8443/rest/v1',
+  ])('recusa %s no cadastro', (baseUrl) => {
+    expect(
+      clinicorpCredentialsSchema.safeParse({ ...base, baseUrl }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    'https://api.clinicorp.com/rest/v1',
+    'https://sandbox.clinicorp.com/rest/v1',
+  ])('aceita %s', (baseUrl) => {
+    expect(
+      clinicorpCredentialsSchema.safeParse({ ...base, baseUrl }).success,
+    ).toBe(true);
+  });
+
+  it('linha antiga com endereço de fora: falha de configuração, sem tocar a rede', async () => {
+    const fetchMock = jest.fn();
+    const client = new ClinicorpClient({
+      ...base,
+      baseUrl: 'http://169.254.169.254/latest/meta-data/#',
+      fetchImpl: fetchMock,
+    });
+
+    await expect(client.get(CLINICORP_ROUTES.units)).rejects.toMatchObject({
+      kind: 'config',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('não segue redirect: a credencial não sai para outro host', async () => {
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse({ units: [] }));
+
+    await makeClient(fetchMock).get(CLINICORP_ROUTES.units);
+
+    expect(fetchMock.mock.calls[0][1].redirect).toBe('error');
+  });
+});
 
 describe('ClinicorpClient (transporte · F9)', () => {
   it('autentica com Basic e injeta o subscriber_id na query', async () => {

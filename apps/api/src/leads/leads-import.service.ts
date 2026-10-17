@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { LeadImportResult } from '@dentaltrack/shared';
 import * as ExcelJS from 'exceljs';
+import { inflateRawSync } from 'node:zlib';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** Linha da planilha já mapeada para os campos do Lead. */
@@ -162,7 +163,15 @@ export class LeadsImportService {
     return mapGrid(grid);
   }
 
+  /**
+   * O `workbook.xlsx.load()` descompacta o arquivo inteiro na memória antes de
+   * o limite de linhas ser conferido. Um .xlsx é um zip, e 5 MB de zip podem
+   * virar gigabytes de XML: um arquivo feito para isso derrubava a API por
+   * falta de memória, e a API é a mesma para todas as empresas. Por isso o
+   * zip passa antes por `assertZipWithinLimits`, que mede o tamanho real.
+   */
   private async readXlsx(buffer: Buffer): Promise<GridRow[]> {
+    assertZipWithinLimits(buffer);
     const workbook = new ExcelJS.Workbook();
     try {
       await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
@@ -186,6 +195,110 @@ export class LeadsImportService {
       });
     });
     return grid;
+  }
+}
+
+/**
+ * Teto do conteúdo descompactado de um .xlsx aceito na importação. Uma
+ * planilha de 2000 linhas de contato fica na casa de 1 MB descompactada.
+ */
+export const MAX_XLSX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024;
+
+const ZIP_END_OF_CENTRAL_DIR = 0x06054b50;
+const ZIP_CENTRAL_ENTRY = 0x02014b50;
+const ZIP_LOCAL_ENTRY = 0x04034b50;
+
+/**
+ * Descompacta cada entrada do zip com teto de saída e recusa o arquivo se o
+ * total passar de `MAX_XLSX_UNCOMPRESSED_BYTES`.
+ *
+ * O tamanho declarado no diretório do zip não serve: quem monta o arquivo
+ * escreve o número que quiser ali. O `maxOutputLength` do zlib para a
+ * descompactação no teto, então a memória usada aqui nunca passa dele, e só
+ * depois disso o exceljs abre o arquivo. Isso custa descompactar duas vezes
+ * um arquivo que já é pequeno.
+ *
+ * O leitor em streaming do exceljs não resolve: ele grava as abas em arquivo
+ * temporário quando o `sharedStrings.xml` vem depois delas, o que só mudaria o
+ * problema da memória para o disco.
+ */
+export function assertZipWithinLimits(buffer: Buffer): void {
+  const corrupted = new BadRequestException(
+    'Não foi possível ler o arquivo .xlsx — ele está corrompido ou não é um Excel válido.',
+  );
+  const tooBig = new BadRequestException(
+    'Planilha muito grande depois de descompactada. Divida o arquivo em partes menores.',
+  );
+
+  // Fim do diretório central: nos últimos 22 bytes + comentário (até 64 KB).
+  const floor = Math.max(0, buffer.length - 22 - 0xffff);
+  let eocd = -1;
+  for (let i = buffer.length - 22; i >= floor; i--) {
+    if (buffer.readUInt32LE(i) === ZIP_END_OF_CENTRAL_DIR) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw corrupted;
+
+  const entries = buffer.readUInt16LE(eocd + 10);
+  let offset = buffer.readUInt32LE(eocd + 16);
+  let budget = MAX_XLSX_UNCOMPRESSED_BYTES;
+
+  for (let n = 0; n < entries; n++) {
+    if (
+      offset + 46 > buffer.length ||
+      buffer.readUInt32LE(offset) !== ZIP_CENTRAL_ENTRY
+    ) {
+      throw corrupted;
+    }
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const localOffset = buffer.readUInt32LE(offset + 42);
+    // Zip64: nenhuma planilha de 5 MB precisa dele.
+    if (compressedSize === 0xffffffff || localOffset === 0xffffffff) {
+      throw tooBig;
+    }
+
+    if (
+      localOffset + 30 > buffer.length ||
+      buffer.readUInt32LE(localOffset) !== ZIP_LOCAL_ENTRY
+    ) {
+      throw corrupted;
+    }
+    const dataStart =
+      localOffset +
+      30 +
+      buffer.readUInt16LE(localOffset + 26) +
+      buffer.readUInt16LE(localOffset + 28);
+    const data = buffer.subarray(dataStart, dataStart + compressedSize);
+
+    let size: number;
+    if (method === 0) {
+      size = data.length; // armazenado sem compressão
+    } else if (method === 8) {
+      try {
+        size = inflateRawSync(data, { maxOutputLength: budget + 1 }).length;
+      } catch (err) {
+        // O código, e não `instanceof RangeError`: o erro pode vir de outro
+        // realm (o Jest roda o código num contexto próprio).
+        if ((err as { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE') {
+          throw tooBig;
+        }
+        throw corrupted;
+      }
+    } else {
+      throw corrupted;
+    }
+
+    budget -= size;
+    if (budget < 0) throw tooBig;
+
+    offset +=
+      46 +
+      buffer.readUInt16LE(offset + 28) +
+      buffer.readUInt16LE(offset + 30) +
+      buffer.readUInt16LE(offset + 32);
   }
 }
 
