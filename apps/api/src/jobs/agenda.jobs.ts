@@ -127,7 +127,12 @@ export class AgendaJobs {
   @Cron(CronExpression.EVERY_DAY_AT_3AM)
   async syncHolidays(): Promise<void> {
     const clinics = await this.prisma.clinicSettings.findMany({
-      where: { whatsappInstance: { not: null } },
+      where: {
+        OR: [
+          { whatsappInstance: { not: null } },
+          { whatsappAlertsInstance: { not: null } },
+        ],
+      },
       select: { clinicId: true },
     });
     const year = new Date().getUTCFullYear();

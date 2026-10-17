@@ -41,6 +41,7 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
   const withClinic = (
     settings: {
       whatsappInstance?: string | null;
+      whatsappAlertsInstance?: string | null;
       whatsappOnboardingAnsweredAt?: Date | null;
       whatsappState?: string | null;
       whatsappStateAt?: Date | null;
@@ -52,6 +53,7 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
       settings: settings
         ? {
             whatsappInstance: settings.whatsappInstance ?? null,
+            whatsappAlertsInstance: settings.whatsappAlertsInstance ?? null,
             whatsappOnboardingAnsweredAt:
               settings.whatsappOnboardingAnsweredAt ?? null,
             whatsappState: settings.whatsappState ?? null,
@@ -197,6 +199,82 @@ describe('WhatsappConnectionService (pareamento por QR · F10)', () => {
           }),
         }),
       );
+    });
+  });
+
+  describe('número de avisos', () => {
+    const ALERTS = 'empresa-sorriso-00000000-av';
+    const qrPayload = { qrcode: { base64: 'data:image/png;base64,AAA' } };
+    const owner = (phone: string) => [
+      { instance: { instanceName: 'x', ownerJid: `${phone}@s.whatsapp.net` } },
+    ];
+
+    it('conectar grava só a instância de avisos — principal e onboarding ficam', async () => {
+      withClinic({ whatsappInstance: INSTANCE });
+      evolutionMock.createInstance.mockResolvedValue(qrPayload);
+
+      await connection.connect(CLINIC, 'avisos');
+
+      expect(evolutionMock.createInstance).toHaveBeenCalledWith(
+        ALERTS,
+        expect.anything(),
+      );
+      expect(prismaMock.clinicSettings.upsert).toHaveBeenCalledWith({
+        where: { clinicId: CLINIC },
+        create: { clinicId: CLINIC, whatsappAlertsInstance: ALERTS },
+        update: { whatsappAlertsInstance: ALERTS },
+      });
+    });
+
+    it('trocar o número de avisos não toca nas colunas do principal', async () => {
+      withClinic({
+        whatsappInstance: INSTANCE,
+        whatsappAlertsInstance: ALERTS,
+        whatsappState: 'conectado',
+      });
+      evolutionMock.connectionState.mockRejectedValue(new Error('x'));
+      evolutionMock.fetchInstance.mockRejectedValue(new Error('x'));
+
+      await connection.reset(CLINIC, 'avisos');
+
+      expect(evolutionMock.deleteInstance).toHaveBeenCalledWith(ALERTS);
+      expect(prismaMock.clinicSettings.updateMany).toHaveBeenCalledWith({
+        where: { clinicId: CLINIC },
+        data: { whatsappAlertsInstance: null },
+      });
+    });
+
+    it('status de avisos não grava o estado do principal', async () => {
+      withClinic({
+        whatsappInstance: INSTANCE,
+        whatsappAlertsInstance: ALERTS,
+      });
+      evolutionMock.connectionState.mockResolvedValue({ state: 'close' });
+      evolutionMock.fetchInstance.mockResolvedValue([]);
+
+      const status = await connection.getStatus(CLINIC, 'avisos');
+
+      expect(status.instanceName).toBe(ALERTS);
+      expect(prismaMock.clinicSettings.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('avisa quando o celular é o mesmo do principal', async () => {
+      withClinic({
+        whatsappInstance: INSTANCE,
+        whatsappAlertsInstance: ALERTS,
+      });
+      evolutionMock.connectionState.mockResolvedValue({ state: 'open' });
+      evolutionMock.fetchInstance.mockResolvedValue(owner('5511999998888'));
+
+      const same = await connection.getStatus(CLINIC, 'avisos');
+      expect(same.state).toBe('conectado');
+      expect(same.lastError).toContain('mesmo celular');
+
+      evolutionMock.fetchInstance
+        .mockResolvedValueOnce(owner('5511977776666'))
+        .mockResolvedValueOnce(owner('5511999998888'));
+      const other = await connection.getStatus(CLINIC, 'avisos');
+      expect(other.lastError).toBeNull();
     });
   });
 

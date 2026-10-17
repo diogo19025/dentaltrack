@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import type {
   WhatsappConnection,
   WhatsappConnectionState,
+  WhatsappLine,
   WhatsappOnboardingAnswer,
 } from '@dentaltrack/shared';
 import { WHATSAPP_CONNECTION_STATES } from '@dentaltrack/shared';
@@ -23,10 +24,21 @@ const RECONNECT_INTERVAL_MS = 15 * 60_000;
 interface ClinicConnectionRecord {
   name: string;
   whatsappInstance: string | null;
+  whatsappAlertsInstance: string | null;
   whatsappOnboardingAnsweredAt: Date | null;
   whatsappState: WhatsappConnectionState | null;
   whatsappStateAt: Date | null;
   whatsappLastError: string | null;
+}
+
+/** Instância do número pedido. */
+function instanceOf(
+  clinic: ClinicConnectionRecord,
+  line: WhatsappLine,
+): string | null {
+  return line === 'avisos'
+    ? clinic.whatsappAlertsInstance
+    : clinic.whatsappInstance;
 }
 
 /**
@@ -54,40 +66,53 @@ export class WhatsappConnectionService {
   ) {}
 
   /** Estado atual da conexão — o que a tela consulta em laço. */
-  async getStatus(clinicId: string): Promise<WhatsappConnection> {
+  async getStatus(
+    clinicId: string,
+    line: WhatsappLine = 'principal',
+  ): Promise<WhatsappConnection> {
     const clinic = await this.loadClinic(clinicId);
+    const instance = instanceOf(clinic, line);
+    // O estado persistido (e o alerta no sino) é só do número principal; o de
+    // avisos é lido ao vivo, sem coluna própria.
+    const track = line === 'principal';
     const base = {
-      instanceName: clinic.whatsappInstance,
+      instanceName: instance,
       phone: null,
       qrCode: null,
       pairingCode: null,
       onboardingAnswered: clinic.whatsappOnboardingAnsweredAt !== null,
       serverReady: this.serverReady(),
-      lastError: clinic.whatsappLastError,
+      lastError: track ? clinic.whatsappLastError : null,
     };
 
-    if (!clinic.whatsappInstance) {
+    if (!instance) {
       return { ...base, state: 'nao_configurado' };
     }
     if (!this.evolution.isConfigured()) {
       const detail =
         'O servidor não tem EVOLUTION_API_URL / EVOLUTION_API_KEY configuradas.';
-      await this.persistState(clinicId, clinic, 'desconectado', detail);
+      if (track) {
+        await this.persistState(clinicId, clinic, 'desconectado', detail);
+      }
       return { ...base, state: 'desconectado', lastError: detail };
     }
 
     try {
       const [stateResponse, instanceResponse] = await Promise.all([
-        this.evolution.connectionState(clinic.whatsappInstance),
-        this.evolution.fetchInstance(clinic.whatsappInstance),
+        this.evolution.connectionState(instance),
+        this.evolution.fetchInstance(instance),
       ]);
       const state = toConnectionState(readField(stateResponse, 'state'));
-      await this.persistState(clinicId, clinic, state, null);
+      if (track) await this.persistState(clinicId, clinic, state, null);
+      const phone = readPhone(instanceResponse);
       return {
         ...base,
         state,
-        phone: readPhone(instanceResponse),
-        lastError: null,
+        phone,
+        lastError:
+          !track && state === 'conectado'
+            ? await this.sameAsMainPhone(clinic, phone)
+            : null,
       };
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -96,7 +121,9 @@ export class WhatsappConnectionService {
       );
       // A instância existe do nosso lado; a Evolution é que não respondeu.
       // Reportar "desconectado" com o motivo é mais honesto do que "conectado".
-      await this.persistState(clinicId, clinic, 'desconectado', detail, err);
+      if (track) {
+        await this.persistState(clinicId, clinic, 'desconectado', detail, err);
+      }
       return { ...base, state: 'desconectado', lastError: detail };
     }
   }
@@ -108,7 +135,10 @@ export class WhatsappConnectionService {
    * Chamar de novo é o caminho normal de "o QR expirou": a Evolution devolve um
    * código novo a cada chamada.
    */
-  async connect(clinicId: string): Promise<WhatsappConnection> {
+  async connect(
+    clinicId: string,
+    line: WhatsappLine = 'principal',
+  ): Promise<WhatsappConnection> {
     if (!this.evolution.isConfigured()) {
       throw new ServiceUnavailableException(
         'O servidor não tem o WhatsApp configurado (EVOLUTION_API_URL / EVOLUTION_API_KEY).',
@@ -122,17 +152,16 @@ export class WhatsappConnectionService {
     }
 
     const clinic = await this.loadClinic(clinicId);
-    const current = await this.getStatus(clinicId);
+    const current = await this.getStatus(clinicId, line);
     if (current.state === 'conectado') return current;
 
+    const linked = instanceOf(clinic, line);
     const instanceName =
-      clinic.whatsappInstance ?? this.buildInstanceName(clinicId, clinic.name);
+      linked ?? this.buildInstanceName(clinicId, clinic.name, line);
 
     // A instância pode já existir (reconexão, QR expirado) — nesse caso só
     // pedimos um QR novo. `createInstance` numa que existe devolve 403.
-    const exists = clinic.whatsappInstance
-      ? await this.instanceExists(instanceName)
-      : false;
+    const exists = linked ? await this.instanceExists(instanceName) : false;
 
     let response: unknown;
     try {
@@ -162,7 +191,7 @@ export class WhatsappConnectionService {
 
     // Grava o vínculo instância → empresa (é o que o webhook usa para resolver
     // o tenant), o estado e a resposta à pergunta do 1º acesso numa escrita.
-    await this.link(clinicId, instanceName, state, lastError);
+    await this.link(clinicId, instanceName, state, lastError, line);
 
     return {
       state,
@@ -177,49 +206,56 @@ export class WhatsappConnectionService {
   }
 
   /** Desconecta o número, mantendo a instância (permite reparear depois). */
-  async disconnect(clinicId: string): Promise<WhatsappConnection> {
+  async disconnect(
+    clinicId: string,
+    line: WhatsappLine = 'principal',
+  ): Promise<WhatsappConnection> {
     const clinic = await this.loadClinic(clinicId);
-    if (!clinic.whatsappInstance) {
+    const instance = instanceOf(clinic, line);
+    if (!instance) {
       throw new BadRequestException('Esta empresa não tem WhatsApp conectado.');
     }
     try {
-      await this.evolution.logoutInstance(clinic.whatsappInstance);
+      await this.evolution.logoutInstance(instance);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `Falha ao desconectar ${clinic.whatsappInstance}: ${detail}`,
-      );
+      this.logger.warn(`Falha ao desconectar ${instance}: ${detail}`);
     }
-    return this.getStatus(clinicId);
+    return this.getStatus(clinicId, line);
   }
 
   /**
    * Remove a instância e desfaz o vínculo. Usado quando a empresa troca de
    * número — deixar a instância órfã na Evolution acumularia sessões mortas.
    */
-  async reset(clinicId: string): Promise<WhatsappConnection> {
+  async reset(
+    clinicId: string,
+    line: WhatsappLine = 'principal',
+  ): Promise<WhatsappConnection> {
     const clinic = await this.loadClinic(clinicId);
-    if (clinic.whatsappInstance) {
+    const instance = instanceOf(clinic, line);
+    if (instance) {
       try {
-        await this.evolution.deleteInstance(clinic.whatsappInstance);
+        await this.evolution.deleteInstance(instance);
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         // Instância já inexistente na Evolution não impede limpar o nosso lado.
-        this.logger.warn(
-          `Falha ao remover a instância ${clinic.whatsappInstance}: ${detail}`,
-        );
+        this.logger.warn(`Falha ao remover a instância ${instance}: ${detail}`);
       }
       await this.prisma.clinicSettings.updateMany({
         where: { clinicId },
-        data: {
-          whatsappInstance: null,
-          whatsappState: 'nao_configurado',
-          whatsappStateAt: new Date(),
-          whatsappLastError: null,
-        },
+        data:
+          line === 'avisos'
+            ? { whatsappAlertsInstance: null }
+            : {
+                whatsappInstance: null,
+                whatsappState: 'nao_configurado',
+                whatsappStateAt: new Date(),
+                whatsappLastError: null,
+              },
       });
     }
-    return this.getStatus(clinicId);
+    return this.getStatus(clinicId, line);
   }
 
   /**
@@ -236,6 +272,25 @@ export class WhatsappConnectionService {
     return this.connect(clinicId);
   }
 
+  /**
+   * Aviso (não erro) quando o número de avisos é o mesmo celular do principal:
+   * funciona, mas a separação entre atender e avisar não existe.
+   */
+  private async sameAsMainPhone(
+    clinic: ClinicConnectionRecord,
+    alertsPhone: string | null,
+  ): Promise<string | null> {
+    if (!alertsPhone || !clinic.whatsappInstance) return null;
+    const main = readPhone(
+      await this.evolution
+        .fetchInstance(clinic.whatsappInstance)
+        .catch(() => null),
+    );
+    return main === alertsPhone
+      ? 'Este é o mesmo celular do número principal. Pareie um celular diferente para separar os avisos.'
+      : null;
+  }
+
   /** A instância existe na Evolution? (Sessão apagada por lá, por exemplo.) */
   private async instanceExists(instanceName: string): Promise<boolean> {
     try {
@@ -247,14 +302,7 @@ export class WhatsappConnectionService {
     }
   }
 
-  private async loadClinic(clinicId: string): Promise<{
-    name: string;
-    whatsappInstance: string | null;
-    whatsappOnboardingAnsweredAt: Date | null;
-    whatsappState: WhatsappConnectionState | null;
-    whatsappStateAt: Date | null;
-    whatsappLastError: string | null;
-  }> {
+  private async loadClinic(clinicId: string): Promise<ClinicConnectionRecord> {
     const clinic = await this.prisma.clinic.findUniqueOrThrow({
       where: { id: clinicId },
       select: {
@@ -262,6 +310,7 @@ export class WhatsappConnectionService {
         settings: {
           select: {
             whatsappInstance: true,
+            whatsappAlertsInstance: true,
             whatsappOnboardingAnsweredAt: true,
             whatsappState: true,
             whatsappStateAt: true,
@@ -273,6 +322,7 @@ export class WhatsappConnectionService {
     return {
       name: clinic.name,
       whatsappInstance: clinic.settings?.whatsappInstance ?? null,
+      whatsappAlertsInstance: clinic.settings?.whatsappAlertsInstance ?? null,
       whatsappOnboardingAnsweredAt:
         clinic.settings?.whatsappOnboardingAnsweredAt ?? null,
       whatsappState: normalizeStoredState(clinic.settings?.whatsappState),
@@ -286,8 +336,17 @@ export class WhatsappConnectionService {
     instanceName: string,
     state: WhatsappConnectionState,
     lastError: string | null,
+    line: WhatsappLine = 'principal',
   ): Promise<void> {
     const now = new Date();
+    if (line === 'avisos') {
+      await this.prisma.clinicSettings.upsert({
+        where: { clinicId },
+        create: { clinicId, whatsappAlertsInstance: instanceName },
+        update: { whatsappAlertsInstance: instanceName },
+      });
+      return;
+    }
     await this.prisma.clinicSettings.upsert({
       where: { clinicId },
       create: {
@@ -414,8 +473,13 @@ export class WhatsappConnectionService {
    * Nome da instância a partir da empresa: legível na Evolution e único por
    * construção (o sufixo vem do id da empresa). Nunca digitado por ninguém.
    */
-  buildInstanceName(clinicId: string, clinicName: string): string {
-    const suffix = clinicId.replace(/-/g, '').slice(0, 8);
+  buildInstanceName(
+    clinicId: string,
+    clinicName: string,
+    line: WhatsappLine = 'principal',
+  ): string {
+    const suffix =
+      clinicId.replace(/-/g, '').slice(0, 8) + (line === 'avisos' ? '-av' : '');
     const slug = clinicName
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')

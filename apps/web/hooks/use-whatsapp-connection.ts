@@ -3,11 +3,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   WhatsappConnection,
+  WhatsappLine,
   WhatsappOnboardingAnswer,
 } from "@dentaltrack/shared";
 import { apiFetch } from "@/lib/api-client";
 
-const CONNECTION_KEY = ["whatsapp", "connection"] as const;
+const connectionKey = (line: WhatsappLine) =>
+  ["whatsapp", "connection", line] as const;
+/** `?numero=` só para o de avisos; o principal mantém a URL de sempre. */
+const path = (line: WhatsappLine, sub = "") =>
+  `/whatsapp/connection${sub}${line === "avisos" ? "?numero=avisos" : ""}`;
 
 /**
  * Estado da conexão do WhatsApp da empresa (GET /whatsapp/connection).
@@ -16,10 +21,13 @@ const CONNECTION_KEY = ["whatsapp", "connection"] as const;
  * a tela percebe que o celular leu o QR e troca sozinha para "conectado", sem
  * o dono precisar recarregar nada.
  */
-export function useWhatsappConnection(enabled = true) {
+export function useWhatsappConnection(
+  enabled = true,
+  line: WhatsappLine = "principal",
+) {
   return useQuery({
-    queryKey: CONNECTION_KEY,
-    queryFn: () => apiFetch<WhatsappConnection>("/whatsapp/connection"),
+    queryKey: connectionKey(line),
+    queryFn: () => apiFetch<WhatsappConnection>(path(line)),
     enabled,
     refetchInterval: (query) =>
       query.state.data?.state === "aguardando_leitura" ? 3_000 : false,
@@ -30,12 +38,12 @@ export function useWhatsappConnection(enabled = true) {
  * Pede um QR novo (POST /whatsapp/connection). Chamar de novo é o caminho
  * normal de "o QR expirou" — a Evolution devolve um código novo a cada chamada.
  */
-export function useConnectWhatsapp() {
+export function useConnectWhatsapp(line: WhatsappLine = "principal") {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiFetch<WhatsappConnection>("/whatsapp/connection", { method: "POST" }),
-    onSuccess: (data) => queryClient.setQueryData(CONNECTION_KEY, data),
+      apiFetch<WhatsappConnection>(path(line), { method: "POST" }),
+    onSuccess: (data) => queryClient.setQueryData(connectionKey(line), data),
   });
 }
 
@@ -44,34 +52,34 @@ export function useAnswerWhatsappOnboarding() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (answer: WhatsappOnboardingAnswer) =>
-      apiFetch<WhatsappConnection>("/whatsapp/connection/onboarding", {
+      apiFetch<WhatsappConnection>(path("principal", "/onboarding"), {
         method: "POST",
         body: JSON.stringify({ answer }),
       }),
-    onSuccess: (data) => queryClient.setQueryData(CONNECTION_KEY, data),
+    onSuccess: (data) => queryClient.setQueryData(connectionKey("principal"), data),
   });
 }
 
 /** Desconecta o número, mantendo a instância para reparear depois. */
-export function useDisconnectWhatsapp() {
+export function useDisconnectWhatsapp(line: WhatsappLine = "principal") {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiFetch<WhatsappConnection>("/whatsapp/connection/disconnect", {
+      apiFetch<WhatsappConnection>(path(line, "/disconnect"), {
         method: "POST",
       }),
-    onSuccess: (data) => queryClient.setQueryData(CONNECTION_KEY, data),
+    onSuccess: (data) => queryClient.setQueryData(connectionKey(line), data),
   });
 }
 
 /** Remove a instância e desfaz o vínculo (troca de número). */
-export function useResetWhatsapp() {
+export function useResetWhatsapp(line: WhatsappLine = "principal") {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiFetch<WhatsappConnection>("/whatsapp/connection", {
+      apiFetch<WhatsappConnection>(path(line), {
         method: "DELETE",
       }),
-    onSuccess: (data) => queryClient.setQueryData(CONNECTION_KEY, data),
+    onSuccess: (data) => queryClient.setQueryData(connectionKey(line), data),
   });
 }

@@ -385,7 +385,12 @@ describe('AutomationPlannerService (o que precisa ser enviado · F9)', () => {
 
       expect(prismaMock.clinicSettings.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { whatsappInstance: { not: null } },
+          where: {
+            OR: [
+              { whatsappInstance: { not: null } },
+              { whatsappAlertsInstance: { not: null } },
+            ],
+          },
         }),
       );
     });

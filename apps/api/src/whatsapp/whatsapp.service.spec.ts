@@ -31,7 +31,7 @@ function payload(
 describe('WhatsappService', () => {
   let service: WhatsappService;
   const prismaMock = {
-    clinicSettings: { findUnique: jest.fn() },
+    clinicSettings: { findFirst: jest.fn() },
     inboundMessage: { create: jest.fn(), deleteMany: jest.fn() },
   };
   const chatMock = { processInboundMessage: jest.fn() };
@@ -50,7 +50,7 @@ describe('WhatsappService', () => {
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    prismaMock.clinicSettings.findUnique.mockResolvedValue({
+    prismaMock.clinicSettings.findFirst.mockResolvedValue({
       clinicId: CLINIC_ID,
     });
     prismaMock.inboundMessage.create.mockResolvedValue({});
@@ -78,8 +78,13 @@ describe('WhatsappService', () => {
   it('resolve a empresa pela instância, roda o motor e envia a resposta', async () => {
     await service.handleWebhook(payload());
 
-    expect(prismaMock.clinicSettings.findUnique).toHaveBeenCalledWith({
-      where: { whatsappInstance: 'dentaltrack' },
+    expect(prismaMock.clinicSettings.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { whatsappInstance: 'dentaltrack' },
+          { whatsappAlertsInstance: 'dentaltrack' },
+        ],
+      },
       select: { clinicId: true },
     });
     expect(chatMock.processInboundMessage).toHaveBeenCalledWith({
@@ -91,6 +96,17 @@ describe('WhatsappService', () => {
     });
     expect(evolutionMock.sendText).toHaveBeenCalledWith(
       'dentaltrack',
+      '5511999998888',
+      'Claro! Para quando?',
+    );
+  });
+
+  it('cliente que responde ao número de avisos é atendido por esse mesmo número', async () => {
+    await service.handleWebhook(payload({ instance: 'dentaltrack-av' }));
+
+    expect(chatMock.processInboundMessage).toHaveBeenCalled();
+    expect(evolutionMock.sendText).toHaveBeenCalledWith(
+      'dentaltrack-av',
       '5511999998888',
       'Claro! Para quando?',
     );
@@ -156,7 +172,7 @@ describe('WhatsappService', () => {
   });
 
   it('ignora instância sem empresa mapeada (não roda o motor nem envia)', async () => {
-    prismaMock.clinicSettings.findUnique.mockResolvedValueOnce(null);
+    prismaMock.clinicSettings.findFirst.mockResolvedValueOnce(null);
     await service.handleWebhook(payload());
     expect(chatMock.processInboundMessage).not.toHaveBeenCalled();
     expect(evolutionMock.sendText).not.toHaveBeenCalled();
@@ -303,7 +319,7 @@ describe('WhatsappService', () => {
   });
 
   it('nunca lança, mesmo com erro inesperado no resolve', async () => {
-    prismaMock.clinicSettings.findUnique.mockRejectedValueOnce(
+    prismaMock.clinicSettings.findFirst.mockRejectedValueOnce(
       new Error('db down'),
     );
     await expect(service.handleWebhook(payload())).resolves.toBeUndefined();

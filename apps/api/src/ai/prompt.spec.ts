@@ -38,6 +38,7 @@ function makeSettings(over: Partial<ClinicSettings> = {}): ClinicSettings {
     offerEndsOn: null,
     availability: null,
     whatsappInstance: null,
+    whatsappAlertsInstance: null,
     whatsappOnboardingAnsweredAt: null,
     notificationsSeenAt: null,
     whatsappState: null,
