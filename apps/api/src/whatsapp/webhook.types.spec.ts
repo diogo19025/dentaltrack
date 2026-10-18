@@ -106,7 +106,7 @@ describe('parseInboundMessage', () => {
       base64: 'BASE64DATA',
       mimeType: 'audio/ogg',
     });
-    expect(res?.audio?.key).toEqual({
+    expect(res?.audio?.ref).toEqual({
       remoteJid: JID,
       fromMe: false,
       id: 'MSG1',

@@ -32,9 +32,7 @@ export const WHATSAPP_CONNECTION_STATES = [
   "conectado",
   "desconectado",
 ] as const;
-export const whatsappConnectionStateSchema = z.enum(
-  WHATSAPP_CONNECTION_STATES,
-);
+export const whatsappConnectionStateSchema = z.enum(WHATSAPP_CONNECTION_STATES);
 export type WhatsappConnectionState =
   (typeof WHATSAPP_CONNECTION_STATES)[number];
 
@@ -114,3 +112,57 @@ export const answerWhatsappOnboardingSchema = z.object({
 export type AnswerWhatsappOnboardingInput = z.infer<
   typeof answerWhatsappOnboardingSchema
 >;
+
+/**
+ * Cloud API oficial da Meta (provedor alternativo à Evolution).
+ *
+ * A empresa cola as credenciais que tira do próprio painel da Meta: o ID do
+ * número, o ID da conta WhatsApp Business e um token de acesso permanente
+ * (usuário do sistema). O token entra, é validado contra a Meta e nunca mais
+ * volta para a tela: só se sabe que existe um salvo.
+ */
+export const WHATSAPP_PROVIDERS = ["evolution", "meta"] as const;
+export const whatsappProviderSchema = z.enum(WHATSAPP_PROVIDERS);
+export type WhatsappProvider = (typeof WHATSAPP_PROVIDERS)[number];
+
+/** PUT /whatsapp/meta — credenciais da empresa na Meta. */
+export const saveMetaCredentialsSchema = z.object({
+  phoneNumberId: z
+    .string()
+    .trim()
+    .regex(/^\d{5,25}$/, "O ID do número tem só dígitos."),
+  wabaId: z
+    .string()
+    .trim()
+    .regex(/^\d{5,25}$/, "O ID da conta WhatsApp Business tem só dígitos."),
+  accessToken: z
+    .string()
+    .trim()
+    .min(20, "Cole o token de acesso completo.")
+    .max(1000),
+});
+export type SaveMetaCredentialsInput = z.infer<
+  typeof saveMetaCredentialsSchema
+>;
+
+/** GET /whatsapp/meta — estado, sem nenhum segredo. */
+export const metaConnectionSchema = z.object({
+  /** Provedor ativo da empresa. */
+  provider: whatsappProviderSchema,
+  phoneNumberId: z.string().nullable(),
+  wabaId: z.string().nullable(),
+  /** Há um token salvo (nunca o valor). */
+  tokenSaved: z.boolean(),
+  /** Número e nome verificado, como a Meta os devolveu na última validação. */
+  displayPhone: z.string().nullable(),
+  verifiedName: z.string().nullable(),
+  /**
+   * `false` quando o servidor não tem META_APP_SECRET / META_WEBHOOK_VERIFY_TOKEN
+   * ou a chave de cifra: a tela explica em vez de oferecer um botão morto.
+   */
+  serverReady: z.boolean(),
+  /** URL que a empresa cadastra como webhook no app da Meta. */
+  webhookUrl: z.string().nullable(),
+  lastError: z.string().nullable(),
+});
+export type MetaConnection = z.infer<typeof metaConnectionSchema>;

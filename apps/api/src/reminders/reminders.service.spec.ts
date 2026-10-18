@@ -7,6 +7,7 @@ import { Test } from '@nestjs/testing';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from '../whatsapp/evolution.service';
+import { ConfigService } from '@nestjs/config';
 import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
 import {
   buildReminderDraft,
@@ -92,6 +93,7 @@ describe('RemindersService', () => {
         { provide: ConversationsService, useValue: conversationsMock },
         { provide: EvolutionService, useValue: evolutionMock },
         WhatsappTransportResolver,
+        { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     }).compile();
     service = moduleRef.get(RemindersService);

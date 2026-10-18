@@ -109,6 +109,17 @@ model ClinicSettings {
   /// as automações saem pelo número principal, como antes. Resolve a clínica no
   /// webhook igual à instância principal; a resposta do cliente volta por ele.
   whatsappAlertsInstance       String?   @unique @map("whatsapp_alerts_instance")
+  /// Provedor do WhatsApp da empresa: `evolution` (Baileys, padrão) ou `meta`
+  /// (Cloud API oficial). String, e não enum, para a migration continuar aditiva.
+  whatsappProvider             String    @default("evolution") @map("whatsapp_provider")
+  /// Cloud API: ID do número na Meta. Resolve `número → empresa` no webhook.
+  metaPhoneNumberId            String?   @unique @map("meta_phone_number_id")
+  metaWabaId                   String?   @map("meta_waba_id")
+  /// Token de acesso, cifrado (AES-256-GCM, a mesma chave das integrações).
+  metaAccessTokenEnc           String?   @map("meta_access_token_enc")
+  /// Número e nome verificado devolvidos pela Meta na última validação (exibição).
+  metaDisplayPhone             String?   @map("meta_display_phone")
+  metaVerifiedName             String?   @map("meta_verified_name")
   /// Último estado observado pelo monitor do WhatsApp (P0.4). String para a
   /// migration continuar aditiva e compatível com a versão anterior.
   whatsappState                String?   @map("whatsapp_state")

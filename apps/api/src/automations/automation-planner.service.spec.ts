@@ -389,6 +389,7 @@ describe('AutomationPlannerService (o que precisa ser enviado · F9)', () => {
             OR: [
               { whatsappInstance: { not: null } },
               { whatsappAlertsInstance: { not: null } },
+              { metaPhoneNumberId: { not: null } },
             ],
           },
         }),

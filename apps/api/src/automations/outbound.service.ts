@@ -420,10 +420,17 @@ export class OutboundService {
 
     const settings = await this.prisma.clinicSettings.findUnique({
       where: { clinicId },
-      select: { whatsappInstance: true, whatsappAlertsInstance: true },
+      select: {
+        whatsappInstance: true,
+        whatsappAlertsInstance: true,
+        whatsappProvider: true,
+        metaPhoneNumberId: true,
+        metaAccessTokenEnc: true,
+      },
     });
     if (
       !this.transports.forSettings({
+        ...settings,
         whatsappInstance: this.outboundInstance(settings, kind),
       })
     ) {
@@ -545,10 +552,17 @@ export class OutboundService {
   }): Promise<'enviado' | 'suprimido' | 'falhou'> {
     const clinic = await this.prisma.clinicSettings.findUnique({
       where: { clinicId: message.clinicId },
-      select: { whatsappInstance: true, whatsappAlertsInstance: true },
+      select: {
+        whatsappInstance: true,
+        whatsappAlertsInstance: true,
+        whatsappProvider: true,
+        metaPhoneNumberId: true,
+        metaAccessTokenEnc: true,
+      },
     });
     const instance = this.outboundInstance(clinic, message.kind);
     const transport = this.transports.forSettings({
+      ...clinic,
       whatsappInstance: instance,
     });
     if (!transport || !message.phone) {
@@ -580,6 +594,7 @@ export class OutboundService {
       // Número de avisos fora do ar não pode calar os lembretes: tenta uma vez
       // pelo principal antes de entrar na fila de retentativa.
       const fallback =
+        clinic?.whatsappProvider !== 'meta' &&
         instance === clinic?.whatsappAlertsInstance
           ? this.transports.forSettings({
               whatsappInstance: clinic.whatsappInstance,

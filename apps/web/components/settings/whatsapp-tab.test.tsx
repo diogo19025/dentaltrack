@@ -19,6 +19,10 @@ vi.mock("@/hooks/use-whatsapp-connection", () => ({
   }),
 }));
 
+vi.mock("@/components/settings/meta-card", () => ({
+  MetaCard: () => <div>Cartão da Meta</div>,
+}));
+
 vi.mock("@/components/whatsapp/connect-panel", () => ({
   WhatsappConnectPanel: () => <div>Painel de conexão</div>,
 }));

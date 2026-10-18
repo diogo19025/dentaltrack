@@ -181,6 +181,9 @@ export class RemindersService {
             settings: {
               select: {
                 whatsappInstance: true,
+                whatsappProvider: true,
+                metaPhoneNumberId: true,
+                metaAccessTokenEnc: true,
                 offerEnabled: true,
                 offerText: true,
               },

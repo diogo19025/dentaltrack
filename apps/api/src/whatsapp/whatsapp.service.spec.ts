@@ -1,3 +1,4 @@
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { AiUnavailableError } from '../ai/generate-reply';
 import { OptOutService } from '../automations/opt-out.service';
@@ -30,6 +31,7 @@ function payload(
 
 describe('WhatsappService', () => {
   let service: WhatsappService;
+  let resolver: WhatsappTransportResolver;
   const prismaMock = {
     clinicSettings: { findFirst: jest.fn() },
     inboundMessage: { create: jest.fn(), deleteMany: jest.fn() },
@@ -67,12 +69,14 @@ describe('WhatsappService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: ChatService, useValue: chatMock },
         { provide: EvolutionService, useValue: evolutionMock },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
         WhatsappTransportResolver,
         { provide: OptOutService, useValue: optOutMock },
         { provide: OutboundService, useValue: outboundMock },
       ],
     }).compile();
     service = moduleRef.get(WhatsappService);
+    resolver = moduleRef.get(WhatsappTransportResolver);
   });
 
   it('resolve a empresa pela instância, roda o motor e envia a resposta', async () => {
@@ -85,7 +89,7 @@ describe('WhatsappService', () => {
           { whatsappAlertsInstance: 'dentaltrack' },
         ],
       },
-      select: { clinicId: true },
+      select: expect.objectContaining({ clinicId: true }),
     });
     expect(chatMock.processInboundMessage).toHaveBeenCalledWith({
       clinicId: CLINIC_ID,
@@ -99,6 +103,87 @@ describe('WhatsappService', () => {
       '5511999998888',
       'Claro! Para quando?',
     );
+  });
+
+  describe('Cloud API da Meta', () => {
+    const META_PAYLOAD = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                metadata: { phone_number_id: '1055' },
+                contacts: [
+                  { wa_id: '5511999998888', profile: { name: 'João' } },
+                ],
+                messages: [
+                  {
+                    id: 'wamid.1',
+                    from: '5511999998888',
+                    type: 'text',
+                    text: { body: 'Quero agendar' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const metaTransport = {
+      resolveAddress: jest.fn((r: { phone: string }) =>
+        Promise.resolve(r.phone),
+      ),
+      sendText: jest.fn().mockResolvedValue(undefined),
+      sendMedia: jest.fn(),
+      fetchInboundAudio: jest.fn(),
+    };
+
+    it('acha a empresa pelo número da Meta, roda o motor e responde pelo transporte da Meta', async () => {
+      const forMeta = jest
+        .spyOn(resolver, 'forMeta')
+        .mockReturnValue(metaTransport);
+
+      await service.handleMetaWebhook(META_PAYLOAD);
+
+      expect(prismaMock.clinicSettings.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { metaPhoneNumberId: '1055', whatsappProvider: 'meta' },
+        }),
+      );
+      expect(forMeta).toHaveBeenCalled();
+      expect(chatMock.processInboundMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clinicId: CLINIC_ID,
+          contactPhone: '5511999998888',
+          message: 'Quero agendar',
+        }),
+      );
+      expect(metaTransport.sendText).toHaveBeenCalledWith(
+        '5511999998888',
+        'Claro! Para quando?',
+      );
+      expect(evolutionMock.sendText).not.toHaveBeenCalled();
+    });
+
+    it('sem credencial utilizável: ignora a mensagem, sem rodar o motor', async () => {
+      jest.spyOn(resolver, 'forMeta').mockReturnValue(null);
+
+      await service.handleMetaWebhook(META_PAYLOAD);
+
+      expect(chatMock.processInboundMessage).not.toHaveBeenCalled();
+    });
+
+    it('reentrega do mesmo wamid é ignorada', async () => {
+      jest.spyOn(resolver, 'forMeta').mockReturnValue(metaTransport);
+      prismaMock.inboundMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+
+      await service.handleMetaWebhook(META_PAYLOAD);
+
+      expect(chatMock.processInboundMessage).not.toHaveBeenCalled();
+    });
   });
 
   it('cliente que responde ao número de avisos é atendido por esse mesmo número', async () => {

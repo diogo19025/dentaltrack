@@ -1,5 +1,12 @@
+import type { ConfigService } from '@nestjs/config';
+import {
+  encryptSecret,
+  loadEncryptionKey,
+} from '../../clinicorp/credentials-crypto';
+import type { Env } from '../../config/env.validation';
 import type { EvolutionService } from '../evolution.service';
 import { EvolutionTransport } from './evolution.transport';
+import { MetaTransport } from './meta.transport';
 import { WhatsappTransportResolver } from './whatsapp-transport.resolver';
 
 function evolutionMock(configured = true) {
@@ -12,16 +19,67 @@ function evolutionMock(configured = true) {
   };
 }
 
+const KEY = '0'.repeat(64);
+
+function configMock(env: Record<string, string | undefined> = {}) {
+  return {
+    get: (key: string) => ({ INTEGRATION_ENCRYPTION_KEY: KEY, ...env })[key],
+  } as unknown as ConfigService<Env, true>;
+}
+
 describe('WhatsappTransportResolver', () => {
+  it('provedor meta: transporte amarrado ao número, com o token decifrado', () => {
+    const resolver = new WhatsappTransportResolver(
+      evolutionMock(false) as unknown as EvolutionService,
+      configMock(),
+    );
+    const transport = resolver.forSettings({
+      whatsappInstance: null,
+      whatsappProvider: 'meta',
+      metaPhoneNumberId: '1055',
+      metaAccessTokenEnc: encryptSecret(
+        'EAAtokenlongodemais1234567890',
+        loadEncryptionKey(KEY),
+      ),
+    });
+    expect(transport).toBeInstanceOf(MetaTransport);
+    expect((transport as MetaTransport).phoneNumberId).toBe('1055');
+  });
+
+  it('provedor meta sem credencial ou com token ilegível: sem transporte, e não cai na Evolution', () => {
+    const resolver = new WhatsappTransportResolver(
+      evolutionMock() as unknown as EvolutionService,
+      configMock(),
+    );
+    expect(
+      resolver.forSettings({
+        whatsappInstance: 'empresa-1',
+        whatsappProvider: 'meta',
+        metaPhoneNumberId: null,
+        metaAccessTokenEnc: null,
+      }),
+    ).toBeNull();
+    expect(
+      resolver.forSettings({
+        whatsappInstance: 'empresa-1',
+        whatsappProvider: 'meta',
+        metaPhoneNumberId: '1055',
+        metaAccessTokenEnc: 'v1.lixo.lixo.lixo',
+      }),
+    ).toBeNull();
+  });
+
   it('sem instância ou sem Evolution configurada, não há transporte', () => {
     const configured = new WhatsappTransportResolver(
       evolutionMock() as unknown as EvolutionService,
+      configMock(),
     );
     expect(configured.forSettings(null)).toBeNull();
     expect(configured.forSettings({ whatsappInstance: null })).toBeNull();
 
     const unconfigured = new WhatsappTransportResolver(
       evolutionMock(false) as unknown as EvolutionService,
+      configMock(),
     );
     expect(unconfigured.forSettings({ whatsappInstance: 'x' })).toBeNull();
   });
@@ -29,6 +87,7 @@ describe('WhatsappTransportResolver', () => {
   it('com instância e Evolution configurada, devolve o transporte amarrado a ela', () => {
     const resolver = new WhatsappTransportResolver(
       evolutionMock() as unknown as EvolutionService,
+      configMock(),
     );
     const transport = resolver.forSettings({ whatsappInstance: 'empresa-1' });
     expect(transport).toBeInstanceOf(EvolutionTransport);

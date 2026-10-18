@@ -5,6 +5,7 @@ import { MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MetaCard } from "@/components/settings/meta-card";
 import { WhatsappConnectPanel } from "@/components/whatsapp/connect-panel";
 import { useWhatsappConnection } from "@/hooks/use-whatsapp-connection";
 import { cn } from "@/lib/utils";
@@ -32,6 +33,7 @@ export function WhatsappTab() {
         title="Número de avisos"
         description="Opcional. Só envia lembretes e mensagens automáticas de eventos. Sem ele, esses avisos saem pelo número principal."
       />
+      <MetaCard />
     </div>
   );
 }

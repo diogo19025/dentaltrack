@@ -9,7 +9,14 @@ import type {
   WhatsappRecipient,
   WhatsappTransport,
 } from './transport/whatsapp-transport';
-import { WhatsappTransportResolver } from './transport/whatsapp-transport.resolver';
+import {
+  type WhatsappAccountSettings,
+  WhatsappTransportResolver,
+} from './transport/whatsapp-transport.resolver';
+import {
+  type MetaWebhookPayload,
+  parseMetaInbound,
+} from './meta-webhook.types';
 import {
   type EvolutionWebhookPayload,
   type ParsedInbound,
@@ -57,8 +64,18 @@ export class WhatsappService {
    */
   async handleWebhook(payload: EvolutionWebhookPayload): Promise<void> {
     const inbound = parseInboundMessage(payload);
-    if (!inbound) return;
-    await runWithContext(
+    if (inbound) await this.runInbound(inbound);
+  }
+
+  /** Webhook da Cloud API da Meta: um POST pode trazer várias mensagens. */
+  async handleMetaWebhook(payload: MetaWebhookPayload): Promise<void> {
+    for (const inbound of parseMetaInbound(payload)) {
+      await this.runInbound(inbound);
+    }
+  }
+
+  private runInbound(inbound: ParsedInbound): Promise<void> {
+    return runWithContext(
       { requestId: `wa:${inbound.messageId}`, channel: 'whatsapp' },
       () => this.processInbound(inbound),
     );
@@ -67,19 +84,50 @@ export class WhatsappService {
   /** O turno em si, já dentro do escopo de correlação. */
   private async processInbound(inbound: ParsedInbound): Promise<void> {
     const startedAt = Date.now();
-    const transport = this.transports.forEvolutionInstance(inbound.instance);
+    let transport: WhatsappTransport | null = null;
     try {
       // A empresa precisa ser conhecida antes do claim porque a unicidade é
       // `(clinicId, externalId)`: duas empresas não compartilham namespace.
-      const clinicId = await this.resolveClinicId(inbound.instance);
-      if (!clinicId) {
+      const account = await this.resolveAccount(inbound);
+      if (!account) {
         this.logger.warn(
-          `Instância "${inbound.instance}" sem empresa mapeada — ignorando.`,
+          `Número/instância "${inbound.instance}" sem empresa mapeada — ignorando.`,
         );
         return;
       }
+      const { clinicId } = account;
       setContext({ clinicId });
 
+      transport =
+        inbound.provider === 'meta'
+          ? this.transports.forMeta(account.settings)
+          : this.transports.forEvolutionInstance(inbound.instance);
+      if (!transport) {
+        this.logger.error(
+          `Empresa ${clinicId} sem credencial utilizável da Meta — mensagem ignorada.`,
+        );
+        return;
+      }
+      await this.runTurn(inbound, clinicId, transport, startedAt);
+    } catch (err) {
+      this.logger.error({
+        event: 'whatsapp.inbound',
+        outcome: 'fail',
+        durationMs: Date.now() - startedAt,
+        reason: err instanceof Error ? err.name : 'desconhecido',
+      });
+      await this.handleError(err, inbound, transport);
+    }
+  }
+
+  /** O turno já com empresa e transporte conhecidos. */
+  private async runTurn(
+    inbound: ParsedInbound,
+    clinicId: string,
+    transport: WhatsappTransport,
+    startedAt: number,
+  ): Promise<void> {
+    {
       if (!(await this.claimInbound(clinicId, inbound.messageId))) {
         this.logger.log({
           event: 'whatsapp.inbound',
@@ -166,14 +214,6 @@ export class WhatsappService {
           }
         }
       }
-    } catch (err) {
-      this.logger.error({
-        event: 'whatsapp.inbound',
-        outcome: 'fail',
-        durationMs: Date.now() - startedAt,
-        reason: err instanceof Error ? err.name : 'desconhecido',
-      });
-      await this.handleError(err, inbound, transport);
     }
   }
 
@@ -190,7 +230,7 @@ export class WhatsappService {
     if (inbound.audio) {
       const base64 = await transport.fetchInboundAudio({
         base64: inbound.audio.base64,
-        ref: inbound.audio.key,
+        ref: inbound.audio.ref,
       });
       if (!base64) {
         this.logger.warn(
@@ -204,20 +244,36 @@ export class WhatsappService {
     return null;
   }
 
-  /** Resolve a empresa dona da instância Evolution (WA-1). */
-  private async resolveClinicId(instance: string): Promise<string | null> {
-    // Os dois números da empresa resolvem para ela: o cliente que responde a um
-    // lembrete cai no mesmo fio e é atendido pelo número em que escreveu.
+  /**
+   * Resolve a empresa dona da instância Evolution (WA-1) ou do número da Meta,
+   * com as configurações que o transporte precisa.
+   */
+  private async resolveAccount(
+    inbound: ParsedInbound,
+  ): Promise<{ clinicId: string; settings: WhatsappAccountSettings } | null> {
+    const select = {
+      clinicId: true,
+      whatsappInstance: true,
+      whatsappProvider: true,
+      metaPhoneNumberId: true,
+      metaAccessTokenEnc: true,
+    } as const;
+    // Os dois números Evolution da empresa resolvem para ela: o cliente que
+    // responde a um lembrete cai no mesmo fio e é atendido pelo número em que
+    // escreveu.
     const settings = await this.prisma.clinicSettings.findFirst({
-      where: {
-        OR: [
-          { whatsappInstance: instance },
-          { whatsappAlertsInstance: instance },
-        ],
-      },
-      select: { clinicId: true },
+      where:
+        inbound.provider === 'meta'
+          ? { metaPhoneNumberId: inbound.instance, whatsappProvider: 'meta' }
+          : {
+              OR: [
+                { whatsappInstance: inbound.instance },
+                { whatsappAlertsInstance: inbound.instance },
+              ],
+            },
+      select,
     });
-    return settings?.clinicId ?? null;
+    return settings ? { clinicId: settings.clinicId, settings } : null;
   }
 
   /**
@@ -291,7 +347,7 @@ export class WhatsappService {
   private async handleError(
     err: unknown,
     inbound: ParsedInbound,
-    transport: WhatsappTransport,
+    transport: WhatsappTransport | null,
   ): Promise<void> {
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.error(
@@ -299,7 +355,7 @@ export class WhatsappService {
       err instanceof Error ? err.stack : undefined,
     );
 
-    if (err instanceof AiUnavailableError) {
+    if (transport && err instanceof AiUnavailableError) {
       await this.safeSend(
         transport,
         await transport.resolveAddress(recipientOf(inbound)),
