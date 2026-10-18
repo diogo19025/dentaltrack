@@ -326,6 +326,75 @@ describe('WhatsappService', () => {
     );
   });
 
+  it('mensagens seguidas do mesmo contato rodam em fila, não em paralelo', async () => {
+    let releaseFirst!: () => void;
+    const order: string[] = [];
+    chatMock.processInboundMessage
+      .mockImplementationOnce(async () => {
+        order.push('inicio-1');
+        await new Promise<void>((resolve) => (releaseFirst = resolve));
+        order.push('fim-1');
+        return { conversationId: 'c1', reply: '', attachments: [] };
+      })
+      .mockImplementationOnce(() => {
+        order.push('inicio-2');
+        return Promise.resolve({
+          conversationId: 'c1',
+          reply: '',
+          attachments: [],
+        });
+      });
+
+    const first = service.handleWebhook(payload());
+    const second = service.handleWebhook(
+      payload({}, { key: { remoteJid: JID, fromMe: false, id: 'MSG2' } }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(order).toEqual(['inicio-1']);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['inicio-1', 'fim-1', 'inicio-2']);
+  });
+
+  it('contatos diferentes não esperam um pelo outro', async () => {
+    let releaseFirst!: () => void;
+    const started: string[] = [];
+    chatMock.processInboundMessage
+      .mockImplementationOnce(async (input: { contactPhone: string }) => {
+        started.push(input.contactPhone);
+        await new Promise<void>((resolve) => (releaseFirst = resolve));
+        return { conversationId: 'c1', reply: '', attachments: [] };
+      })
+      .mockImplementationOnce((input: { contactPhone: string }) => {
+        started.push(input.contactPhone);
+        return Promise.resolve({
+          conversationId: 'c2',
+          reply: '',
+          attachments: [],
+        });
+      });
+
+    const first = service.handleWebhook(payload());
+    const second = service.handleWebhook(
+      payload(
+        {},
+        {
+          key: {
+            remoteJid: '5511888887777@s.whatsapp.net',
+            fromMe: false,
+            id: 'MSG3',
+          },
+        },
+      ),
+    );
+    await second;
+    expect(started).toEqual(['5511999998888', '5511888887777']);
+
+    releaseFirst();
+    await first;
+  });
+
   it('não envia quando a resposta vem vazia', async () => {
     chatMock.processInboundMessage.mockResolvedValueOnce({
       conversationId: 'c1',

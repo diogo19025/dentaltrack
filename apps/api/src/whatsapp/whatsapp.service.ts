@@ -43,6 +43,17 @@ const OPT_OUT_REPLY =
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
+  /**
+   * Último turno de cada contato. Quem escreve "oi" e "quero agendar" em
+   * seguida gera dois webhooks quase juntos; rodando em paralelo, os dois
+   * turnos criavam duas conversas e dois leads e o agente respondia duas
+   * vezes, cada resposta sem ver a outra mensagem. Em fila, o segundo turno
+   * já encontra a conversa e o histórico do primeiro.
+   *
+   * shortcut: fila em memória vale para um processo; com mais de uma réplica
+   * da API, trocar por lock no Postgres (pg_advisory_xact_lock por contato).
+   */
+  private readonly turnQueues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -75,10 +86,22 @@ export class WhatsappService {
   }
 
   private runInbound(inbound: ParsedInbound): Promise<void> {
-    return runWithContext(
-      { requestId: `wa:${inbound.messageId}`, channel: 'whatsapp' },
-      () => this.processInbound(inbound),
-    );
+    const key = `${inbound.instance}:${inbound.phone}`;
+    const previous = this.turnQueues.get(key) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() =>
+        runWithContext(
+          { requestId: `wa:${inbound.messageId}`, channel: 'whatsapp' },
+          () => this.processInbound(inbound),
+        ),
+      )
+      .finally(() => {
+        // Só o último da fila limpa a entrada; o mapa não cresce sem fim.
+        if (this.turnQueues.get(key) === current) this.turnQueues.delete(key);
+      });
+    this.turnQueues.set(key, current);
+    return current;
   }
 
   /** O turno em si, já dentro do escopo de correlação. */
@@ -127,91 +150,85 @@ export class WhatsappService {
     transport: WhatsappTransport,
     startedAt: number,
   ): Promise<void> {
-    {
-      if (!(await this.claimInbound(clinicId, inbound.messageId))) {
-        this.logger.log({
-          event: 'whatsapp.inbound',
-          outcome: 'ok',
-          reason: 'reentrega_ignorada',
-        });
-        return;
-      }
+    if (!(await this.claimInbound(clinicId, inbound.messageId))) {
       this.logger.log({
         event: 'whatsapp.inbound',
         outcome: 'ok',
-        tipo: inbound.text ? 'texto' : 'audio',
+        reason: 'reentrega_ignorada',
+      });
+      return;
+    }
+    this.logger.log({
+      event: 'whatsapp.inbound',
+      outcome: 'ok',
+      tipo: inbound.text ? 'texto' : 'audio',
+    });
+
+    // Descadastro: confirma, **persiste** e não roda o bot neste turno. A
+    // persistência é o que faz o pedido sobreviver a um restart — o que era
+    // opcional num bot receptivo e é obrigatório desde que passamos a enviar
+    // mensagem sozinhos (F9).
+    if (OptOutService.isOptOutMessage(inbound.text)) {
+      await this.optOut.optOut(clinicId, inbound.phone, 'palavra no WhatsApp');
+      await this.safeSend(
+        transport,
+        await transport.resolveAddress(recipientOf(inbound)),
+        OPT_OUT_REPLY,
+      );
+      return;
+    }
+
+    const turn = await this.buildTurn(inbound, transport);
+    if (!turn) return; // tipo não suportado / mídia indisponível
+
+    const { conversationId, reply, attachments } =
+      await this.chat.processInboundMessage({
+        clinicId,
+        channel: 'whatsapp',
+        contactPhone: inbound.phone,
+        contactName: inbound.pushName,
+        ...turn,
       });
 
-      // Descadastro: confirma, **persiste** e não roda o bot neste turno. A
-      // persistência é o que faz o pedido sobreviver a um restart — o que era
-      // opcional num bot receptivo e é obrigatório desde que passamos a enviar
-      // mensagem sozinhos (F9).
-      if (OptOutService.isOptOutMessage(inbound.text)) {
-        await this.optOut.optOut(
-          clinicId,
-          inbound.phone,
-          'palavra no WhatsApp',
-        );
-        await this.safeSend(
-          transport,
-          await transport.resolveAddress(recipientOf(inbound)),
-          OPT_OUT_REPLY,
-        );
-        return;
-      }
-
-      const turn = await this.buildTurn(inbound, transport);
-      if (!turn) return; // tipo não suportado / mídia indisponível
-
-      const { conversationId, reply, attachments } =
-        await this.chat.processInboundMessage({
-          clinicId,
-          channel: 'whatsapp',
-          contactPhone: inbound.phone,
-          contactName: inbound.pushName,
-          ...turn,
-        });
-
-      if (reply || attachments.length > 0) {
-        const target = await transport.resolveAddress(recipientOf(inbound));
-        if (reply) {
-          try {
-            await transport.sendText(target, reply);
-          } catch (err) {
-            await this.queueFailedReply({
-              clinicId,
-              conversationId,
-              messageId: inbound.messageId,
-              phone: inbound.phone,
-              body: reply,
-              err,
-            });
-            // Sem o texto, os anexos de saudação/oferta perderiam contexto.
-            // A fila recupera o texto; mídia continua best-effort e não sai só.
-            return;
-          }
-          // Fecha o fluxo `whatsapp.inbound → ai.reply → whatsapp.outbound`: com
-          // esta linha dá para afirmar que a resposta saiu, e sem ela dá para
-          // afirmar que não saiu — que é a pergunta que o suporte faz.
-          this.logger.log({
-            event: 'whatsapp.outbound',
-            outcome: 'ok',
-            durationMs: Date.now() - startedAt,
-            anexos: attachments.length,
+    if (reply || attachments.length > 0) {
+      const target = await transport.resolveAddress(recipientOf(inbound));
+      if (reply) {
+        try {
+          await transport.sendText(target, reply);
+        } catch (err) {
+          await this.queueFailedReply({
+            clinicId,
+            conversationId,
+            messageId: inbound.messageId,
+            phone: inbound.phone,
+            body: reply,
+            err,
           });
+          // Sem o texto, os anexos de saudação/oferta perderiam contexto.
+          // A fila recupera o texto; mídia continua best-effort e não sai só.
+          return;
         }
-        // Mídia da saudação/oferta (F6): enviada após o texto, uma a uma.
-        // Best-effort — a falha de um anexo não impede os demais nem a resposta.
-        for (const media of attachments) {
-          try {
-            await transport.sendMedia(target, media);
-          } catch (mediaErr) {
-            const detail =
-              mediaErr instanceof Error ? mediaErr.message : String(mediaErr);
-            this.logger.error(
-              `Falha ao enviar mídia (${media.type}) ao ${inbound.phone}: ${detail}`,
-            );
-          }
+        // Fecha o fluxo `whatsapp.inbound → ai.reply → whatsapp.outbound`: com
+        // esta linha dá para afirmar que a resposta saiu, e sem ela dá para
+        // afirmar que não saiu — que é a pergunta que o suporte faz.
+        this.logger.log({
+          event: 'whatsapp.outbound',
+          outcome: 'ok',
+          durationMs: Date.now() - startedAt,
+          anexos: attachments.length,
+        });
+      }
+      // Mídia da saudação/oferta (F6): enviada após o texto, uma a uma.
+      // Best-effort — a falha de um anexo não impede os demais nem a resposta.
+      for (const media of attachments) {
+        try {
+          await transport.sendMedia(target, media);
+        } catch (mediaErr) {
+          const detail =
+            mediaErr instanceof Error ? mediaErr.message : String(mediaErr);
+          this.logger.error(
+            `Falha ao enviar mídia (${media.type}) ao ${inbound.phone}: ${detail}`,
+          );
         }
       }
     }
