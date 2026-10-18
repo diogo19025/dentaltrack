@@ -42,7 +42,6 @@ export const metricsKpisSchema = z.object({
   inProgress: kpiSchema,
   notCompleted: kpiSchema,
 });
-export type MetricsKpis = z.infer<typeof metricsKpisSchema>;
 
 /** Série de linha: mensagens por dia, bot × cliente. */
 export const lineSeriesSchema = z.object({

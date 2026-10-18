@@ -87,13 +87,6 @@ export const whatsappConnectionSchema = z.object({
 export type WhatsappConnection = z.infer<typeof whatsappConnectionSchema>;
 
 /**
- * POST /whatsapp/connection — cria a instância (se preciso) e devolve o QR.
- * Sem corpo: o nome da instância vem da empresa autenticada.
- */
-export const connectWhatsappResultSchema = whatsappConnectionSchema;
-export type ConnectWhatsappResult = z.infer<typeof connectWhatsappResultSchema>;
-
-/**
  * Resposta do dono à pergunta do primeiro acesso. `tem_numero` leva ao QR;
  * `nao_tem` registra que ele foi perguntado e encerra o assunto — o produto
  * segue funcionando inteiro no canal web.
@@ -109,9 +102,6 @@ export type WhatsappOnboardingAnswer =
 export const answerWhatsappOnboardingSchema = z.object({
   answer: whatsappOnboardingAnswerSchema,
 });
-export type AnswerWhatsappOnboardingInput = z.infer<
-  typeof answerWhatsappOnboardingSchema
->;
 
 /**
  * Cloud API oficial da Meta (provedor alternativo à Evolution).
@@ -123,7 +113,6 @@ export type AnswerWhatsappOnboardingInput = z.infer<
  */
 export const WHATSAPP_PROVIDERS = ["evolution", "meta"] as const;
 export const whatsappProviderSchema = z.enum(WHATSAPP_PROVIDERS);
-export type WhatsappProvider = (typeof WHATSAPP_PROVIDERS)[number];
 
 /** PUT /whatsapp/meta — credenciais da empresa na Meta. */
 export const saveMetaCredentialsSchema = z.object({
@@ -163,6 +152,5 @@ export const metaConnectionSchema = z.object({
   serverReady: z.boolean(),
   /** URL que a empresa cadastra como webhook no app da Meta. */
   webhookUrl: z.string().nullable(),
-  lastError: z.string().nullable(),
 });
 export type MetaConnection = z.infer<typeof metaConnectionSchema>;

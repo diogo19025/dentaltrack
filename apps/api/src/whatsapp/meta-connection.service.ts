@@ -55,7 +55,6 @@ export class MetaConnectionService {
       verifiedName: s?.metaVerifiedName ?? null,
       serverReady: this.serverReady(),
       webhookUrl: this.webhookUrl(),
-      lastError: null,
     };
   }
 

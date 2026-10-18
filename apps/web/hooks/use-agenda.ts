@@ -1,11 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  AgendaResponse,
-  AppointmentSummary,
-  Availability,
-} from "@dentaltrack/shared";
+import type { AgendaResponse, AppointmentSummary } from "@dentaltrack/shared";
 import { apiFetch } from "@/lib/api-client";
 
 const AGENDA_KEY = ["agenda"] as const;
@@ -19,23 +15,11 @@ export function useAgenda(from?: string, to?: string) {
 
   return useQuery({
     queryKey: [...AGENDA_KEY, from ?? "hoje", to ?? "7d"],
-    queryFn: () => apiFetch<AgendaResponse>(`/agenda${query ? `?${query}` : ""}`),
+    queryFn: () =>
+      apiFetch<AgendaResponse>(`/agenda${query ? `?${query}` : ""}`),
     // A sincronização com o sistema de gestão roda a cada 10 minutos; recarregar
     // no mesmo ritmo mantém a tela coerente sem martelar a API.
     refetchInterval: 60_000,
-  });
-}
-
-/**
- * Horários livres (GET /agenda/disponibilidade) — o mesmo dado que o agente
- * usa. Mostrar isto na tela é o que permite ao dono conferir o que o bot está
- * oferecendo aos clientes dele.
- */
-export function useAvailability(days = 10) {
-  return useQuery({
-    queryKey: [...AGENDA_KEY, "disponibilidade", days],
-    queryFn: () =>
-      apiFetch<Availability>(`/agenda/disponibilidade?dias=${days}`),
   });
 }
 

@@ -126,13 +126,11 @@ export const simpleRuleSchema = z.object({
   enabled: z.boolean(),
   template: templateSchema,
 });
-export type SimpleRule = z.infer<typeof simpleRuleSchema>;
 
 /** Atraso: quantos minutos de tolerância antes de mandar a mensagem. */
 export const lateRuleSchema = simpleRuleSchema.extend({
   toleranceMinutes: z.number().int().min(5).max(120),
 });
-export type LateRule = z.infer<typeof lateRuleSchema>;
 
 /**
  * Falta: cadência de remarcação. `attempts` é teto rígido (máx. 3) e a cadência
@@ -143,7 +141,6 @@ export const noShowRuleSchema = simpleRuleSchema.extend({
   attempts: z.number().int().min(1).max(3),
   intervalHours: z.number().int().min(1).max(168),
 });
-export type NoShowRule = z.infer<typeof noShowRuleSchema>;
 
 /**
  * Retorno: N dias após um atendimento concluído, se não houver consulta futura.
@@ -154,7 +151,6 @@ export const recallRuleSchema = simpleRuleSchema.extend({
   afterDays: z.number().int().min(1).max(365),
   procedureKeywords: z.array(z.string().trim().min(1)).max(30),
 });
-export type RecallRule = z.infer<typeof recallRuleSchema>;
 
 /** Configuração completa das automações de uma empresa. */
 export const automationSettingsSchema = z.object({
@@ -254,7 +250,6 @@ export const OUTBOUND_STATUSES = [
   "suprimido",
 ] as const;
 export const outboundStatusSchema = z.enum(OUTBOUND_STATUSES);
-export type OutboundStatus = (typeof OUTBOUND_STATUSES)[number];
 
 export const OUTBOUND_SUPPRESSION_REASONS = [
   "opt_out",

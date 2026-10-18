@@ -40,7 +40,6 @@ const base: MetaConnection = {
   verifiedName: null,
   serverReady: true,
   webhookUrl: "https://api.exemplo.com/whatsapp/meta/webhook",
-  lastError: null,
 };
 
 afterEach(() => {

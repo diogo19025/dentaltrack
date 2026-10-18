@@ -36,7 +36,6 @@ export type ProcedureDto = z.infer<typeof procedureSchema>;
 export const importProceduresSchema = z.object({
   names: z.array(z.string().trim().min(1).max(120)).min(1).max(300),
 });
-export type ImportProceduresInput = z.infer<typeof importProceduresSchema>;
 
 /** Resultado da importação — o que entrou e o que já existia. */
 export const importProceduresResultSchema = z.object({
@@ -62,8 +61,13 @@ export const createProcedureSchema = z
   })
   .refine(
     (p) =>
-      p.priceMinCents == null || p.priceMaxCents == null || p.priceMaxCents >= p.priceMinCents,
-    { message: "O preço máximo não pode ser menor que o mínimo.", path: ["priceMaxCents"] },
+      p.priceMinCents == null ||
+      p.priceMaxCents == null ||
+      p.priceMaxCents >= p.priceMinCents,
+    {
+      message: "O preço máximo não pode ser menor que o mínimo.",
+      path: ["priceMaxCents"],
+    },
   );
 export type CreateProcedureInput = z.infer<typeof createProcedureSchema>;
 
