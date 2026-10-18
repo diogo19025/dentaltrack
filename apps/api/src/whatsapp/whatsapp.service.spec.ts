@@ -1,3 +1,7 @@
+import {
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { AiUnavailableError } from '../ai/generate-reply';
@@ -324,6 +328,34 @@ describe('WhatsappService', () => {
       '5511999998888',
       expect.stringContaining('instabilidade'),
     );
+  });
+
+  it('áudio que a transcrição não entendeu: pede para escrever', async () => {
+    chatMock.processInboundMessage.mockRejectedValueOnce(
+      new UnprocessableEntityException('Não foi possível entender o áudio.'),
+    );
+    await service.handleWebhook(payload());
+    expect(evolutionMock.sendText).toHaveBeenCalledWith(
+      'dentaltrack',
+      '5511999998888',
+      expect.stringContaining('escrever'),
+    );
+  });
+
+  it('transcrição indisponível ou erro de banco: o cliente não fica sem resposta', async () => {
+    chatMock.processInboundMessage
+      .mockRejectedValueOnce(new ServiceUnavailableException('stt fora'))
+      .mockRejectedValueOnce(new Error('db down'));
+
+    await service.handleWebhook(payload());
+    await service.handleWebhook(
+      payload({}, { key: { remoteJid: JID, fromMe: false, id: 'MSG2' } }),
+    );
+
+    expect(evolutionMock.sendText).toHaveBeenCalledTimes(2);
+    for (const call of evolutionMock.sendText.mock.calls) {
+      expect(call[2]).toContain('instabilidade');
+    }
   });
 
   it('mensagens seguidas do mesmo contato rodam em fila, não em paralelo', async () => {

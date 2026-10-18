@@ -1,5 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { AiUnavailableError } from '../ai/generate-reply';
+import {
+  Injectable,
+  Logger,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { OptOutService } from '../automations/opt-out.service';
 import { OutboundService } from '../automations/outbound.service';
 import { ChatService } from '../chat/chat.service';
@@ -27,6 +30,10 @@ import {
 const INBOUND_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 /** Resposta quando a IA está indisponível (mantém o cliente informado). */
+/** Áudio que a transcrição não entendeu: pedir por escrito, não fingir que ouviu. */
+const AUDIO_NOT_UNDERSTOOD =
+  'Não consegui entender o seu áudio. Pode me escrever a mensagem?';
+
 const AI_FALLBACK =
   'Estou com uma instabilidade no momento e já volto a responder. Sua mensagem foi registrada. 🙏';
 
@@ -372,12 +379,25 @@ export class WhatsappService {
       err instanceof Error ? err.stack : undefined,
     );
 
-    if (transport && err instanceof AiUnavailableError) {
+    // Qualquer falha responde: o webhook já recebeu 200 e a mensagem não será
+    // reentregue, então silêncio aqui é o cliente sem resposta para sempre.
+    // Antes só a IA indisponível respondia; áudio que falhou na transcrição
+    // (503/422) e erro de banco terminavam mudos.
+    if (!transport) return;
+    const text =
+      err instanceof UnprocessableEntityException
+        ? AUDIO_NOT_UNDERSTOOD
+        : AI_FALLBACK;
+    try {
       await this.safeSend(
         transport,
         await transport.resolveAddress(recipientOf(inbound)),
-        AI_FALLBACK,
+        text,
       );
+    } catch (sendErr) {
+      const detail =
+        sendErr instanceof Error ? sendErr.message : String(sendErr);
+      this.logger.error(`Falha ao avisar o cliente do erro: ${detail}`);
     }
   }
 
