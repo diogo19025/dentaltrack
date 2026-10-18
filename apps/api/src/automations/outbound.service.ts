@@ -650,7 +650,12 @@ export class OutboundService {
 
   /** Falha de transporte: reagenda algumas vezes antes de desistir. */
   private async handleFailure(
-    message: { id: string; retries: number; kind: AutomationKind },
+    message: {
+      id: string;
+      clinicId: string;
+      retries: number;
+      kind: AutomationKind;
+    },
     err: unknown,
   ): Promise<'falhou'> {
     const detail = err instanceof Error ? err.message : String(err);
@@ -658,18 +663,35 @@ export class OutboundService {
     this.logger.error(
       `Falha ao enviar automação ${message.kind} (${message.id}): ${detail}`,
     );
+    if (!canRetry) {
+      await this.prisma.outboundMessage.update({
+        where: { id: message.id },
+        data: { status: 'falhou', error: detail.slice(0, 500) },
+      });
+      return 'falhou';
+    }
+
+    // A retentativa passa pela mesma janela de envio da primeira tentativa:
+    // um lembrete que falhou às 19h58 não pode sair às 20h08, nem de
+    // madrugada se o WhatsApp ficou fora do ar. A resposta reativa não espera.
+    const retryAt = new Date(Date.now() + RETRY_DELAY_MS);
+    const scheduledFor = isReactiveKind(message.kind)
+      ? retryAt
+      : await this.nextAllowedSlot(
+          message.clinicId,
+          retryAt,
+          await this.settings.get(message.clinicId),
+        );
     await this.prisma.outboundMessage.update({
       where: { id: message.id },
-      data: canRetry
-        ? {
-            // Devolve o claim: a linha estava em `enviando` e precisa voltar
-            // para a fila, senão o reenvio nunca aconteceria.
-            status: 'pendente',
-            retries: { increment: 1 },
-            scheduledFor: new Date(Date.now() + RETRY_DELAY_MS),
-            error: detail.slice(0, 500),
-          }
-        : { status: 'falhou', error: detail.slice(0, 500) },
+      data: {
+        // Devolve o claim: a linha estava em `enviando` e precisa voltar
+        // para a fila, senão o reenvio nunca aconteceria.
+        status: 'pendente',
+        retries: { increment: 1 },
+        scheduledFor,
+        error: detail.slice(0, 500),
+      },
     });
     return 'falhou';
   }
