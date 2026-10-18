@@ -25,6 +25,10 @@ import type { Env } from '../config/env.validation';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
+import {
+  META_OUTSIDE_WINDOW,
+  MetaRequestError,
+} from '../whatsapp/transport/meta.transport';
 import type { WhatsappTransport } from '../whatsapp/transport/whatsapp-transport';
 import { AutomationSettingsService } from './automation-settings.service';
 import { reminderKey } from './automation-keys';
@@ -658,8 +662,17 @@ export class OutboundService {
     },
     err: unknown,
   ): Promise<'falhou'> {
-    const detail = err instanceof Error ? err.message : String(err);
-    const canRetry = message.retries < MAX_TRANSPORT_RETRIES;
+    // Fora da janela de 24 horas a Meta só aceita template: repetir o mesmo
+    // texto daqui a dez minutos dá o mesmo erro, então desiste já.
+    const outsideMetaWindow =
+      err instanceof MetaRequestError && err.code === META_OUTSIDE_WINDOW;
+    const detail = outsideMetaWindow
+      ? 'Fora da janela de 24 horas da Meta: só mensagem de modelo (template) é aceita.'
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    const canRetry =
+      !outsideMetaWindow && message.retries < MAX_TRANSPORT_RETRIES;
     this.logger.error(
       `Falha ao enviar automação ${message.kind} (${message.id}): ${detail}`,
     );
