@@ -25,6 +25,10 @@ import type { Env } from '../config/env.validation';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
+import {
+  META_OUTSIDE_WINDOW,
+  MetaRequestError,
+} from '../whatsapp/transport/meta.transport';
 import type { WhatsappTransport } from '../whatsapp/transport/whatsapp-transport';
 import { AutomationSettingsService } from './automation-settings.service';
 import { reminderKey } from './automation-keys';
@@ -420,10 +424,17 @@ export class OutboundService {
 
     const settings = await this.prisma.clinicSettings.findUnique({
       where: { clinicId },
-      select: { whatsappInstance: true, whatsappAlertsInstance: true },
+      select: {
+        whatsappInstance: true,
+        whatsappAlertsInstance: true,
+        whatsappProvider: true,
+        metaPhoneNumberId: true,
+        metaAccessTokenEnc: true,
+      },
     });
     if (
       !this.transports.forSettings({
+        ...settings,
         whatsappInstance: this.outboundInstance(settings, kind),
       })
     ) {
@@ -545,10 +556,17 @@ export class OutboundService {
   }): Promise<'enviado' | 'suprimido' | 'falhou'> {
     const clinic = await this.prisma.clinicSettings.findUnique({
       where: { clinicId: message.clinicId },
-      select: { whatsappInstance: true, whatsappAlertsInstance: true },
+      select: {
+        whatsappInstance: true,
+        whatsappAlertsInstance: true,
+        whatsappProvider: true,
+        metaPhoneNumberId: true,
+        metaAccessTokenEnc: true,
+      },
     });
     const instance = this.outboundInstance(clinic, message.kind);
     const transport = this.transports.forSettings({
+      ...clinic,
       whatsappInstance: instance,
     });
     if (!transport || !message.phone) {
@@ -580,6 +598,7 @@ export class OutboundService {
       // Número de avisos fora do ar não pode calar os lembretes: tenta uma vez
       // pelo principal antes de entrar na fila de retentativa.
       const fallback =
+        clinic?.whatsappProvider !== 'meta' &&
         instance === clinic?.whatsappAlertsInstance
           ? this.transports.forSettings({
               whatsappInstance: clinic.whatsappInstance,
@@ -635,26 +654,57 @@ export class OutboundService {
 
   /** Falha de transporte: reagenda algumas vezes antes de desistir. */
   private async handleFailure(
-    message: { id: string; retries: number; kind: AutomationKind },
+    message: {
+      id: string;
+      clinicId: string;
+      retries: number;
+      kind: AutomationKind;
+    },
     err: unknown,
   ): Promise<'falhou'> {
-    const detail = err instanceof Error ? err.message : String(err);
-    const canRetry = message.retries < MAX_TRANSPORT_RETRIES;
+    // Fora da janela de 24 horas a Meta só aceita template: repetir o mesmo
+    // texto daqui a dez minutos dá o mesmo erro, então desiste já.
+    const outsideMetaWindow =
+      err instanceof MetaRequestError && err.code === META_OUTSIDE_WINDOW;
+    const detail = outsideMetaWindow
+      ? 'Fora da janela de 24 horas da Meta: só mensagem de modelo (template) é aceita.'
+      : err instanceof Error
+        ? err.message
+        : String(err);
+    const canRetry =
+      !outsideMetaWindow && message.retries < MAX_TRANSPORT_RETRIES;
     this.logger.error(
       `Falha ao enviar automação ${message.kind} (${message.id}): ${detail}`,
     );
+    if (!canRetry) {
+      await this.prisma.outboundMessage.update({
+        where: { id: message.id },
+        data: { status: 'falhou', error: detail.slice(0, 500) },
+      });
+      return 'falhou';
+    }
+
+    // A retentativa passa pela mesma janela de envio da primeira tentativa:
+    // um lembrete que falhou às 19h58 não pode sair às 20h08, nem de
+    // madrugada se o WhatsApp ficou fora do ar. A resposta reativa não espera.
+    const retryAt = new Date(Date.now() + RETRY_DELAY_MS);
+    const scheduledFor = isReactiveKind(message.kind)
+      ? retryAt
+      : await this.nextAllowedSlot(
+          message.clinicId,
+          retryAt,
+          await this.settings.get(message.clinicId),
+        );
     await this.prisma.outboundMessage.update({
       where: { id: message.id },
-      data: canRetry
-        ? {
-            // Devolve o claim: a linha estava em `enviando` e precisa voltar
-            // para a fila, senão o reenvio nunca aconteceria.
-            status: 'pendente',
-            retries: { increment: 1 },
-            scheduledFor: new Date(Date.now() + RETRY_DELAY_MS),
-            error: detail.slice(0, 500),
-          }
-        : { status: 'falhou', error: detail.slice(0, 500) },
+      data: {
+        // Devolve o claim: a linha estava em `enviando` e precisa voltar
+        // para a fila, senão o reenvio nunca aconteceria.
+        status: 'pendente',
+        retries: { increment: 1 },
+        scheduledFor,
+        error: detail.slice(0, 500),
+      },
     });
     return 'falhou';
   }

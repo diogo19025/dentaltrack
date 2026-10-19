@@ -1,3 +1,8 @@
+import {
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { AiUnavailableError } from '../ai/generate-reply';
 import { OptOutService } from '../automations/opt-out.service';
@@ -30,6 +35,7 @@ function payload(
 
 describe('WhatsappService', () => {
   let service: WhatsappService;
+  let resolver: WhatsappTransportResolver;
   const prismaMock = {
     clinicSettings: { findFirst: jest.fn() },
     inboundMessage: { create: jest.fn(), deleteMany: jest.fn() },
@@ -67,12 +73,14 @@ describe('WhatsappService', () => {
         { provide: PrismaService, useValue: prismaMock },
         { provide: ChatService, useValue: chatMock },
         { provide: EvolutionService, useValue: evolutionMock },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
         WhatsappTransportResolver,
         { provide: OptOutService, useValue: optOutMock },
         { provide: OutboundService, useValue: outboundMock },
       ],
     }).compile();
     service = moduleRef.get(WhatsappService);
+    resolver = moduleRef.get(WhatsappTransportResolver);
   });
 
   it('resolve a empresa pela instância, roda o motor e envia a resposta', async () => {
@@ -85,7 +93,7 @@ describe('WhatsappService', () => {
           { whatsappAlertsInstance: 'dentaltrack' },
         ],
       },
-      select: { clinicId: true },
+      select: expect.objectContaining({ clinicId: true }),
     });
     expect(chatMock.processInboundMessage).toHaveBeenCalledWith({
       clinicId: CLINIC_ID,
@@ -99,6 +107,87 @@ describe('WhatsappService', () => {
       '5511999998888',
       'Claro! Para quando?',
     );
+  });
+
+  describe('Cloud API da Meta', () => {
+    const META_PAYLOAD = {
+      object: 'whatsapp_business_account',
+      entry: [
+        {
+          changes: [
+            {
+              field: 'messages',
+              value: {
+                metadata: { phone_number_id: '1055' },
+                contacts: [
+                  { wa_id: '5511999998888', profile: { name: 'João' } },
+                ],
+                messages: [
+                  {
+                    id: 'wamid.1',
+                    from: '5511999998888',
+                    type: 'text',
+                    text: { body: 'Quero agendar' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const metaTransport = {
+      resolveAddress: jest.fn((r: { phone: string }) =>
+        Promise.resolve(r.phone),
+      ),
+      sendText: jest.fn().mockResolvedValue(undefined),
+      sendMedia: jest.fn(),
+      fetchInboundAudio: jest.fn(),
+    };
+
+    it('acha a empresa pelo número da Meta, roda o motor e responde pelo transporte da Meta', async () => {
+      const forMeta = jest
+        .spyOn(resolver, 'forMeta')
+        .mockReturnValue(metaTransport);
+
+      await service.handleMetaWebhook(META_PAYLOAD);
+
+      expect(prismaMock.clinicSettings.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { metaPhoneNumberId: '1055', whatsappProvider: 'meta' },
+        }),
+      );
+      expect(forMeta).toHaveBeenCalled();
+      expect(chatMock.processInboundMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          clinicId: CLINIC_ID,
+          contactPhone: '5511999998888',
+          message: 'Quero agendar',
+        }),
+      );
+      expect(metaTransport.sendText).toHaveBeenCalledWith(
+        '5511999998888',
+        'Claro! Para quando?',
+      );
+      expect(evolutionMock.sendText).not.toHaveBeenCalled();
+    });
+
+    it('sem credencial utilizável: ignora a mensagem, sem rodar o motor', async () => {
+      jest.spyOn(resolver, 'forMeta').mockReturnValue(null);
+
+      await service.handleMetaWebhook(META_PAYLOAD);
+
+      expect(chatMock.processInboundMessage).not.toHaveBeenCalled();
+    });
+
+    it('reentrega do mesmo wamid é ignorada', async () => {
+      jest.spyOn(resolver, 'forMeta').mockReturnValue(metaTransport);
+      prismaMock.inboundMessage.create.mockRejectedValueOnce({ code: 'P2002' });
+
+      await service.handleMetaWebhook(META_PAYLOAD);
+
+      expect(chatMock.processInboundMessage).not.toHaveBeenCalled();
+    });
   });
 
   it('cliente que responde ao número de avisos é atendido por esse mesmo número', async () => {
@@ -239,6 +328,103 @@ describe('WhatsappService', () => {
       '5511999998888',
       expect.stringContaining('instabilidade'),
     );
+  });
+
+  it('áudio que a transcrição não entendeu: pede para escrever', async () => {
+    chatMock.processInboundMessage.mockRejectedValueOnce(
+      new UnprocessableEntityException('Não foi possível entender o áudio.'),
+    );
+    await service.handleWebhook(payload());
+    expect(evolutionMock.sendText).toHaveBeenCalledWith(
+      'dentaltrack',
+      '5511999998888',
+      expect.stringContaining('escrever'),
+    );
+  });
+
+  it('transcrição indisponível ou erro de banco: o cliente não fica sem resposta', async () => {
+    chatMock.processInboundMessage
+      .mockRejectedValueOnce(new ServiceUnavailableException('stt fora'))
+      .mockRejectedValueOnce(new Error('db down'));
+
+    await service.handleWebhook(payload());
+    await service.handleWebhook(
+      payload({}, { key: { remoteJid: JID, fromMe: false, id: 'MSG2' } }),
+    );
+
+    expect(evolutionMock.sendText).toHaveBeenCalledTimes(2);
+    for (const call of evolutionMock.sendText.mock.calls) {
+      expect(call[2]).toContain('instabilidade');
+    }
+  });
+
+  it('mensagens seguidas do mesmo contato rodam em fila, não em paralelo', async () => {
+    let releaseFirst!: () => void;
+    const order: string[] = [];
+    chatMock.processInboundMessage
+      .mockImplementationOnce(async () => {
+        order.push('inicio-1');
+        await new Promise<void>((resolve) => (releaseFirst = resolve));
+        order.push('fim-1');
+        return { conversationId: 'c1', reply: '', attachments: [] };
+      })
+      .mockImplementationOnce(() => {
+        order.push('inicio-2');
+        return Promise.resolve({
+          conversationId: 'c1',
+          reply: '',
+          attachments: [],
+        });
+      });
+
+    const first = service.handleWebhook(payload());
+    const second = service.handleWebhook(
+      payload({}, { key: { remoteJid: JID, fromMe: false, id: 'MSG2' } }),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(order).toEqual(['inicio-1']);
+
+    releaseFirst();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['inicio-1', 'fim-1', 'inicio-2']);
+  });
+
+  it('contatos diferentes não esperam um pelo outro', async () => {
+    let releaseFirst!: () => void;
+    const started: string[] = [];
+    chatMock.processInboundMessage
+      .mockImplementationOnce(async (input: { contactPhone: string }) => {
+        started.push(input.contactPhone);
+        await new Promise<void>((resolve) => (releaseFirst = resolve));
+        return { conversationId: 'c1', reply: '', attachments: [] };
+      })
+      .mockImplementationOnce((input: { contactPhone: string }) => {
+        started.push(input.contactPhone);
+        return Promise.resolve({
+          conversationId: 'c2',
+          reply: '',
+          attachments: [],
+        });
+      });
+
+    const first = service.handleWebhook(payload());
+    const second = service.handleWebhook(
+      payload(
+        {},
+        {
+          key: {
+            remoteJid: '5511888887777@s.whatsapp.net',
+            fromMe: false,
+            id: 'MSG3',
+          },
+        },
+      ),
+    );
+    await second;
+    expect(started).toEqual(['5511999998888', '5511888887777']);
+
+    releaseFirst();
+    await first;
   });
 
   it('não envia quando a resposta vem vazia', async () => {

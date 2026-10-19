@@ -35,6 +35,7 @@ Railway substituiu VPS/Render porque a Evolution precisa de serviço always-on s
 | `LLM_PROVIDER` · `OPENAI_API_KEY` | sim | `openai` é o primário (LGPD). `LLM_FALLBACK_PROVIDER` + `GOOGLE_GENERATIVE_AI_API_KEY`/`GROQ_API_KEY` opcionais. `mock` só para testes. |
 | `CORS_ORIGIN` | sim | Domínio da Vercel. |
 | `EVOLUTION_API_URL` · `EVOLUTION_API_KEY` · `EVOLUTION_WEBHOOK_TOKEN` | para WhatsApp | Sem URL/KEY o WhatsApp fica inativo. O token é o header `x-evolution-token` que a instância envia; **obrigatório em produção**: sem ele o webhook responde 401 a tudo (falha fechada), porque qualquer pessoa que saiba o nome da instância forjaria mensagens. |
+| `META_APP_SECRET` · `META_WEBHOOK_VERIFY_TOKEN` · `META_GRAPH_VERSION` | para a API da Meta | Segredo do app (assina o webhook, `X-Hub-Signature-256`) e token da verificação do webhook. Sem os dois o webhook da Meta recusa tudo, em qualquer ambiente, e a tela não deixa salvar credencial. Versão default `v21.0`. O token de cada empresa fica cifrado no banco (`INTEGRATION_ENCRYPTION_KEY`). |
 | `API_PUBLIC_URL` | para parear | URL pública desta API, destino do webhook criado pelo QR. Sem ela o botão "Gerar QR code" fica indisponível e a tela explica. Dev com Docker: `http://host.docker.internal:3001`. |
 | `INTEGRATION_ENCRYPTION_KEY` | para agenda live | 32 bytes (64 hex). Sem ela a empresa não consegue salvar credencial: falhar fechado é melhor do que guardar segredo em texto. `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. Hoje é `optional()` na validação de env e só falha em runtime. |
 | `GOOGLE_CALENDAR_SA_EMAIL` · `GOOGLE_CALENDAR_SA_KEY` | para Google Agenda | Service account (ver § Agenda). PEM com `\n` escapado ou em base64. Sem elas o provedor `google` fica indisponível e a tela avisa. |
@@ -106,6 +107,19 @@ Evolution API (Baileys) conecta como um "WhatsApp Web" do número dedicado e pos
 ### Parear (o caminho normal)
 
 Primeiro acesso, ou `Configurações → WhatsApp → Gerar QR code`. Requer `EVOLUTION_API_URL`, `EVOLUTION_API_KEY` e `API_PUBLIC_URL`. A tela cria a instância já com o webhook apontado, renova o QR sozinho (~1 min), vira para "Conectado" por polling de 3 s e grava o vínculo. O nome da instância é derivado da empresa (`slug-<id8>`). Reconectar, desconectar e trocar de número ficam na mesma aba. Um número por empresa.
+
+### API oficial da Meta (Cloud API)
+
+Alternativa à Evolution, escolhida por empresa (`clinic_settings.whatsapp_provider`). O motor e a fila não mudam; só o transporte (`whatsapp/transport/meta.transport.ts`).
+
+1. **No servidor:** `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `INTEGRATION_ENCRYPTION_KEY` e `API_PUBLIC_URL`.
+2. **No app da Meta (Meta for Developers → WhatsApp → Configuration):** webhook em `<API_PUBLIC_URL>/whatsapp/meta/webhook`, verify token = `META_WEBHOOK_VERIFY_TOKEN`, assinar o campo `messages`. A URL exata aparece no cartão da tela.
+3. **Na tela (`Configurações → WhatsApp → API oficial da Meta`):** ID do número, ID da conta WhatsApp Business e um token **permanente** de usuário do sistema com `whatsapp_business_messaging`. A API valida contra a Meta antes de gravar e cifra o token. Salvar **não** troca o provedor.
+4. **Escolher o provedor ativo (`Configurações → WhatsApp → Provedor ativo`, `PUT /whatsapp/provider`):** QR code (Evolution) × Meta. As duas configurações coexistem; trocar não apaga nada, e a Meta só pode ser ativada com credencial salva (422 sem ela). "Remover credenciais" apaga o token e, se a Meta era a ativa, volta ao QR code.
+
+**Limite atual: janela de 24 horas.** A Meta só aceita texto livre até 24 h depois da última mensagem do cliente; fora disso exige template aprovado (erro `131047`). Respostas do agente funcionam; lembretes e automações fora da janela **falham** e vão para a retentativa da fila até virar `falhou`. Não ligue automações numa empresa na Meta antes do suporte a templates. O número de avisos (segundo número) é só da Evolution por enquanto.
+
+Webhook: `GET /whatsapp/meta/webhook` responde o `hub.challenge`; `POST` exige a assinatura HMAC do corpo bruto (`rawBody` ligado no `main.ts`), responde 200 e processa em segundo plano, com dedupe pelo `wamid`.
 
 ### Dev local (Evolution em Docker)
 

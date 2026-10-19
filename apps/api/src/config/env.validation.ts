@@ -85,6 +85,18 @@ export const envSchema = z.object({
   // Opcional no boot, mas em produção o webhook recusa tudo sem ele.
   EVOLUTION_WEBHOOK_TOKEN: z.string().optional(),
 
+  // --- Cloud API oficial da Meta (provedor alternativo de WhatsApp) ---
+  // Segredo do app da Meta: assina o corpo de cada webhook (X-Hub-Signature-256).
+  // Sem ele o webhook da Meta recusa tudo.
+  META_APP_SECRET: z.string().optional(),
+  // Token que a Meta devolve na verificacao do webhook (GET hub.verify_token).
+  META_WEBHOOK_VERIFY_TOKEN: z.string().optional(),
+  // Versao da Graph API (ex.: v21.0).
+  META_GRAPH_VERSION: z
+    .string()
+    .regex(/^v\d+\.\d+$/)
+    .optional(),
+
   // --- F9: agenda, integracao e automacoes ---
   // Chave AES-256 (32 bytes: 64 hex ou 44 base64) que cifra as credenciais da
   // integracao no banco. Sem ela a empresa nao consegue salvar credencial —

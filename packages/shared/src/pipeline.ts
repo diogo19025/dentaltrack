@@ -21,11 +21,6 @@ export const FUNNEL_STAGES = [
 export const funnelStageSchema = z.enum(FUNNEL_STAGES);
 export type FunnelStage = (typeof FUNNEL_STAGES)[number];
 
-/** Posição de um estágio do sistema no funil (0 = topo). */
-export function funnelStageRank(stage: FunnelStage): number {
-  return FUNNEL_STAGES.indexOf(stage);
-}
-
 /** Nome padrão (editável pelo dono) de cada coluna do sistema. */
 export const FUNNEL_STAGE_DEFAULT_NAMES: Record<FunnelStage, string> = {
   novo_contato: "Novo contato",
@@ -41,7 +36,6 @@ export const MAX_PIPELINE_STAGES = 10;
 /** Origem do card e de seu último movimento: detector (auto) ou dono (manual). */
 export const PIPELINE_SOURCES = ["auto", "manual"] as const;
 export const pipelineSourceSchema = z.enum(PIPELINE_SOURCES);
-export type PipelineSource = (typeof PIPELINE_SOURCES)[number];
 
 /** Uma coluna do board. `systemStage` null = coluna criada pelo dono. */
 export const pipelineStageSchema = z.object({
@@ -103,7 +97,9 @@ export type MovePipelineCardInput = z.infer<typeof movePipelineCardSchema>;
 export const createPipelineStageSchema = z.object({
   name: z.string().trim().min(1, "Informe o nome da coluna.").max(40),
 });
-export type CreatePipelineStageInput = z.infer<typeof createPipelineStageSchema>;
+export type CreatePipelineStageInput = z.infer<
+  typeof createPipelineStageSchema
+>;
 
 /** Corpo de PATCH /pipeline/stages/:id — renomear (vale p/ colunas do sistema). */
 export const renamePipelineStageSchema = createPipelineStageSchema;

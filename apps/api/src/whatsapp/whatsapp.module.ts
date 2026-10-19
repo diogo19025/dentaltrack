@@ -4,6 +4,12 @@ import { AutomationsModule } from '../automations/automations.module';
 import { ChatModule } from '../chat/chat.module';
 import { WhatsappConnectionController } from './connection.controller';
 import { WhatsappConnectionService } from './connection.service';
+import {
+  MetaConnectionController,
+  WhatsappProviderController,
+} from './meta-connection.controller';
+import { MetaConnectionService } from './meta-connection.service';
+import { MetaWebhookController } from './meta-webhook.controller';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappService } from './whatsapp.service';
 import { WhatsappTransportModule } from './whatsapp-transport.module';
@@ -22,8 +28,18 @@ import { WhatsappTransportModule } from './whatsapp-transport.module';
     AutomationsModule,
     WhatsappTransportModule,
   ],
-  controllers: [WhatsappController, WhatsappConnectionController],
-  providers: [WhatsappService, WhatsappConnectionService],
+  controllers: [
+    WhatsappController,
+    WhatsappConnectionController,
+    MetaWebhookController,
+    MetaConnectionController,
+    WhatsappProviderController,
+  ],
+  providers: [
+    WhatsappService,
+    WhatsappConnectionService,
+    MetaConnectionService,
+  ],
   exports: [WhatsappService, WhatsappConnectionService],
 })
 export class WhatsappModule {}

@@ -131,6 +131,7 @@ export class AgendaJobs {
         OR: [
           { whatsappInstance: { not: null } },
           { whatsappAlertsInstance: { not: null } },
+          { metaPhoneNumberId: { not: null } },
         ],
       },
       select: { clinicId: true },

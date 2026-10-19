@@ -48,6 +48,9 @@ export interface EvolutionWebhookPayload {
 
 /** Mensagem de entrada já normalizada (texto OU áudio). */
 export interface ParsedInbound {
+  /** Provedor que entregou a mensagem; ausente = Evolution. */
+  provider?: 'evolution' | 'meta';
+  /** Instância Evolution, ou o phone number id na Meta. */
   instance: string;
   messageId: string;
   /** Só dígitos (parte antes do `@` do JID) — identidade do contato. */
@@ -61,7 +64,7 @@ export interface ParsedInbound {
   pushName?: string;
   text?: string;
   /** Presente quando a mensagem é um áudio (PTT). base64 pode faltar (buscar depois). */
-  audio?: { base64?: string; mimeType: string; key: EvolutionMessageKey };
+  audio?: { base64?: string; mimeType: string; ref: unknown };
 }
 
 /**
@@ -122,7 +125,7 @@ export function parseInboundMessage(
         base64: msg?.base64 ?? data?.base64,
         // PTT do WhatsApp é ogg/opus; normaliza removendo parâmetros (";codecs=opus").
         mimeType: (audioMime ?? 'audio/ogg').split(';')[0].trim(),
-        key: key,
+        ref: key,
       },
     };
   }

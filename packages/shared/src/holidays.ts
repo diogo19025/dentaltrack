@@ -18,7 +18,6 @@ import { z } from "zod";
 
 export const HOLIDAY_SCOPES = ["nacional", "local"] as const;
 export const holidayScopeSchema = z.enum(HOLIDAY_SCOPES);
-export type HolidayScope = (typeof HOLIDAY_SCOPES)[number];
 
 export const holidaySchema = z.object({
   id: z.string().uuid(),
@@ -31,15 +30,7 @@ export type Holiday = z.infer<typeof holidaySchema>;
 
 /** POST /holidays — cadastro manual (feriado municipal, recesso, férias). */
 export const createHolidaySchema = z.object({
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD."),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use o formato AAAA-MM-DD."),
   name: z.string().trim().min(1, "Dê um nome ao feriado.").max(120),
 });
 export type CreateHolidayInput = z.infer<typeof createHolidaySchema>;
-
-export const holidayListQuerySchema = z.object({
-  /** Ano a listar (default: ano corrente). */
-  year: z.coerce.number().int().min(2000).max(2100).optional(),
-});
-export type HolidayListQuery = z.infer<typeof holidayListQuerySchema>;

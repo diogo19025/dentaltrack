@@ -32,9 +32,7 @@ export const WHATSAPP_CONNECTION_STATES = [
   "conectado",
   "desconectado",
 ] as const;
-export const whatsappConnectionStateSchema = z.enum(
-  WHATSAPP_CONNECTION_STATES,
-);
+export const whatsappConnectionStateSchema = z.enum(WHATSAPP_CONNECTION_STATES);
 export type WhatsappConnectionState =
   (typeof WHATSAPP_CONNECTION_STATES)[number];
 
@@ -89,13 +87,6 @@ export const whatsappConnectionSchema = z.object({
 export type WhatsappConnection = z.infer<typeof whatsappConnectionSchema>;
 
 /**
- * POST /whatsapp/connection — cria a instância (se preciso) e devolve o QR.
- * Sem corpo: o nome da instância vem da empresa autenticada.
- */
-export const connectWhatsappResultSchema = whatsappConnectionSchema;
-export type ConnectWhatsappResult = z.infer<typeof connectWhatsappResultSchema>;
-
-/**
  * Resposta do dono à pergunta do primeiro acesso. `tem_numero` leva ao QR;
  * `nao_tem` registra que ele foi perguntado e encerra o assunto — o produto
  * segue funcionando inteiro no canal web.
@@ -111,6 +102,73 @@ export type WhatsappOnboardingAnswer =
 export const answerWhatsappOnboardingSchema = z.object({
   answer: whatsappOnboardingAnswerSchema,
 });
-export type AnswerWhatsappOnboardingInput = z.infer<
-  typeof answerWhatsappOnboardingSchema
+
+/**
+ * Cloud API oficial da Meta (provedor alternativo à Evolution).
+ *
+ * A empresa cola as credenciais que tira do próprio painel da Meta: o ID do
+ * número, o ID da conta WhatsApp Business e um token de acesso permanente
+ * (usuário do sistema). O token entra, é validado contra a Meta e nunca mais
+ * volta para a tela: só se sabe que existe um salvo.
+ */
+export const WHATSAPP_PROVIDERS = ["evolution", "meta"] as const;
+export const whatsappProviderSchema = z.enum(WHATSAPP_PROVIDERS);
+export type WhatsappProvider = (typeof WHATSAPP_PROVIDERS)[number];
+
+export const WHATSAPP_PROVIDER_LABELS: Record<WhatsappProvider, string> = {
+  evolution: "Número pareado por QR code",
+  meta: "API oficial da Meta",
+};
+
+/**
+ * PUT /whatsapp/provider — qual provedor atende e envia pela empresa. As duas
+ * configurações (QR code e Meta) coexistem; o dono escolhe a ativa. `meta` só
+ * é aceito com credencial salva.
+ */
+export const setWhatsappProviderSchema = z.object({
+  provider: whatsappProviderSchema,
+});
+export type SetWhatsappProviderInput = z.infer<
+  typeof setWhatsappProviderSchema
 >;
+
+/** PUT /whatsapp/meta/connection — credenciais da empresa na Meta. */
+export const saveMetaCredentialsSchema = z.object({
+  phoneNumberId: z
+    .string()
+    .trim()
+    .regex(/^\d{5,25}$/, "O ID do número tem só dígitos."),
+  wabaId: z
+    .string()
+    .trim()
+    .regex(/^\d{5,25}$/, "O ID da conta WhatsApp Business tem só dígitos."),
+  accessToken: z
+    .string()
+    .trim()
+    .min(20, "Cole o token de acesso completo.")
+    .max(1000),
+});
+export type SaveMetaCredentialsInput = z.infer<
+  typeof saveMetaCredentialsSchema
+>;
+
+/** GET /whatsapp/meta/connection — estado, sem nenhum segredo. */
+export const metaConnectionSchema = z.object({
+  /** Provedor ativo da empresa (escolha do dono, PUT /whatsapp/provider). */
+  provider: whatsappProviderSchema,
+  phoneNumberId: z.string().nullable(),
+  wabaId: z.string().nullable(),
+  /** Há um token salvo (nunca o valor). */
+  tokenSaved: z.boolean(),
+  /** Número e nome verificado, como a Meta os devolveu na última validação. */
+  displayPhone: z.string().nullable(),
+  verifiedName: z.string().nullable(),
+  /**
+   * `false` quando o servidor não tem META_APP_SECRET / META_WEBHOOK_VERIFY_TOKEN
+   * ou a chave de cifra: a tela explica em vez de oferecer um botão morto.
+   */
+  serverReady: z.boolean(),
+  /** URL que a empresa cadastra como webhook no app da Meta. */
+  webhookUrl: z.string().nullable(),
+});
+export type MetaConnection = z.infer<typeof metaConnectionSchema>;

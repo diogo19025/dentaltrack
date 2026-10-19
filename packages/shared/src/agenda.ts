@@ -45,16 +45,6 @@ export const APPOINTMENT_STATUS_LABELS: Record<AppointmentStatus, string> = {
   cancelado: "Cancelado",
 };
 
-/**
- * Status em que o agendamento ainda vai acontecer — o filtro das automações de
- * lembrete e de atraso. `pedido` fica de fora de propósito: sem horário real
- * não há o que lembrar.
- */
-export const ACTIVE_APPOINTMENT_STATUSES = [
-  "agendado",
-  "confirmado",
-] as const satisfies readonly AppointmentStatus[];
-
 /** De onde veio o agendamento. */
 export const APPOINTMENT_SOURCES = ["bot", "integracao", "manual"] as const;
 export const appointmentSourceSchema = z.enum(APPOINTMENT_SOURCES);

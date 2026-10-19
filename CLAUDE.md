@@ -67,7 +67,7 @@
 ## Escopo do MVP (e limites)
 
 - **MVP = chatbot, dashboard, configurações do bot e sistema de tags.** Os quatro pilares nasceram no canal **web**.
-- **WhatsApp: INTEGRADO** (pós-MVP, entregue em 2026-06-14) via **Evolution/Baileys** (não-oficial, **sem a API da Meta**) — MVP 1 número/1 clínica, validado ao vivo. Detalhes na seção "Integração WhatsApp" abaixo.
+- **WhatsApp: INTEGRADO** (pós-MVP, entregue em 2026-06-14) via **Evolution/Baileys** (não-oficial; a Cloud API oficial da Meta entrou como alternativa em 2026-10-17) — MVP 1 número/1 clínica, validado ao vivo. Detalhes na seção "Integração WhatsApp" abaixo.
 - Fora do escopo: agenda real com slots/sync, pagamentos, prontuário, app mobile, disparos em massa.
 
 ## Stack (decidida — não trocar sem motivo)
@@ -88,13 +88,13 @@
 
 ## NÃO faça
 
-- **Não usar a API oficial da Meta** — a decisão é Evolution/Baileys (não-oficial).
+- **Não remover a Evolution/Baileys** enquanto houver empresa nela. Desde 2026-10-17 a **Cloud API oficial da Meta** é provedor suportado ao lado da Evolution, escolhido por empresa no cartão "Provedor ativo" da aba WhatsApp — as duas configurações coexistem e a troca não apaga nenhuma (decisão do dono, para tirar o risco de banimento do disparo ativo); templates para fora da janela de 24 h ainda não existem.
 - **Não voltar à stack antiga:** sem Next.js monolito, sem Neon, sem Clerk, sem Drizzle, sem AI Gateway/Claude pago.
 - **Não "reinterpretar" o visual nem adicionar dark mode** — o front-end segue o design hi-fi (`docs/design_handoff_dentaltrack/`) pixel-perfect.
 
 ## Integração WhatsApp (Evolution/Baileys) — IMPLEMENTADA E VALIDADA AO VIVO (MVP 1 número/1 clínica)
 
-> **Provedor:** Evolution API (Baileys, não-oficial e gratuito) — **sem a API da Meta**.
+> **Provedores:** Evolution API (Baileys, não-oficial e gratuito) e, desde 2026-10-17, a **Cloud API oficial da Meta** por empresa (cadastro manual do token na aba WhatsApp; ver `docs/operacao.md` § WhatsApp).
 > Runbook completo (subir Docker, parear QR, testar): [`docs/operacao.md`](docs/operacao.md).
 
 - **Adapter implementado (código + testes, 2026-06-13) e validado ao vivo (2026-06-14):**

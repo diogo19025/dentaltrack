@@ -16,7 +16,6 @@ export const detectedTagSchema = z.object({
   color: tagColorSchema,
   confidence: z.number(),
 });
-export type DetectedTag = z.infer<typeof detectedTagSchema>;
 
 /**
  * **Handoff humano** (P0.2) — desde quando um atendente assumiu a conversa.
@@ -43,7 +42,9 @@ const handoffAtSchema = z.string().nullable();
  * exatamente o que aconteceu no PR 5, em que só a tela conhecia a regra e ela
  * estava escrita em lugar nenhum.
  */
-export const HANDOFF_CHANNELS = ["whatsapp"] as const satisfies readonly Channel[];
+export const HANDOFF_CHANNELS = [
+  "whatsapp",
+] as const satisfies readonly Channel[];
 
 export function supportsHandoff(channel: Channel): boolean {
   return (HANDOFF_CHANNELS as readonly Channel[]).includes(channel);

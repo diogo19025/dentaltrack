@@ -222,21 +222,6 @@ export function isZonedWeekend(date: Date, timeZone: string): boolean {
   return weekday === 0 || weekday === 6;
 }
 
-/** Soma dias mantendo a mesma hora de parede no fuso da empresa. */
-export function addZonedDays(date: Date, days: number, timeZone: string): Date {
-  const p = toZonedParts(date, timeZone);
-  return zonedTimeToUtc(
-    {
-      year: p.year,
-      month: p.month,
-      day: p.day + days,
-      hour: p.hour,
-      minute: p.minute,
-    },
-    timeZone,
-  );
-}
-
 function pad(value: number): string {
   return String(value).padStart(2, '0');
 }

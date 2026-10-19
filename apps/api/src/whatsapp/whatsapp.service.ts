@@ -1,5 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { AiUnavailableError } from '../ai/generate-reply';
+import {
+  Injectable,
+  Logger,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { OptOutService } from '../automations/opt-out.service';
 import { OutboundService } from '../automations/outbound.service';
 import { ChatService } from '../chat/chat.service';
@@ -9,7 +12,14 @@ import type {
   WhatsappRecipient,
   WhatsappTransport,
 } from './transport/whatsapp-transport';
-import { WhatsappTransportResolver } from './transport/whatsapp-transport.resolver';
+import {
+  type WhatsappAccountSettings,
+  WhatsappTransportResolver,
+} from './transport/whatsapp-transport.resolver';
+import {
+  type MetaWebhookPayload,
+  parseMetaInbound,
+} from './meta-webhook.types';
 import {
   type EvolutionWebhookPayload,
   type ParsedInbound,
@@ -20,6 +30,10 @@ import {
 const INBOUND_RETENTION_MS = 7 * 24 * 60 * 60_000;
 
 /** Resposta quando a IA está indisponível (mantém o cliente informado). */
+/** Áudio que a transcrição não entendeu: pedir por escrito, não fingir que ouviu. */
+const AUDIO_NOT_UNDERSTOOD =
+  'Não consegui entender o seu áudio. Pode me escrever a mensagem?';
+
 const AI_FALLBACK =
   'Estou com uma instabilidade no momento e já volto a responder. Sua mensagem foi registrada. 🙏';
 
@@ -36,6 +50,17 @@ const OPT_OUT_REPLY =
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name);
+  /**
+   * Último turno de cada contato. Quem escreve "oi" e "quero agendar" em
+   * seguida gera dois webhooks quase juntos; rodando em paralelo, os dois
+   * turnos criavam duas conversas e dois leads e o agente respondia duas
+   * vezes, cada resposta sem ver a outra mensagem. Em fila, o segundo turno
+   * já encontra a conversa e o histórico do primeiro.
+   *
+   * shortcut: fila em memória vale para um processo; com mais de uma réplica
+   * da API, trocar por lock no Postgres (pg_advisory_xact_lock por contato).
+   */
+  private readonly turnQueues = new Map<string, Promise<void>>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -57,115 +82,63 @@ export class WhatsappService {
    */
   async handleWebhook(payload: EvolutionWebhookPayload): Promise<void> {
     const inbound = parseInboundMessage(payload);
-    if (!inbound) return;
-    await runWithContext(
-      { requestId: `wa:${inbound.messageId}`, channel: 'whatsapp' },
-      () => this.processInbound(inbound),
-    );
+    if (inbound) await this.runInbound(inbound);
+  }
+
+  /** Webhook da Cloud API da Meta: um POST pode trazer várias mensagens. */
+  async handleMetaWebhook(payload: MetaWebhookPayload): Promise<void> {
+    for (const inbound of parseMetaInbound(payload)) {
+      await this.runInbound(inbound);
+    }
+  }
+
+  private runInbound(inbound: ParsedInbound): Promise<void> {
+    const key = `${inbound.instance}:${inbound.phone}`;
+    const previous = this.turnQueues.get(key) ?? Promise.resolve();
+    const current = previous
+      .catch(() => undefined)
+      .then(() =>
+        runWithContext(
+          { requestId: `wa:${inbound.messageId}`, channel: 'whatsapp' },
+          () => this.processInbound(inbound),
+        ),
+      )
+      .finally(() => {
+        // Só o último da fila limpa a entrada; o mapa não cresce sem fim.
+        if (this.turnQueues.get(key) === current) this.turnQueues.delete(key);
+      });
+    this.turnQueues.set(key, current);
+    return current;
   }
 
   /** O turno em si, já dentro do escopo de correlação. */
   private async processInbound(inbound: ParsedInbound): Promise<void> {
     const startedAt = Date.now();
-    const transport = this.transports.forEvolutionInstance(inbound.instance);
+    let transport: WhatsappTransport | null = null;
     try {
       // A empresa precisa ser conhecida antes do claim porque a unicidade é
       // `(clinicId, externalId)`: duas empresas não compartilham namespace.
-      const clinicId = await this.resolveClinicId(inbound.instance);
-      if (!clinicId) {
+      const account = await this.resolveAccount(inbound);
+      if (!account) {
         this.logger.warn(
-          `Instância "${inbound.instance}" sem empresa mapeada — ignorando.`,
+          `Número/instância "${inbound.instance}" sem empresa mapeada — ignorando.`,
         );
         return;
       }
+      const { clinicId } = account;
       setContext({ clinicId });
 
-      if (!(await this.claimInbound(clinicId, inbound.messageId))) {
-        this.logger.log({
-          event: 'whatsapp.inbound',
-          outcome: 'ok',
-          reason: 'reentrega_ignorada',
-        });
-        return;
-      }
-      this.logger.log({
-        event: 'whatsapp.inbound',
-        outcome: 'ok',
-        tipo: inbound.text ? 'texto' : 'audio',
-      });
-
-      // Descadastro: confirma, **persiste** e não roda o bot neste turno. A
-      // persistência é o que faz o pedido sobreviver a um restart — o que era
-      // opcional num bot receptivo e é obrigatório desde que passamos a enviar
-      // mensagem sozinhos (F9).
-      if (OptOutService.isOptOutMessage(inbound.text)) {
-        await this.optOut.optOut(
-          clinicId,
-          inbound.phone,
-          'palavra no WhatsApp',
-        );
-        await this.safeSend(
-          transport,
-          await transport.resolveAddress(recipientOf(inbound)),
-          OPT_OUT_REPLY,
+      transport =
+        inbound.provider === 'meta'
+          ? this.transports.forMeta(account.settings)
+          : this.transports.forEvolutionInstance(inbound.instance);
+      if (!transport) {
+        this.logger.error(
+          `Empresa ${clinicId} sem credencial utilizável da Meta — mensagem ignorada.`,
         );
         return;
       }
-
-      const turn = await this.buildTurn(inbound, transport);
-      if (!turn) return; // tipo não suportado / mídia indisponível
-
-      const { conversationId, reply, attachments } =
-        await this.chat.processInboundMessage({
-          clinicId,
-          channel: 'whatsapp',
-          contactPhone: inbound.phone,
-          contactName: inbound.pushName,
-          ...turn,
-        });
-
-      if (reply || attachments.length > 0) {
-        const target = await transport.resolveAddress(recipientOf(inbound));
-        if (reply) {
-          try {
-            await transport.sendText(target, reply);
-          } catch (err) {
-            await this.queueFailedReply({
-              clinicId,
-              conversationId,
-              messageId: inbound.messageId,
-              phone: inbound.phone,
-              body: reply,
-              err,
-            });
-            // Sem o texto, os anexos de saudação/oferta perderiam contexto.
-            // A fila recupera o texto; mídia continua best-effort e não sai só.
-            return;
-          }
-          // Fecha o fluxo `whatsapp.inbound → ai.reply → whatsapp.outbound`: com
-          // esta linha dá para afirmar que a resposta saiu, e sem ela dá para
-          // afirmar que não saiu — que é a pergunta que o suporte faz.
-          this.logger.log({
-            event: 'whatsapp.outbound',
-            outcome: 'ok',
-            durationMs: Date.now() - startedAt,
-            anexos: attachments.length,
-          });
-        }
-        // Mídia da saudação/oferta (F6): enviada após o texto, uma a uma.
-        // Best-effort — a falha de um anexo não impede os demais nem a resposta.
-        for (const media of attachments) {
-          try {
-            await transport.sendMedia(target, media);
-          } catch (mediaErr) {
-            const detail =
-              mediaErr instanceof Error ? mediaErr.message : String(mediaErr);
-            this.logger.error(
-              `Falha ao enviar mídia (${media.type}) ao ${inbound.phone}: ${detail}`,
-            );
-          }
-        }
-      }
+      await this.runTurn(inbound, clinicId, transport, startedAt);
     } catch (err) {
       this.logger.error({
         event: 'whatsapp.inbound',
@@ -174,6 +147,97 @@ export class WhatsappService {
         reason: err instanceof Error ? err.name : 'desconhecido',
       });
       await this.handleError(err, inbound, transport);
+    }
+  }
+
+  /** O turno já com empresa e transporte conhecidos. */
+  private async runTurn(
+    inbound: ParsedInbound,
+    clinicId: string,
+    transport: WhatsappTransport,
+    startedAt: number,
+  ): Promise<void> {
+    if (!(await this.claimInbound(clinicId, inbound.messageId))) {
+      this.logger.log({
+        event: 'whatsapp.inbound',
+        outcome: 'ok',
+        reason: 'reentrega_ignorada',
+      });
+      return;
+    }
+    this.logger.log({
+      event: 'whatsapp.inbound',
+      outcome: 'ok',
+      tipo: inbound.text ? 'texto' : 'audio',
+    });
+
+    // Descadastro: confirma, **persiste** e não roda o bot neste turno. A
+    // persistência é o que faz o pedido sobreviver a um restart — o que era
+    // opcional num bot receptivo e é obrigatório desde que passamos a enviar
+    // mensagem sozinhos (F9).
+    if (OptOutService.isOptOutMessage(inbound.text)) {
+      await this.optOut.optOut(clinicId, inbound.phone, 'palavra no WhatsApp');
+      await this.safeSend(
+        transport,
+        await transport.resolveAddress(recipientOf(inbound)),
+        OPT_OUT_REPLY,
+      );
+      return;
+    }
+
+    const turn = await this.buildTurn(inbound, transport);
+    if (!turn) return; // tipo não suportado / mídia indisponível
+
+    const { conversationId, reply, attachments } =
+      await this.chat.processInboundMessage({
+        clinicId,
+        channel: 'whatsapp',
+        contactPhone: inbound.phone,
+        contactName: inbound.pushName,
+        ...turn,
+      });
+
+    if (reply || attachments.length > 0) {
+      const target = await transport.resolveAddress(recipientOf(inbound));
+      if (reply) {
+        try {
+          await transport.sendText(target, reply);
+        } catch (err) {
+          await this.queueFailedReply({
+            clinicId,
+            conversationId,
+            messageId: inbound.messageId,
+            phone: inbound.phone,
+            body: reply,
+            err,
+          });
+          // Sem o texto, os anexos de saudação/oferta perderiam contexto.
+          // A fila recupera o texto; mídia continua best-effort e não sai só.
+          return;
+        }
+        // Fecha o fluxo `whatsapp.inbound → ai.reply → whatsapp.outbound`: com
+        // esta linha dá para afirmar que a resposta saiu, e sem ela dá para
+        // afirmar que não saiu — que é a pergunta que o suporte faz.
+        this.logger.log({
+          event: 'whatsapp.outbound',
+          outcome: 'ok',
+          durationMs: Date.now() - startedAt,
+          anexos: attachments.length,
+        });
+      }
+      // Mídia da saudação/oferta (F6): enviada após o texto, uma a uma.
+      // Best-effort — a falha de um anexo não impede os demais nem a resposta.
+      for (const media of attachments) {
+        try {
+          await transport.sendMedia(target, media);
+        } catch (mediaErr) {
+          const detail =
+            mediaErr instanceof Error ? mediaErr.message : String(mediaErr);
+          this.logger.error(
+            `Falha ao enviar mídia (${media.type}) ao ${inbound.phone}: ${detail}`,
+          );
+        }
+      }
     }
   }
 
@@ -190,7 +254,7 @@ export class WhatsappService {
     if (inbound.audio) {
       const base64 = await transport.fetchInboundAudio({
         base64: inbound.audio.base64,
-        ref: inbound.audio.key,
+        ref: inbound.audio.ref,
       });
       if (!base64) {
         this.logger.warn(
@@ -204,20 +268,36 @@ export class WhatsappService {
     return null;
   }
 
-  /** Resolve a empresa dona da instância Evolution (WA-1). */
-  private async resolveClinicId(instance: string): Promise<string | null> {
-    // Os dois números da empresa resolvem para ela: o cliente que responde a um
-    // lembrete cai no mesmo fio e é atendido pelo número em que escreveu.
+  /**
+   * Resolve a empresa dona da instância Evolution (WA-1) ou do número da Meta,
+   * com as configurações que o transporte precisa.
+   */
+  private async resolveAccount(
+    inbound: ParsedInbound,
+  ): Promise<{ clinicId: string; settings: WhatsappAccountSettings } | null> {
+    const select = {
+      clinicId: true,
+      whatsappInstance: true,
+      whatsappProvider: true,
+      metaPhoneNumberId: true,
+      metaAccessTokenEnc: true,
+    } as const;
+    // Os dois números Evolution da empresa resolvem para ela: o cliente que
+    // responde a um lembrete cai no mesmo fio e é atendido pelo número em que
+    // escreveu.
     const settings = await this.prisma.clinicSettings.findFirst({
-      where: {
-        OR: [
-          { whatsappInstance: instance },
-          { whatsappAlertsInstance: instance },
-        ],
-      },
-      select: { clinicId: true },
+      where:
+        inbound.provider === 'meta'
+          ? { metaPhoneNumberId: inbound.instance, whatsappProvider: 'meta' }
+          : {
+              OR: [
+                { whatsappInstance: inbound.instance },
+                { whatsappAlertsInstance: inbound.instance },
+              ],
+            },
+      select,
     });
-    return settings?.clinicId ?? null;
+    return settings ? { clinicId: settings.clinicId, settings } : null;
   }
 
   /**
@@ -291,7 +371,7 @@ export class WhatsappService {
   private async handleError(
     err: unknown,
     inbound: ParsedInbound,
-    transport: WhatsappTransport,
+    transport: WhatsappTransport | null,
   ): Promise<void> {
     const detail = err instanceof Error ? err.message : String(err);
     this.logger.error(
@@ -299,12 +379,25 @@ export class WhatsappService {
       err instanceof Error ? err.stack : undefined,
     );
 
-    if (err instanceof AiUnavailableError) {
+    // Qualquer falha responde: o webhook já recebeu 200 e a mensagem não será
+    // reentregue, então silêncio aqui é o cliente sem resposta para sempre.
+    // Antes só a IA indisponível respondia; áudio que falhou na transcrição
+    // (503/422) e erro de banco terminavam mudos.
+    if (!transport) return;
+    const text =
+      err instanceof UnprocessableEntityException
+        ? AUDIO_NOT_UNDERSTOOD
+        : AI_FALLBACK;
+    try {
       await this.safeSend(
         transport,
         await transport.resolveAddress(recipientOf(inbound)),
-        AI_FALLBACK,
+        text,
       );
+    } catch (sendErr) {
+      const detail =
+        sendErr instanceof Error ? sendErr.message : String(sendErr);
+      this.logger.error(`Falha ao avisar o cliente do erro: ${detail}`);
     }
   }
 

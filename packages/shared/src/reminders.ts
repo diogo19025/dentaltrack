@@ -17,16 +17,21 @@ export const sendReminderSchema = z.object({
     .string()
     .trim()
     .min(1, "Escreva a mensagem do lembrete.")
-    .max(REMINDER_MAX_LENGTH, `Use no máximo ${REMINDER_MAX_LENGTH} caracteres.`),
+    .max(
+      REMINDER_MAX_LENGTH,
+      `Use no máximo ${REMINDER_MAX_LENGTH} caracteres.`,
+    ),
 });
-export type SendReminderInput = z.infer<typeof sendReminderSchema>;
 
 /**
  * Por que um lembrete não pode ser enviado (controla a UI da caixa de envio):
  * - `no_phone` — o contato não tem telefone capturado;
  * - `whatsapp_not_configured` — a empresa não conectou uma instância do WhatsApp.
  */
-export const REMINDER_BLOCKERS = ["no_phone", "whatsapp_not_configured"] as const;
+export const REMINDER_BLOCKERS = [
+  "no_phone",
+  "whatsapp_not_configured",
+] as const;
 export const reminderBlockerSchema = z.enum(REMINDER_BLOCKERS);
 export type ReminderBlocker = (typeof REMINDER_BLOCKERS)[number];
 

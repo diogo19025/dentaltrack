@@ -1,5 +1,4 @@
 import {
-  addZonedDays,
   dateKeyToUtc,
   formatDatePtBr,
   formatLocalDateTime,
@@ -82,13 +81,6 @@ describe('time (fuso da empresa · F9)', () => {
     expect(isZonedWeekend(new Date('2026-09-14T15:00:00.000Z'), SP)).toBe(
       false,
     );
-  });
-
-  it('addZonedDays preserva a hora de parede', () => {
-    const start = new Date('2026-09-12T17:30:00.000Z'); // 14:30 em SP
-    const later = addZonedDays(start, 3, SP);
-    expect(formatTimePtBr(later, SP)).toBe('14:30');
-    expect(zonedDateKey(later, SP)).toBe('2026-09-15');
   });
 
   it('dateKeyToUtc converte AAAA-MM-DD para a meia-noite local', () => {

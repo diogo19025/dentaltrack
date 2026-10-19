@@ -46,14 +46,3 @@ export function professionalResolver(
       : null) ??
     null;
 }
-
-/** Cor de um agendamento, dado o cadastro da equipe. */
-export function appointmentColor(
-  appointment: AppointmentSummary,
-  professionals: ProfessionalDto[],
-): string {
-  return professionalColor(
-    professionalResolver(professionals)(appointment),
-    professionals,
-  );
-}

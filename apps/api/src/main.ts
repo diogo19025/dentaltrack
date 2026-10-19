@@ -18,6 +18,8 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     // Logger estruturado (P0.3): JSON em produção, legível em desenvolvimento.
     logger: new StructuredLogger(),
+    // Corpo bruto para conferir a assinatura do webhook da Meta (HMAC).
+    rawBody: true,
   });
 
   // Correlação por request. Primeiro middleware da cadeia — tudo que rodar

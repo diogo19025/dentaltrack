@@ -4,6 +4,7 @@ import { DEFAULT_AUTOMATION_SETTINGS } from '@dentaltrack/shared';
 import { ConversationsService } from '../conversations/conversations.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvolutionService } from '../whatsapp/evolution.service';
+import { MetaRequestError } from '../whatsapp/transport/meta.transport';
 import { WhatsappTransportResolver } from '../whatsapp/transport/whatsapp-transport.resolver';
 import { AutomationSettingsService } from './automation-settings.service';
 import { reminderKey } from './automation-keys';
@@ -487,6 +488,53 @@ describe('OutboundService (fila de saída · F9)', () => {
       expect(data.retries).toEqual({ increment: 1 });
       // Devolve o claim: a linha estava em `enviando` e precisa voltar à fila.
       expect(data.status).toBe('pendente');
+    });
+
+    it('retentativa de lembrete respeita a janela de envio', async () => {
+      // 19h58 em São Paulo: +10 min cairia às 20h08, fora da janela (08h–20h).
+      const at1958 = new Date('2026-09-09T22:58:00.000Z');
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(at1958.getTime());
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([pending]);
+      evolutionMock.sendText.mockRejectedValueOnce(new Error('Evolution 500'));
+
+      await outbound.dispatchDue(at1958);
+      // Volta ao relógio fixo da suíte (não restaurar: o spy é global).
+      clock.mockReturnValue(NOW.getTime());
+
+      const data = prismaMock.outboundMessage.update.mock.calls[0][0].data;
+      expect(data.status).toBe('pendente');
+      // Próxima abertura da janela: 08h do dia seguinte em São Paulo.
+      expect(data.scheduledFor).toEqual(new Date('2026-09-10T11:00:00.000Z'));
+    });
+
+    it('resposta da IA que falhou não espera a janela', async () => {
+      const at1958 = new Date('2026-09-09T22:58:00.000Z');
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(at1958.getTime());
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([
+        { ...pending, kind: 'resposta_ia' },
+      ]);
+      evolutionMock.sendText.mockRejectedValueOnce(new Error('Evolution 500'));
+
+      await outbound.dispatchDue(at1958);
+      // Volta ao relógio fixo da suíte (não restaurar: o spy é global).
+      clock.mockReturnValue(NOW.getTime());
+
+      const data = prismaMock.outboundMessage.update.mock.calls[0][0].data;
+      expect(data.scheduledFor).toEqual(new Date('2026-09-09T23:08:00.000Z'));
+    });
+
+    it('fora da janela de 24h da Meta: falha já, sem retentativa', async () => {
+      prismaMock.outboundMessage.findMany.mockResolvedValueOnce([pending]);
+      evolutionMock.sendText.mockRejectedValueOnce(
+        new MetaRequestError('Re-engagement message', 400, 131047),
+      );
+
+      await outbound.dispatchDue(NOW);
+
+      const data = prismaMock.outboundMessage.update.mock.calls[0][0].data;
+      expect(data.status).toBe('falhou');
+      expect(data.error).toContain('janela de 24 horas');
+      expect(data.retries).toBeUndefined();
     });
 
     it('esgotadas as tentativas, marca como falhou', async () => {

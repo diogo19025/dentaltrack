@@ -30,7 +30,6 @@ export const leadTemperatureSummarySchema = z.object({
   medio: z.number(),
   fraco: z.number(),
 });
-export type LeadTemperatureSummary = z.infer<typeof leadTemperatureSummarySchema>;
 
 /** Um lead na listagem. `status` = status da conversa mais recente do lead. */
 export const leadSchema = z.object({
@@ -65,7 +64,6 @@ export const leadsSummarySchema = z.object({
   andamento: z.number(),
   abandonada: z.number(),
 });
-export type LeadsSummary = z.infer<typeof leadsSummarySchema>;
 
 /** Resposta de GET /leads. */
 export const leadsResponseSchema = z.object({
@@ -91,7 +89,6 @@ export const leadConversationSchema = z.object({
   createdAt: z.string(),
   tags: z.array(leadTagSchema),
 });
-export type LeadConversation = z.infer<typeof leadConversationSchema>;
 
 /** Pedido de agendamento do lead (evento de conversão). */
 export const leadAppointmentSchema = z.object({
@@ -101,7 +98,6 @@ export const leadAppointmentSchema = z.object({
   /** ISO 8601. */
   createdAt: z.string(),
 });
-export type LeadAppointment = z.infer<typeof leadAppointmentSchema>;
 
 /** Resposta de GET /leads/:id — lead expandido com conversas e agendamentos. */
 export const leadDetailSchema = leadSchema.extend({
@@ -133,7 +129,6 @@ export type LeadPrivacy = z.infer<typeof leadPrivacySchema>;
 export const updateOptOutSchema = z.object({
   optedOut: z.boolean(),
 });
-export type UpdateOptOutInput = z.infer<typeof updateOptOutSchema>;
 
 /**
  * Exportação/importação de leads (F8). Export: GET /leads/export?format=…
@@ -149,7 +144,6 @@ export const leadImportErrorSchema = z.object({
   line: z.number(),
   reason: z.string(),
 });
-export type LeadImportError = z.infer<typeof leadImportErrorSchema>;
 
 /** Resposta de POST /leads/import. */
 export const leadImportResultSchema = z.object({

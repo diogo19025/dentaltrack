@@ -5,6 +5,8 @@ import { MessageCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { ErrorState } from "@/components/ui/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { MetaCard } from "@/components/settings/meta-card";
+import { WhatsappProviderCard } from "@/components/settings/whatsapp-provider-card";
 import { WhatsappConnectPanel } from "@/components/whatsapp/connect-panel";
 import { useWhatsappConnection } from "@/hooks/use-whatsapp-connection";
 import { cn } from "@/lib/utils";
@@ -17,11 +19,15 @@ import { cn } from "@/lib/utils";
  * WhatsApp cai de vez em quando (celular offline, aparelho removido na mão), e
  * reconectar precisa ser algo que o dono resolve sozinho — não um chamado.
  *
+ * O primeiro cartão escolhe o provedor ativo (QR code × Meta); os de baixo
+ * configuram cada um, e as duas configurações coexistem.
+ *
  * Fora do handoff de design; segue o design system existente (produto.md § Design).
  */
 export function WhatsappTab() {
   return (
     <div className="flex flex-col gap-6">
+      <WhatsappProviderCard />
       <LineCard
         line="principal"
         title="Número principal"
@@ -32,6 +38,7 @@ export function WhatsappTab() {
         title="Número de avisos"
         description="Opcional. Só envia lembretes e mensagens automáticas de eventos. Sem ele, esses avisos saem pelo número principal."
       />
+      <MetaCard />
     </div>
   );
 }
