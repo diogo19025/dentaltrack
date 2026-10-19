@@ -113,8 +113,26 @@ export const answerWhatsappOnboardingSchema = z.object({
  */
 export const WHATSAPP_PROVIDERS = ["evolution", "meta"] as const;
 export const whatsappProviderSchema = z.enum(WHATSAPP_PROVIDERS);
+export type WhatsappProvider = (typeof WHATSAPP_PROVIDERS)[number];
 
-/** PUT /whatsapp/meta — credenciais da empresa na Meta. */
+export const WHATSAPP_PROVIDER_LABELS: Record<WhatsappProvider, string> = {
+  evolution: "Número pareado por QR code",
+  meta: "API oficial da Meta",
+};
+
+/**
+ * PUT /whatsapp/provider — qual provedor atende e envia pela empresa. As duas
+ * configurações (QR code e Meta) coexistem; o dono escolhe a ativa. `meta` só
+ * é aceito com credencial salva.
+ */
+export const setWhatsappProviderSchema = z.object({
+  provider: whatsappProviderSchema,
+});
+export type SetWhatsappProviderInput = z.infer<
+  typeof setWhatsappProviderSchema
+>;
+
+/** PUT /whatsapp/meta/connection — credenciais da empresa na Meta. */
 export const saveMetaCredentialsSchema = z.object({
   phoneNumberId: z
     .string()
@@ -134,9 +152,9 @@ export type SaveMetaCredentialsInput = z.infer<
   typeof saveMetaCredentialsSchema
 >;
 
-/** GET /whatsapp/meta — estado, sem nenhum segredo. */
+/** GET /whatsapp/meta/connection — estado, sem nenhum segredo. */
 export const metaConnectionSchema = z.object({
-  /** Provedor ativo da empresa. */
+  /** Provedor ativo da empresa (escolha do dono, PUT /whatsapp/provider). */
   provider: whatsappProviderSchema,
   phoneNumberId: z.string().nullable(),
   wabaId: z.string().nullable(),

@@ -114,7 +114,8 @@ Alternativa à Evolution, escolhida por empresa (`clinic_settings.whatsapp_provi
 
 1. **No servidor:** `META_APP_SECRET`, `META_WEBHOOK_VERIFY_TOKEN`, `INTEGRATION_ENCRYPTION_KEY` e `API_PUBLIC_URL`.
 2. **No app da Meta (Meta for Developers → WhatsApp → Configuration):** webhook em `<API_PUBLIC_URL>/whatsapp/meta/webhook`, verify token = `META_WEBHOOK_VERIFY_TOKEN`, assinar o campo `messages`. A URL exata aparece no cartão da tela.
-3. **Na tela (`Configurações → WhatsApp → API oficial da Meta`):** ID do número, ID da conta WhatsApp Business e um token **permanente** de usuário do sistema com `whatsapp_business_messaging`. A API valida contra a Meta antes de gravar, cifra o token e troca o provedor da empresa. "Remover" apaga o token e volta à Evolution.
+3. **Na tela (`Configurações → WhatsApp → API oficial da Meta`):** ID do número, ID da conta WhatsApp Business e um token **permanente** de usuário do sistema com `whatsapp_business_messaging`. A API valida contra a Meta antes de gravar e cifra o token. Salvar **não** troca o provedor.
+4. **Escolher o provedor ativo (`Configurações → WhatsApp → Provedor ativo`, `PUT /whatsapp/provider`):** QR code (Evolution) × Meta. As duas configurações coexistem; trocar não apaga nada, e a Meta só pode ser ativada com credencial salva (422 sem ela). "Remover credenciais" apaga o token e, se a Meta era a ativa, volta ao QR code.
 
 **Limite atual: janela de 24 horas.** A Meta só aceita texto livre até 24 h depois da última mensagem do cliente; fora disso exige template aprovado (erro `131047`). Respostas do agente funcionam; lembretes e automações fora da janela **falham** e vão para a retentativa da fila até virar `falhou`. Não ligue automações numa empresa na Meta antes do suporte a templates. O número de avisos (segundo número) é só da Evolution por enquanto.
 

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import {
   decryptSecret,
@@ -70,8 +71,9 @@ describe('MetaConnectionService', () => {
       string,
       string
     >;
+    // Salvar não troca o provedor: a escolha é explícita (setProvider).
+    expect(data).not.toHaveProperty('whatsappProvider');
     expect(data).toMatchObject({
-      whatsappProvider: 'meta',
       metaPhoneNumberId: '1055',
       metaWabaId: '2077',
       metaDisplayPhone: '+55 11 99999-8888',
@@ -135,6 +137,39 @@ describe('MetaConnectionService', () => {
       whatsappProvider: 'evolution',
       metaAccessTokenEnc: null,
       metaPhoneNumberId: null,
+    });
+  });
+
+  it('ativar a Meta sem credencial salva: 422 e nada muda', async () => {
+    prisma.clinicSettings.findUnique.mockResolvedValue({
+      metaPhoneNumberId: null,
+      metaAccessTokenEnc: null,
+    });
+
+    await expect(service.setProvider(CLINIC, 'meta')).rejects.toThrow(
+      UnprocessableEntityException,
+    );
+    expect(prisma.clinicSettings.upsert).not.toHaveBeenCalled();
+  });
+
+  it('escolhe o provedor ativo sem apagar a configuração do outro', async () => {
+    prisma.clinicSettings.findUnique.mockResolvedValue({
+      whatsappProvider: 'evolution',
+      metaPhoneNumberId: '1055',
+      metaWabaId: '2077',
+      metaAccessTokenEnc: 'v1.x.y.z',
+      metaDisplayPhone: null,
+      metaVerifiedName: null,
+    });
+
+    await service.setProvider(CLINIC, 'meta');
+    expect(prisma.clinicSettings.upsert.mock.calls[0][0].update).toEqual({
+      whatsappProvider: 'meta',
+    });
+
+    await service.setProvider(CLINIC, 'evolution');
+    expect(prisma.clinicSettings.upsert.mock.calls[1][0].update).toEqual({
+      whatsappProvider: 'evolution',
     });
   });
 });

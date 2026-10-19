@@ -4,11 +4,13 @@ import {
   Injectable,
   Logger,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type {
   MetaConnection,
   SaveMetaCredentialsInput,
+  WhatsappProvider,
 } from '@dentaltrack/shared';
 import {
   encryptSecret,
@@ -24,6 +26,11 @@ import { MetaRequestError, MetaTransport } from './transport/meta.transport';
  * validado contra a Meta antes de ser guardado e cifrado com a mesma chave das
  * integrações; depois de salvo, só se sabe que existe um — nunca volta ao
  * navegador. Tudo escopado por `clinicId` (vem do TenantGuard).
+ *
+ * Salvar credencial **não** troca o provedor: o número pareado por QR code e a
+ * Meta coexistem, e qual dos dois atende é escolha explícita do dono
+ * (`setProvider`). Assim dá para cadastrar a Meta, testar e voltar, sem perder
+ * nenhuma das duas configurações.
  */
 @Injectable()
 export class MetaConnectionService {
@@ -58,7 +65,7 @@ export class MetaConnectionService {
     };
   }
 
-  /** Valida na Meta, cifra o token e passa a empresa para o provedor `meta`. */
+  /** Valida na Meta e guarda o token cifrado. O provedor ativo não muda. */
   async save(
     clinicId: string,
     input: SaveMetaCredentialsInput,
@@ -105,7 +112,6 @@ export class MetaConnectionService {
     }
 
     const data = {
-      whatsappProvider: 'meta',
       metaPhoneNumberId: input.phoneNumberId,
       metaWabaId: input.wabaId,
       metaAccessTokenEnc: encrypted,
@@ -132,7 +138,39 @@ export class MetaConnectionService {
     return this.getStatus(clinicId);
   }
 
-  /** Apaga as credenciais e devolve a empresa ao provedor Evolution. */
+  /**
+   * Escolhe o provedor que atende e envia pela empresa. `meta` exige credencial
+   * salva — sem ela a empresa ficaria muda, com o webhook da Meta resolvendo a
+   * clínica e nenhum transporte para responder.
+   */
+  async setProvider(
+    clinicId: string,
+    provider: WhatsappProvider,
+  ): Promise<MetaConnection> {
+    if (provider === 'meta') {
+      const s = await this.prisma.clinicSettings.findUnique({
+        where: { clinicId },
+        select: { metaPhoneNumberId: true, metaAccessTokenEnc: true },
+      });
+      if (!s?.metaPhoneNumberId || !s.metaAccessTokenEnc) {
+        throw new UnprocessableEntityException(
+          'Salve as credenciais da Meta antes de ativá-la.',
+        );
+      }
+    }
+    await this.prisma.clinicSettings.upsert({
+      where: { clinicId },
+      create: { clinicId, whatsappProvider: provider },
+      update: { whatsappProvider: provider },
+    });
+    this.logger.log({ event: 'whatsapp.provider', outcome: 'ok', provider });
+    return this.getStatus(clinicId);
+  }
+
+  /**
+   * Apaga as credenciais. Se a Meta era a ativa, a empresa volta ao número
+   * pareado por QR code — `meta` sem credencial não é um estado válido.
+   */
   async remove(clinicId: string): Promise<MetaConnection> {
     await this.prisma.clinicSettings.updateMany({
       where: { clinicId },

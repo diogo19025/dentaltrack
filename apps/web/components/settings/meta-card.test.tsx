@@ -76,7 +76,7 @@ describe("MetaCard", () => {
 
     fill("abc", "2077", "x".repeat(30));
     fireEvent.click(
-      screen.getByRole("button", { name: /Validar e usar a API oficial/ }),
+      screen.getByRole("button", { name: /Validar e salvar/ }),
     );
 
     expect(screen.getByRole("alert").textContent).toMatch(/dígitos/);
@@ -89,7 +89,7 @@ describe("MetaCard", () => {
 
     fill("1055123", "2077123", "EAA" + "x".repeat(30));
     fireEvent.click(
-      screen.getByRole("button", { name: /Validar e usar a API oficial/ }),
+      screen.getByRole("button", { name: /Validar e salvar/ }),
     );
 
     expect(state.save).toHaveBeenCalledWith(
@@ -112,7 +112,7 @@ describe("MetaCard", () => {
     expect(
       (
         screen.getByRole("button", {
-          name: /Validar e usar/,
+          name: /Validar e salvar/,
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);

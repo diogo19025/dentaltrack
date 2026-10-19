@@ -88,7 +88,7 @@
 
 ## NÃO faça
 
-- **Não remover a Evolution/Baileys** enquanto houver empresa nela. Desde 2026-10-17 a **Cloud API oficial da Meta** é provedor suportado ao lado da Evolution, escolhido por empresa (decisão do dono, para tirar o risco de banimento do disparo ativo); templates para fora da janela de 24 h ainda não existem.
+- **Não remover a Evolution/Baileys** enquanto houver empresa nela. Desde 2026-10-17 a **Cloud API oficial da Meta** é provedor suportado ao lado da Evolution, escolhido por empresa no cartão "Provedor ativo" da aba WhatsApp — as duas configurações coexistem e a troca não apaga nenhuma (decisão do dono, para tirar o risco de banimento do disparo ativo); templates para fora da janela de 24 h ainda não existem.
 - **Não voltar à stack antiga:** sem Next.js monolito, sem Neon, sem Clerk, sem Drizzle, sem AI Gateway/Claude pago.
 - **Não "reinterpretar" o visual nem adicionar dark mode** — o front-end segue o design hi-fi (`docs/design_handoff_dentaltrack/`) pixel-perfect.
 

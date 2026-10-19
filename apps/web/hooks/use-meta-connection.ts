@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   MetaConnection,
   SaveMetaCredentialsInput,
+  WhatsappProvider,
 } from "@dentaltrack/shared";
 import { apiFetch } from "@/lib/api-client";
 
@@ -17,7 +18,7 @@ export function useMetaConnection() {
   });
 }
 
-/** Valida na Meta, guarda cifrado e passa a empresa para o provedor oficial. */
+/** Valida na Meta e guarda cifrado. O provedor ativo não muda. */
 export function useSaveMetaCredentials() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -30,7 +31,20 @@ export function useSaveMetaCredentials() {
   });
 }
 
-/** Apaga as credenciais e volta ao provedor anterior (Evolution). */
+/** Escolhe qual provedor atende: QR code (Evolution) ou Meta. */
+export function useSetWhatsappProvider() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (provider: WhatsappProvider) =>
+      apiFetch<MetaConnection>("/whatsapp/provider", {
+        method: "PUT",
+        body: JSON.stringify({ provider }),
+      }),
+    onSuccess: (data) => queryClient.setQueryData(META_KEY, data),
+  });
+}
+
+/** Apaga as credenciais; se a Meta era a ativa, volta ao QR code. */
 export function useRemoveMetaCredentials() {
   const queryClient = useQueryClient();
   return useMutation({

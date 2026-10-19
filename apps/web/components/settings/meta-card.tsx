@@ -21,7 +21,8 @@ import { errorMessage } from "@/lib/api-client";
  * Cartão "API oficial da Meta" da aba WhatsApp. A empresa cola o ID do número,
  * o ID da conta e o token que tirou do painel da Meta. O token é validado e
  * guardado cifrado; depois de salvo, a tela só mostra que existe um. Salvar
- * troca o provedor da empresa para a Meta; remover volta para a Evolution.
+ * não troca o provedor: isso é feito no cartão "Provedor ativo". Remover
+ * apaga o token e, se a Meta era a ativa, volta ao QR code.
  *
  * Fora do handoff de design; segue o design system existente.
  */
@@ -70,8 +71,8 @@ export function MetaCard() {
               API oficial da Meta
             </div>
             <div className="mt-0.5 text-[13px] text-muted-foreground">
-              Usa a Cloud API oficial em vez do QR code. Ao salvar, o assistente
-              e os avisos passam a sair por ela.
+              Alternativa ao QR code. Salve as credenciais aqui e escolha a
+              Meta em “Provedor ativo” quando quiser usá-la.
             </div>
           </div>
         </div>
@@ -79,7 +80,7 @@ export function MetaCard() {
           className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-[5px] text-[12px] font-medium ${active ? "status-agendada" : "status-em_andamento"}`}
         >
           <span className="size-1.5 rounded-full bg-current" />
-          {active ? "Em uso" : "Desligada"}
+          {active ? "Em uso" : data.tokenSaved ? "Configurada" : "Desligada"}
         </span>
       </div>
 
@@ -104,6 +105,14 @@ export function MetaCard() {
             </strong>
             {data.displayPhone ? ` (${data.displayPhone})` : ""}. Token salvo e
             cifrado.
+          </p>
+        )}
+
+        {!active && data.tokenSaved && (
+          <p className="text-[13px] text-muted-foreground">
+            Credenciais salvas
+            {data.verifiedName ? ` (${data.verifiedName})` : ""}. A Meta não
+            está ativa: escolha-a em “Provedor ativo” para usá-la.
           </p>
         )}
 
@@ -170,9 +179,9 @@ export function MetaCard() {
             >
               {save.isPending
                 ? "Validando na Meta…"
-                : active
+                : data.tokenSaved
                   ? "Atualizar credenciais"
-                  : "Validar e usar a API oficial"}
+                  : "Validar e salvar"}
             </Button>
             {(active || data.tokenSaved) && (
               <Button
@@ -180,7 +189,7 @@ export function MetaCard() {
                 variant="ghost"
                 onClick={() => setConfirmOpen(true)}
               >
-                Remover e voltar ao QR code
+                Remover credenciais
               </Button>
             )}
           </div>
@@ -191,7 +200,7 @@ export function MetaCard() {
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
         title="Remover a API oficial da Meta?"
-        description="O token salvo é apagado e a empresa volta a usar o número pareado por QR code (se houver um conectado)."
+        description="O token salvo é apagado. Se a Meta for o provedor ativo, a empresa volta ao número pareado por QR code (se houver um conectado)."
         confirmLabel="Remover"
         destructive
         isPending={remove.isPending}

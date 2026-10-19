@@ -23,6 +23,10 @@ vi.mock("@/components/settings/meta-card", () => ({
   MetaCard: () => <div>Cartão da Meta</div>,
 }));
 
+vi.mock("@/components/settings/whatsapp-provider-card", () => ({
+  WhatsappProviderCard: () => <div>Provedor ativo</div>,
+}));
+
 vi.mock("@/components/whatsapp/connect-panel", () => ({
   WhatsappConnectPanel: () => <div>Painel de conexão</div>,
 }));
